@@ -92,12 +92,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="GameManager.cpp" />
+    <ClCompile Include="GameManager.h" />
     <ClCompile Include="Item.cpp" />
     <ClCompile Include="Weapon.cpp" />
     <QtRcc Include="FishingVoyage.qrc" />
     <QtUic Include="FishingVoyage.ui" />
-    <QtMoc Include="FishingVoyage.h" />
-    <ClCompile Include="FishingVoyage.cpp" />
+    <ClInclude Include="GameWindow.h" />
+    <ClCompile Include="GameWindow.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>

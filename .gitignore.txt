@@ -34,3 +34,15 @@ Makefile*
 save.dat
 Log.dat
 highscore.dat
+
+# Qt
+*.qmake.stash
+*.pro.user
+qtvars*
+GeneratedFiles/
+
+# VS browse database
+*.VC.db
+*.VC.db-wal
+*.VC.opendb
+*.tlog

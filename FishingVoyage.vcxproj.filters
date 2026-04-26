@@ -63,8 +63,10 @@
     <ClInclude Include="ItemFactory.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="GameWindow.h">
+  </ItemGroup>
+  <ItemGroup>
+    <QtMoc Include="GameWindow.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
+    </QtMoc>
   </ItemGroup>
 </Project>

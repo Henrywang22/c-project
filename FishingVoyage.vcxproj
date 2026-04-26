@@ -98,7 +98,7 @@
     <ClCompile Include="Weapon.cpp" />
     <QtRcc Include="FishingVoyage.qrc" />
     <QtUic Include="FishingVoyage.ui" />
-    <ClInclude Include="GameWindow.h" />
+    <QtMoc Include="GameWindow.h" />
     <ClCompile Include="GameWindow.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>

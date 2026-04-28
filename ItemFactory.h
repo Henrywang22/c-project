@@ -42,15 +42,15 @@ public:
      */
     static Weapon* createWeapon(const std::string& type, int tier) {
         if (type == "Rod") {
-            if (tier == 2) return new Weapon("进阶鱼竿", Config::PRICE_ROD_T2, Config::DMG_ROD_T2, Config::DUR_ROD_T2, Config::RNG_ROD, Config::CONS_ROD);
-            if (tier == 3) return new Weapon("传世鱼竿", Config::PRICE_ROD_T3, Config::DMG_ROD_T3, Config::DUR_ROD_T3, Config::RNG_ROD, Config::CONS_ROD);
-            return new Weapon("基础鱼竿", Config::PRICE_ROD_T1, Config::DMG_ROD_T1, Config::DUR_ROD_T1, Config::RNG_ROD, Config::CONS_ROD);
+            if (tier == 2) return new Weapon("进阶鱼竿", Config::PRICE_ROD_T2, Config::DMG_ROD_T2, Config::DUR_ROD_T2, Config::RANGE_ROD, Config::CONS_ROD);
+            if (tier == 3) return new Weapon("传世鱼竿", Config::PRICE_ROD_T3, Config::DMG_ROD_T3, Config::DUR_ROD_T3, Config::RANGE_ROD, Config::CONS_ROD);
+            return new Weapon("基础鱼竿", Config::PRICE_ROD_T1, Config::DMG_ROD_T1, Config::DUR_ROD_T1, Config::RANGE_ROD, Config::CONS_ROD);
         }
         
         if (type == "Net") {
-            if (tier == 2) return new Weapon("加固渔网", Config::PRICE_NET_T2, Config::DMG_NET_T2, Config::DUR_NET_T2, Config::RNG_NET, Config::CONS_NET);
-            if (tier == 3) return new Weapon("捕捉大师渔网", Config::PRICE_NET_T3, Config::DMG_NET_T3, Config::DUR_NET_T3, Config::RNG_NET, Config::CONS_NET);
-            return new Weapon("普通渔网", Config::PRICE_NET_T1, Config::DMG_NET_T1, Config::DUR_NET_T1, Config::RNG_NET, Config::CONS_NET);
+            if (tier == 2) return new Weapon("加固渔网", Config::PRICE_NET_T2, Config::DMG_NET_T2, Config::DUR_NET_T2, Config::RANGE_NET, Config::CONS_NET);
+            if (tier == 3) return new Weapon("捕捉大师渔网", Config::PRICE_NET_T3, Config::DMG_NET_T3, Config::DUR_NET_T3, Config::RANGE_NET, Config::CONS_NET);
+            return new Weapon("普通渔网", Config::PRICE_NET_T1, Config::DMG_NET_T1, Config::DUR_NET_T1, Config::RANGE_NET, Config::CONS_NET);
         }
 
         if (type == "Harpoon") {

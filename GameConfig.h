@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 
 // ==========================================
 // 渔途 (Fishing Voyage) - 全局数值配置表

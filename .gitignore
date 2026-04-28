@@ -1,0 +1,56 @@
+# ==========================================
+# C++ 编译产物
+# ==========================================
+*.exe
+*.out
+*.o
+*.obj
+*.dll
+*.lib
+*.a
+*.so
+*.dylib
+
+# Debug / Release 构建目录
+Debug/
+Release/
+build/
+out/
+bin/
+obj/
+.vs/
+
+# ==========================================
+# IDE 和编辑器
+# ==========================================
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# Visual Studio
+*.sdf
+*.opensdf
+*.suo
+*.user
+*.VC.db
+*.VC.opendb
+*.tlog/
+
+# CLion / JetBrains
+.idea/
+cmake-build-*/
+
+# ==========================================
+# 临时文件
+# ==========================================
+tempCodeRunnerFile.*
+*.tmp
+*.swp
+*~
+
+# ==========================================
+# 操作系统文件
+# ==========================================
+Thumbs.db
+Desktop.ini
+.DS_Store

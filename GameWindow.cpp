@@ -1,47 +1,45 @@
 #include "GameWindow.h"
-#include <QPainter>
-#include <QFont>
-#include <QKeyEvent>
+#include "QPainter"
+#include "QFont"
+#include "QKeyEvent"
 
-// ============ 构造/析构 ============
+//======析构构造=====
 
-GameWindow::GameWindow(QWidget * parent) : QWidget(parent)
+GameWindow::GameWindow(QWidget* parent) :QWidget(parent)
 {
-    setWindowTitle("渔途");
-    setFixedSize(1280, 720);      // 固定窗口大小，不允许拉伸
+	setWindowTitle("渔途");
+	setFixedSize(1280, 720);//固定窗口大小，不允许拉伸
+	
+	gm = new GameManager();//创建游戏逻辑管理器
 
-    gm = new GameManager();       // 创建游戏逻辑管理器
-
-    timer = new QTimer(this);
-    // 信号槽：每当timer超时，自动调用gameLoop
-    connect(timer, &QTimer::timeout, this, &GameWindow::gameLoop);
-    timer->start(16);             // 16ms ≈ 60帧/秒
+	timer = new QTimer(this);//信号槽：每当timer超时，，自动调用gameLoop
+	connect(timer, &QTimer::timeout, this, &GameWindow::gameLoop);
+	timer->start(16); // 16ms ≈ 60帧/秒
 }
 
 GameWindow::~GameWindow()
 {
-    delete gm; // 释放GameManager内存
+	delete gm; // 释放GameManager内存
 }
 
 // ============ Qt事件：每帧绘制 ============
 
 void GameWindow::paintEvent(QPaintEvent*)
 {
-    QPainter p(this);
-    // 根据当前游戏状态决定画哪个画面
-    switch (state) {
-    case STATE_INTRO:   drawIntro(p);   break; // 开场说明
-    case STATE_MENU:    drawMenu(p);    break; // 主菜单
-    case STATE_PLAYING:
-    case STATE_PAUSED:  drawGame(p);    break; // 游戏中/暂停都画游戏画面
-    case STATE_DEFEAT:  drawDefeat(p);  break; // 失败
-    case STATE_VICTORY: drawVictory(p); break; // 胜利
-    default: break;
-    }
+	QPainter p(this);// 根据当前游戏状态决定画哪个画面
+	switch (state) 
+	{
+	case STATE_INTRO:   drawIntro(p);   break; // 开场说明
+	case STATE_MENU:    drawMenu(p);    break; // 主菜单
+	case STATE_PLAYING:
+	case STATE_PAUSED:  drawGame(p);    break; // 游戏中/暂停都画游戏画面
+	case STATE_DEFEAT:  drawDefeat(p);  break; // 失败
+	case STATE_VICTORY: drawVictory(p); break; // 胜利
+	default: break;
+	}
 }
 
 // ============ 游戏主循环（每16ms执行一次）============
-
 void GameWindow::gameLoop()
 {
     switch (state) {
@@ -107,7 +105,6 @@ void GameWindow::gameLoop()
 }
 
 // ============ 背景海洋 ============
-
 void GameWindow::drawSea(QPainter& p)
 {
     // 深蓝色海洋背景
@@ -120,7 +117,6 @@ void GameWindow::drawSea(QPainter& p)
 }
 
 // ============ 开场说明画面 ============
-
 void GameWindow::drawIntro(QPainter& p)
 {
     // 深色海洋背景
@@ -155,7 +151,7 @@ void GameWindow::drawIntro(QPainter& p)
         "             紫色深海鳗：价值高，难捕    金色金鱼：价值极高，极难捕",
         "",
         "【战斗】  空格键攻击附近鲨鱼（消耗武器耐久）",
-        "             普通鲨鱼（蓝色）    Boss 鲨鱼（红色，血量低于一半时进入狂暴）",
+        "             普通鲨鱼（蓝色）    Boss ）",
         "",
         "【障碍】  暗礁：碰撞损失耐久并反弹    漩涡：减少体力并降速",
         "",
@@ -186,7 +182,6 @@ void GameWindow::drawIntro(QPainter& p)
         p.drawText(0, 688, 1280, 30, Qt::AlignCenter, "按空格键开始游戏");
     }
 }
-
 // ============ 主菜单 ============
 
 void GameWindow::drawMenu(QPainter& p)

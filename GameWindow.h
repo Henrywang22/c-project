@@ -5,7 +5,8 @@
 #include <QKeyEvent>
 #include "GameManager.h"
 
-enum GameState {
+enum GameState 
+{
     STATE_INTRO,    // 介绍/说明画面
     STATE_MENU,     // 主菜单
     STATE_PLAYING,  // 游戏中

@@ -308,3 +308,4 @@ bool GameManager::isBossDefeated()
 {
     return boss && !boss->alive;
 }
+//.

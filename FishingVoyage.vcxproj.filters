@@ -69,6 +69,9 @@
     <ClInclude Include="Fish.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="D:\cpp_group\FishingVoyage\FishingVoyage\player.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <QtMoc Include="GameWindow.h">

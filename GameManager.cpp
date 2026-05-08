@@ -2,11 +2,18 @@
 #include <cstdlib>
 #include <cmath>
 #include <algorithm>
+#include "GameConfig.h"
 
 GameManager::GameManager()
 {
     player = new Player(100, 360);
-    currentWeapon = new Harpoon();
+    currentWeapon = new Harpoon(
+        "铁制鱼叉",
+        Config::PRICE_HARPOON_T1,
+        Config::DMG_HARPOON_T1,
+        Config::DUR_HARPOON_T1,
+        Config::RANGE_HARPOON,
+        Config::CONS_HARPOON);
     spawnObstacles();
     for (int i = 0; i < 5; i++) spawnFish();
 }

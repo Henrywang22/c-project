@@ -231,8 +231,27 @@ void GameWindow::drawGame(QPainter& p)
 
 void GameWindow::drawFish(QPainter& p)
 {
-    // TODO: 等队友Fish类完成后实现
-    // 遍历gm->fish，根据鱼的类型画不同颜色的椭圆
+    for (auto f : gm->fish) {
+        if (f->caught || f->escaped) continue;
+        int screenX = f->x - gm->cameraX;
+        if (screenX < -20 || screenX > 1300) continue;
+
+        switch (f->type) {
+        case Fish::SARDINE:       p.setBrush(QColor(255, 220, 50));  break;
+        case Fish::TUNA:          p.setBrush(QColor(50, 180, 255));  break;
+        case Fish::DEEPSEAEEL:    p.setBrush(QColor(180, 50, 255));  break;
+        case Fish::SWORDFISH_FISH: p.setBrush(QColor(255, 180, 0)); break;
+        }
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(screenX - 8, f->y - 5, 16, 10);
+
+        // 靠近时显示提示
+        if (!isFishing && f->isNearPlayer(gm->player->x, gm->player->y, 120)) {
+            p.setPen(Qt::white);
+            p.setFont(QFont("Microsoft YaHei", 10));
+            p.drawText(screenX - 15, f->y - 14, "按F捕鱼");
+        }
+    }
 }
 
 void GameWindow::drawObstacles(QPainter& p)
@@ -259,14 +278,44 @@ void GameWindow::drawPlayer(QPainter& p)
 
 void GameWindow::drawHUD(QPainter& p)
 {
-    // TODO: 等队友Player类完成后实现
-    // 显示耐久、体力、金币、距离、时间、击杀数等
+    gm->currentWeapon->getCurrentDur();
+    gm->currentWeapon->getMaxDur();
+    gm->currentWeapon->getName();
 }
 
 void GameWindow::drawFishingHUD(QPainter& p)
 {
-    // TODO: 等队友Fish类完成后实现
-    // 显示捕鱼进度条和点击次数
+    if (!isFishing || !targetFish) return;
+
+    int barX = 490, barY = 55, barW = 300, barH = 22;
+    p.fillRect(barX - 5, barY - 22, barW + 10, barH + 28, QColor(0, 0, 0, 180));
+
+    p.setPen(Qt::white);
+    p.setFont(QFont("Microsoft YaHei", 11));
+    QString fishName;
+    switch (targetFish->type) {
+    case Fish::SARDINE:        fishName = "沙丁鱼"; break;
+    case Fish::TUNA:           fishName = "金枪鱼"; break;
+    case Fish::DEEPSEAEEL:     fishName = "深海鳗"; break;
+    case Fish::SWORDFISH_FISH: fishName = "金鱼";   break;
+    }
+    p.drawText(barX, barY - 4, QString("捕捉 %1 — 按F: %2/%3")
+        .arg(fishName).arg(fishClickCount).arg(targetFish->catchRequired));
+
+    // 进度条
+    p.fillRect(barX, barY, barW, barH, QColor(50, 50, 50));
+    float ratio = 1.0f - (float)fishTimer / targetFish->catchTimeLimit;
+    int fillW = (int)(barW * ratio);
+    QColor barColor;
+    switch (targetFish->type) {
+    case Fish::SARDINE:        barColor = QColor(255, 220, 50);  break;
+    case Fish::TUNA:           barColor = QColor(50, 180, 255);  break;
+    case Fish::DEEPSEAEEL:     barColor = QColor(180, 50, 255);  break;
+    case Fish::SWORDFISH_FISH: barColor = QColor(255, 180, 0);   break;
+    }
+    p.fillRect(barX, barY, fillW, barH, barColor);
+    p.setPen(QPen(Qt::white, 1));
+    p.drawRect(barX, barY, barW, barH);
 }
 
 void GameWindow::openShop()
@@ -367,11 +416,11 @@ void GameWindow::tryStartFishing()
 void GameWindow::updateFishing()
 {
     if (!isFishing || !targetFish) return;
-    fishTimer++; // 每帧计时
+    fishTimer++;
 
     // 超时：鱼逃跑
     if (fishTimer >= targetFish->catchTimeLimit) {
-        targetFish->vx *= 3; // 鱼加速逃走
+        targetFish->vx *= 3;
         targetFish->vy *= 3;
         targetFish->escaped = true;
         isFishing = false;
@@ -379,14 +428,20 @@ void GameWindow::updateFishing()
         return;
     }
 
-    // 点击次数足够：捕获成功
+    // 捕获成功
     if (fishClickCount >= targetFish->catchRequired) {
         targetFish->caught = true;
-        gm->player->coins += targetFish->value;       // 获得金币
-        gm->player->stamina = std::min(gm->player->maxStamina,
-            gm->player->stamina + targetFish->staminaGain); // 恢复体力
+        gm->player->coins += targetFish->value;
         gm->player->fishCaught++;
         gm->player->fishTotalValue += targetFish->value;
+
+        // 完美捕获：时间剩余超过一半，体力消耗减半
+        int cost = (fishTimer < targetFish->catchTimeLimit / 2)
+            ? targetFish->staminaCost / 2   // 完美：消耗5
+            : targetFish->staminaCost;       // 普通：消耗10
+        gm->player->stamina = std::min(gm->player->maxStamina,
+            gm->player->stamina + targetFish->staminaGain - cost);
+
         isFishing = false;
         targetFish = nullptr;
     }

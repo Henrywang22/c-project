@@ -92,6 +92,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Enymy.cpp" />
     <ClCompile Include="Fish.cpp" />
     <ClCompile Include="GameManager.cpp" />
     <ClCompile Include="GameManager.h" />
@@ -105,6 +106,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="D:\cpp_group\FishingVoyage\FishingVoyage\player.h" />
+    <ClInclude Include="Enemy.h" />
     <ClInclude Include="Fish.h" />
     <ClInclude Include="GameConfig.h" />
     <ClInclude Include="Item.h" />

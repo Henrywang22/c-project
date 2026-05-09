@@ -11,6 +11,11 @@ GameWindow::GameWindow(QWidget* parent) :QWidget(parent)
 	setFixedSize(1280, 720);//固定窗口大小，不允许拉伸
 	
 	gm = new GameManager();//创建游戏逻辑管理器
+    // 加载鱼的图片
+    imgSardine.load("sardine.png");
+    imgTuna.load("tuna.png");
+    imgEel.load("eel.png");
+    imgGolden.load("golden.png");
 
 	timer = new QTimer(this);//信号槽：每当timer超时，，自动调用gameLoop
 	connect(timer, &QTimer::timeout, this, &GameWindow::gameLoop);
@@ -236,14 +241,24 @@ void GameWindow::drawFish(QPainter& p)
         int screenX = f->x - gm->cameraX;
         if (screenX < -20 || screenX > 1300) continue;
 
+        // 根据鱼的类型选择图片，统一缩放到 48x24
+        QPixmap* img = nullptr;
         switch (f->type) {
-        case Fish::SARDINE:       p.setBrush(QColor(255, 220, 50));  break;
-        case Fish::TUNA:          p.setBrush(QColor(50, 180, 255));  break;
-        case Fish::DEEPSEAEEL:    p.setBrush(QColor(180, 50, 255));  break;
-        case Fish::SWORDFISH_FISH: p.setBrush(QColor(255, 180, 0)); break;
+        case Fish::SARDINE:        img = &imgSardine; break;
+        case Fish::TUNA:           img = &imgTuna;    break;
+        case Fish::DEEPSEAEEL:     img = &imgEel;     break;
+        case Fish::SWORDFISH_FISH: img = &imgGolden;  break;
         }
-        p.setPen(Qt::NoPen);
-        p.drawEllipse(screenX - 8, f->y - 5, 16, 10);
+
+        if (img && !img->isNull()) {
+            p.drawPixmap(screenX - 24, f->y - 12, 48, 24, *img);
+        }
+        else {
+            // 图片加载失败时用色块代替
+            p.setBrush(QColor(255, 220, 50));
+            p.setPen(Qt::NoPen);
+            p.drawEllipse(screenX - 8, f->y - 5, 16, 10);
+        }
 
         // 靠近时显示提示
         if (!isFishing && f->isNearPlayer(gm->player->x, gm->player->y, 120)) {

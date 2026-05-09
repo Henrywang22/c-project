@@ -66,4 +66,4 @@ public:
 class GoldenFish : public RareFish {
 public:
     GoldenFish(int x, int y);
-};#pragma once
+};

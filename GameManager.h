@@ -3,7 +3,7 @@
 #include "Player.h"
 #include "Fish.h"
 #include "Obstacle.h"
-#include "NormalEnemy.h"
+#include "Enemy.h"
 #include "Boss.h"
 #include "WaveSystem.h"
 #include "WeatherSystem.h"

@@ -69,4 +69,14 @@ private:
     void tryStartFishing(); // 尝试开始捕鱼
     void updateFishing();   // 更新捕鱼状态
     void openShop();        // 打开商店
+
+    // 图片资源
+    QPixmap imgSardine;
+    QPixmap imgTuna;
+    QPixmap imgEel;
+    QPixmap imgGolden;
+    QPixmap imgShark;
+    QPixmap imgSwordfish;
+    QPixmap imgOctopus;
+    QPixmap imgBoat;
 };

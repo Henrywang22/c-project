@@ -2,44 +2,56 @@
 #include "QPainter"
 #include "QFont"
 #include "QKeyEvent"
+#include <algorithm>
 
 //======析构构造=====
 
 GameWindow::GameWindow(QWidget* parent) :QWidget(parent)
 {
-	setWindowTitle("渔途");
-	setFixedSize(1280, 720);//固定窗口大小，不允许拉伸
-	
-	gm = new GameManager();//创建游戏逻辑管理器
+    setWindowTitle("渔途");
+    setFixedSize(1280, 720); // 固定窗口大小，不允许拉伸
 
-	timer = new QTimer(this);//信号槽：每当timer超时，，自动调用gameLoop
-	connect(timer, &QTimer::timeout, this, &GameWindow::gameLoop);
-	timer->start(16); // 16ms ≈ 60帧/秒
+    gm = new GameManager(); // 创建游戏逻辑管理器
+
+    // 加载所有图片
+    imgSardine.load("sardine.png");
+    imgTuna.load("tuna.png");
+    imgEel.load("eel.png");
+    imgGolden.load("golden.png");
+    imgShark.load("shark.png");
+    imgSwordfish.load("swordfish.png");
+    imgOctopus.load("octopus.png");
+    imgBoat.load("boat.png");
+
+    timer = new QTimer(this); // 信号槽：每当timer超时，自动调用gameLoop
+    connect(timer, &QTimer::timeout, this, &GameWindow::gameLoop);
+    timer->start(16); // 16ms ≈ 60帧/秒
 }
 
 GameWindow::~GameWindow()
 {
-	delete gm; // 释放GameManager内存
+    delete gm; // 释放GameManager内存
 }
 
 // ============ Qt事件：每帧绘制 ============
 
 void GameWindow::paintEvent(QPaintEvent*)
 {
-	QPainter p(this);// 根据当前游戏状态决定画哪个画面
-	switch (state) 
-	{
-	case STATE_INTRO:   drawIntro(p);   break; // 开场说明
-	case STATE_MENU:    drawMenu(p);    break; // 主菜单
-	case STATE_PLAYING:
-	case STATE_PAUSED:  drawGame(p);    break; // 游戏中/暂停都画游戏画面
-	case STATE_DEFEAT:  drawDefeat(p);  break; // 失败
-	case STATE_VICTORY: drawVictory(p); break; // 胜利
-	default: break;
-	}
+    QPainter p(this); // 根据当前游戏状态决定画哪个画面
+    switch (state)
+    {
+    case STATE_INTRO:   drawIntro(p);   break; // 开场说明
+    case STATE_MENU:    drawMenu(p);    break; // 主菜单
+    case STATE_PLAYING:
+    case STATE_PAUSED:  drawGame(p);    break; // 游戏中/暂停都画游戏画面
+    case STATE_DEFEAT:  drawDefeat(p);  break; // 失败
+    case STATE_VICTORY: drawVictory(p); break; // 胜利
+    default: break;
+    }
 }
 
 // ============ 游戏主循环（每16ms执行一次）============
+
 void GameWindow::gameLoop()
 {
     switch (state) {
@@ -95,8 +107,8 @@ void GameWindow::gameLoop()
         if (keyShift) gm->player->boost();
         else          gm->player->stopBoost();
 
-        updateFishing();  // 更新捕鱼状态
-        gm->update();     // 更新所有游戏逻辑
+        updateFishing(); // 更新捕鱼状态
+        gm->update();    // 更新所有游戏逻辑
         break;
 
     default: break;
@@ -105,6 +117,7 @@ void GameWindow::gameLoop()
 }
 
 // ============ 背景海洋 ============
+
 void GameWindow::drawSea(QPainter& p)
 {
     // 深蓝色海洋背景
@@ -117,6 +130,7 @@ void GameWindow::drawSea(QPainter& p)
 }
 
 // ============ 开场说明画面 ============
+
 void GameWindow::drawIntro(QPainter& p)
 {
     // 深色海洋背景
@@ -151,7 +165,7 @@ void GameWindow::drawIntro(QPainter& p)
         "             紫色深海鳗：价值高，难捕    金色金鱼：价值极高，极难捕",
         "",
         "【战斗】  空格键攻击附近鲨鱼（消耗武器耐久）",
-        "             普通鲨鱼（蓝色）    Boss ）",
+        "             普通鲨鱼（蓝色）    Boss鲨鱼（红色，血量低于一半时进入狂暴）",
         "",
         "【障碍】  暗礁：碰撞损失耐久并反弹    漩涡：减少体力并降速",
         "",
@@ -182,6 +196,7 @@ void GameWindow::drawIntro(QPainter& p)
         p.drawText(0, 688, 1280, 30, Qt::AlignCenter, "按空格键开始游戏");
     }
 }
+
 // ============ 主菜单 ============
 
 void GameWindow::drawMenu(QPainter& p)
@@ -227,7 +242,7 @@ void GameWindow::drawGame(QPainter& p)
     if (state == STATE_PAUSED) drawPaused(p);
 }
 
-// ============ 以下函数依赖队友的类，先留空占位 ============
+// ============ 鱼 ============
 
 void GameWindow::drawFish(QPainter& p)
 {
@@ -236,14 +251,24 @@ void GameWindow::drawFish(QPainter& p)
         int screenX = f->x - gm->cameraX;
         if (screenX < -20 || screenX > 1300) continue;
 
+        // 根据鱼的类型选择图片，统一缩放到 48x24
+        QPixmap* img = nullptr;
         switch (f->type) {
-        case Fish::SARDINE:       p.setBrush(QColor(255, 220, 50));  break;
-        case Fish::TUNA:          p.setBrush(QColor(50, 180, 255));  break;
-        case Fish::DEEPSEAEEL:    p.setBrush(QColor(180, 50, 255));  break;
-        case Fish::SWORDFISH_FISH: p.setBrush(QColor(255, 180, 0)); break;
+        case Fish::SARDINE:        img = &imgSardine; break;
+        case Fish::TUNA:           img = &imgTuna;    break;
+        case Fish::DEEPSEAEEL:     img = &imgEel;     break;
+        case Fish::SWORDFISH_FISH: img = &imgGolden;  break;
         }
-        p.setPen(Qt::NoPen);
-        p.drawEllipse(screenX - 8, f->y - 5, 16, 10);
+
+        if (img && !img->isNull()) {
+            p.drawPixmap(screenX - 24, f->y - 12, 48, 24, *img);
+        }
+        else {
+            // 图片加载失败时用色块代替
+            p.setBrush(QColor(255, 220, 50));
+            p.setPen(Qt::NoPen);
+            p.drawEllipse(screenX - 8, f->y - 5, 16, 10);
+        }
 
         // 靠近时显示提示
         if (!isFishing && f->isNearPlayer(gm->player->x, gm->player->y, 120)) {
@@ -254,34 +279,194 @@ void GameWindow::drawFish(QPainter& p)
     }
 }
 
+// ============ 障碍物（等队友Obstacle类完成后实现）============
+
 void GameWindow::drawObstacles(QPainter& p)
 {
     // TODO: 等队友Obstacle类完成后实现
-    // 暗礁画棕色方块，漩涡画半透明圆
 }
+
+// ============ 海浪（等队友WaveSystem完成后实现）============
 
 void GameWindow::drawWaves(QPainter& p)
 {
     // TODO: 等队友WaveSystem完成后实现
 }
 
+// ============ 敌人 ============
+
 void GameWindow::drawSharks(QPainter& p)
 {
-    // TODO: 等队友NormalEnemy/Boss类完成后实现
+    // 普通鲨鱼
+    for (auto s : gm->sharks) {
+        if (!s->alive) continue;
+        int screenX = s->x - gm->cameraX;
+        if (screenX < -50 || screenX > 1330) continue;
+
+        if (!imgShark.isNull()) {
+            p.drawPixmap(screenX - 24, s->y - 12, 48, 24, imgShark);
+        }
+        else {
+            p.setBrush(QColor(80, 80, 200));
+            p.setPen(Qt::NoPen);
+            p.drawEllipse(screenX - 20, s->y - 12, 40, 24);
+        }
+        // 血条
+        p.fillRect(screenX - 20, s->y - 22, 40, 6, QColor(60, 60, 60));
+        int bw = (int)(40.0f * s->hp / s->maxHp);
+        p.fillRect(screenX - 20, s->y - 22, bw, 6, QColor(220, 50, 50));
+    }
+
+    // 剑鱼
+    for (auto s : gm->swordfishes) {
+        if (!s->alive) continue;
+        int screenX = s->x - gm->cameraX;
+        if (screenX < -50 || screenX > 1330) continue;
+
+        if (!imgSwordfish.isNull()) {
+            p.drawPixmap(screenX - 28, s->y - 10, 56, 20, imgSwordfish);
+        }
+        else {
+            p.setBrush(QColor(50, 200, 200));
+            p.setPen(Qt::NoPen);
+            p.drawEllipse(screenX - 20, s->y - 10, 40, 20);
+        }
+        // 蓄力提示
+        if (s->state == Swordfish::WINDUP) {
+            p.setPen(QColor(255, 200, 0));
+            p.setFont(QFont("Microsoft YaHei", 10));
+            p.drawText(screenX - 15, s->y - 18, "蓄力!");
+        }
+        // 血条
+        p.fillRect(screenX - 20, s->y - 20, 40, 5, QColor(60, 60, 60));
+        int bw2 = (int)(40.0f * s->hp / s->maxHp);
+        p.fillRect(screenX - 20, s->y - 20, bw2, 5, QColor(220, 50, 50));
+    }
+
+    // 墨鱼
+    for (auto o : gm->octopuses) {
+        if (!o->alive || o->isInvisible) continue;
+        int screenX = o->x - gm->cameraX;
+        if (screenX < -50 || screenX > 1330) continue;
+
+        if (!imgOctopus.isNull()) {
+            p.drawPixmap(screenX - 20, o->y - 20, 40, 40, imgOctopus);
+        }
+        else {
+            p.setBrush(QColor(150, 0, 150));
+            p.setPen(Qt::NoPen);
+            p.drawEllipse(screenX - 18, o->y - 18, 36, 36);
+        }
+        // 血条
+        p.fillRect(screenX - 18, o->y - 26, 36, 5, QColor(60, 60, 60));
+        int bw3 = (int)(36.0f * o->hp / o->maxHp);
+        p.fillRect(screenX - 18, o->y - 26, bw3, 5, QColor(220, 50, 50));
+    }
+
+    // Boss（用shark.png放大显示）
+    if (gm->boss && gm->boss->alive) {
+        int screenX = gm->boss->x - gm->cameraX;
+        if (screenX >= -50 && screenX <= 1330) {
+            if (!imgShark.isNull()) {
+                p.drawPixmap(screenX - 40, gm->boss->y - 20, 80, 40, imgShark);
+                // 二阶段红色叠加
+                if (gm->boss->state == Boss::PHASE2) {
+                    p.fillRect(screenX - 40, gm->boss->y - 20, 80, 40,
+                        QColor(255, 0, 0, 80));
+                }
+            }
+            else {
+                p.setBrush(gm->boss->state == Boss::PHASE2
+                    ? QColor(220, 0, 0) : QColor(160, 0, 0));
+                p.setPen(Qt::NoPen);
+                p.drawEllipse(screenX - 35, gm->boss->y - 20, 70, 40);
+            }
+            // Boss血条
+            p.fillRect(screenX - 35, gm->boss->y - 32, 70, 8, QColor(60, 60, 60));
+            int bw4 = (int)(70.0f * gm->boss->hp / gm->boss->maxHp);
+            p.fillRect(screenX - 35, gm->boss->y - 32, bw4, 8, QColor(220, 50, 50));
+            if (gm->boss->state == Boss::PHASE2) {
+                p.setPen(QColor(255, 100, 100));
+                p.setFont(QFont("Microsoft YaHei", 10));
+                p.drawText(screenX - 20, gm->boss->y - 36, "狂暴！");
+            }
+        }
+    }
 }
+
+// ============ 玩家 ============
 
 void GameWindow::drawPlayer(QPainter& p)
 {
-    // TODO: 等队友Player类完成后实现
-    // 玩家是一个白色矩形，加速时变黄色
+    int screenX = gm->player->x - gm->cameraX;
+    if (!imgBoat.isNull()) {
+        p.drawPixmap(screenX - 30, gm->player->y - 15, 60, 30, imgBoat);
+    }
+    else {
+        // 图片加载失败时用色块
+        p.setBrush(gm->player->boosting ? QColor(255, 200, 100) : QColor(240, 240, 240));
+        p.setPen(QPen(QColor(100, 100, 100), 1));
+        p.drawRect(screenX - 20, gm->player->y - 10, 40, 20);
+    }
 }
+
+// ============ 顶部信息栏 ============
 
 void GameWindow::drawHUD(QPainter& p)
 {
-    gm->currentWeapon->getCurrentDur();
-    gm->currentWeapon->getMaxDur();
-    gm->currentWeapon->getName();
+    p.fillRect(0, 0, 1280, 44, QColor(0, 0, 0, 170));
+
+    p.setFont(QFont("Microsoft YaHei", 10));
+    p.setPen(Qt::white);
+
+    // 耐久条
+    p.drawText(10, 28, "耐久");
+    p.fillRect(50, 8, 100, 14, QColor(60, 60, 60));
+    int durW = (int)(100.0f * gm->player->durability / gm->player->maxDurability);
+    p.fillRect(50, 8, durW, 14, QColor(80, 200, 80));
+
+    // 体力条
+    p.drawText(165, 28, "体力");
+    p.fillRect(205, 8, 100, 14, QColor(60, 60, 60));
+    int staW = (int)(100.0f * gm->player->stamina / gm->player->maxStamina);
+    p.fillRect(205, 8, staW, 14, QColor(200, 200, 50));
+
+    // 文字信息
+    p.drawText(315, 28, QString("金币:%1").arg(gm->player->coins));
+    p.drawText(410, 28, QString("距离:%1m").arg(gm->player->distance));
+
+    int sec = gm->player->gameSeconds;
+    p.drawText(520, 28, QString("时间:%1:%2")
+        .arg(sec / 60, 2, 10, QChar('0'))
+        .arg(sec % 60, 2, 10, QChar('0')));
+
+    p.drawText(620, 28, QString("击杀:%1").arg(gm->killCount));
+    p.drawText(700, 28, QString("捕鱼:%1").arg(gm->player->fishCaught));
+
+    // 武器信息
+    if (gm->currentWeapon) {
+        p.drawText(780, 28, QString("%1 耐久:%2/%3")
+            .arg(QString::fromStdString(gm->currentWeapon->getName()))
+            .arg(gm->currentWeapon->getCurrentDur())
+            .arg(gm->currentWeapon->getMaxDur()));
+    }
+
+    // 关卡进度条
+    p.setPen(Qt::white);
+    p.drawText(1100, 18, QString("关卡 %1/5").arg(gm->stage));
+    p.fillRect(1100, 24, 160, 10, QColor(60, 60, 60));
+    int prog = std::min(160, (int)(gm->player->distance * 160 / (gm->stage * 2000)));
+    p.fillRect(1100, 24, prog, 10, QColor(100, 200, 100));
+    p.setPen(QPen(Qt::white, 1));
+    p.drawRect(1100, 24, 160, 10);
+
+    // 操作提示
+    p.setPen(QColor(180, 180, 180));
+    p.setFont(QFont("Microsoft YaHei", 9));
+    p.drawText(1100, 40, "空格:攻击 F:捕鱼 P:商店 ESC:暂停");
 }
+
+// ============ 捕鱼进度条 ============
 
 void GameWindow::drawFishingHUD(QPainter& p)
 {
@@ -317,6 +502,8 @@ void GameWindow::drawFishingHUD(QPainter& p)
     p.setPen(QPen(Qt::white, 1));
     p.drawRect(barX, barY, barW, barH);
 }
+
+// ============ 商店（等队友ShopDialog完成后实现）============
 
 void GameWindow::openShop()
 {
@@ -400,7 +587,6 @@ void GameWindow::drawVictory(QPainter& p)
 void GameWindow::tryStartFishing()
 {
     if (isFishing) return; // 已经在捕鱼就不重复开始
-    // 遍历所有鱼，找到靠近玩家的鱼
     for (auto f : gm->fish) {
         if (f->caught || f->escaped) continue;
         if (f->isNearPlayer(gm->player->x, gm->player->y, 120)) {
@@ -437,8 +623,8 @@ void GameWindow::updateFishing()
 
         // 完美捕获：时间剩余超过一半，体力消耗减半
         int cost = (fishTimer < targetFish->catchTimeLimit / 2)
-            ? targetFish->staminaCost / 2   // 完美：消耗5
-            : targetFish->staminaCost;       // 普通：消耗10
+            ? targetFish->staminaCost / 2
+            : targetFish->staminaCost;
         gm->player->stamina = std::min(gm->player->maxStamina,
             gm->player->stamina + targetFish->staminaGain - cost);
 
@@ -451,7 +637,6 @@ void GameWindow::updateFishing()
 
 void GameWindow::keyPressEvent(QKeyEvent* event)
 {
-    // 根据当前状态处理不同的按键
     if (state == STATE_INTRO) {
         if (event->key() == Qt::Key_Space) {
             state = STATE_MENU;
@@ -462,11 +647,11 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
 
     if (state == STATE_MENU) {
         if (event->key() == Qt::Key_N) {
-            gm->fileManager.deleteSave(); // 删除存档，全新开始
+            gm->fileManager.deleteSave();
             state = STATE_PLAYING;
         }
         else if (event->key() == Qt::Key_C && gm->fileManager.hasSave()) {
-            gm->loadSave(); // 读取存档
+            gm->loadSave();
             state = STATE_PLAYING;
         }
         return;
@@ -475,7 +660,7 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
     if (state == STATE_DEFEAT) {
         if (event->key() == Qt::Key_Space) {
             delete gm;
-            gm = new GameManager(); // 重置游戏
+            gm = new GameManager();
             state = STATE_MENU;
             update();
         }
@@ -510,15 +695,15 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
         case Qt::Key_Shift: keyShift = true; gm->player->boost(); break;
         case Qt::Key_F:
             if (!isFishing) tryStartFishing();
-            else fishClickCount++; // 捕鱼中继续点击
+            else fishClickCount++;
             break;
         case Qt::Key_Space:
-            gm->attackNearest(30, 150); // 攻击范围150内最近的敌人
+            gm->attackNearest(30, 150);
             break;
         case Qt::Key_P:
-            timer->stop();   // 暂停游戏循环
+            timer->stop();
             openShop();
-            timer->start(16);// 恢复游戏循环
+            timer->start(16);
             break;
         case Qt::Key_Escape: state = STATE_PAUSED; break;
         case Qt::Key_Q: gm->saveAndQuit(); close(); break;

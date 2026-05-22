@@ -70,9 +70,13 @@ private:
     void updateFishing();   // 更新捕鱼状态
     void openShop();        // 打开商店
 
-    // 鱼的图片
+    // 图片资源
     QPixmap imgSardine;
     QPixmap imgTuna;
     QPixmap imgEel;
     QPixmap imgGolden;
+    QPixmap imgShark;
+    QPixmap imgSwordfish;
+    QPixmap imgOctopus;
+    QPixmap imgBoat;
 };

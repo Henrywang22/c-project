@@ -104,11 +104,12 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="D:\cpp_group\FishingVoyage\FishingVoyage\player.h" />
     <ClInclude Include="Fish.h" />
     <ClInclude Include="GameConfig.h" />
     <ClInclude Include="Item.h" />
     <ClInclude Include="ItemFactory.h" />
+    <ClInclude Include="obstacle.h" />
+    <ClInclude Include="player.h" />
     <ClInclude Include="Weapon.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

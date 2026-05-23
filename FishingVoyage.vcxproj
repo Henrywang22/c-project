@@ -92,7 +92,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Enymy.cpp" />
+    <ClCompile Include="Enemy.cpp" />
     <ClCompile Include="Fish.cpp" />
     <ClCompile Include="GameManager.cpp" />
     <ClCompile Include="GameManager.h" />

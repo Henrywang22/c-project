@@ -52,6 +52,9 @@
     <ClCompile Include="Fish.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Enemy.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="GameConfig.h">
@@ -70,6 +73,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="D:\cpp_group\FishingVoyage\FishingVoyage\player.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Enemy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

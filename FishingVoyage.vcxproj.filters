@@ -72,7 +72,10 @@
     <ClInclude Include="Fish.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="D:\cpp_group\FishingVoyage\FishingVoyage\player.h">
+    <ClInclude Include="player.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="obstacle.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Enemy.h">

@@ -6,7 +6,18 @@ Player::Player()
     : m_worldPos(200, 300), m_currentSpeed(GameConfig::SHIP_BASE_SPEED),
     m_baseSpeed(GameConfig::SHIP_BASE_SPEED), m_durability(100), m_stamina(GameConfig::MAX_STAMINA),
     m_isStunned(false), m_isDead(false), m_stunDuration(0), m_speedReduction(0),
-    m_reboundActive(false), m_keyW(false), m_keyA(false), m_keyS(false), m_keyD(false), m_keyShift(false) {}
+    m_reboundActive(false), m_keyW(false), m_keyA(false), m_keyS(false), m_keyD(false), m_keyShift(false)
+{
+    // 初始化游戏进度数据
+    coins = 0;
+    fishCaught = 0;
+    fishTotalValue = 0;
+    distance = 0;
+    gameSeconds = 0;
+    visionReduced = false;
+    maxDurability = 100;
+    maxStamina = GameConfig::MAX_STAMINA;
+}
 
 Player& Player::instance() {
     static Player p;
@@ -42,6 +53,7 @@ void Player::update(qreal deltaTime) {
         m_isStunned = false;
     }
 
+    // 闪电伤害
     if (WeatherSystem::instance().shouldTriggerLightning()) {
         takeDurabilityDamage(GameConfig::STORM_LIGHTNING_DAMAGE);
     }
@@ -58,8 +70,9 @@ void Player::updateMovement(qreal deltaTime) {
     if (m_keyShift && m_stamina > 0) {
         targetBaseSpeed = GameConfig::SHIP_BOOST_SPEED;
         m_stamina = qMax(0, m_stamina - GameConfig::BOOST_STAMINA_COST_PER_FRAME);
-    } else if (!m_keyShift && m_stamina < GameConfig::MAX_STAMINA) {
-        m_stamina = qMin(GameConfig::MAX_STAMINA, m_stamina + 1);
+    }
+    else if (!m_keyShift && m_stamina < maxStamina) {
+        m_stamina = qMin(maxStamina, m_stamina + 1);
     }
 
     targetBaseSpeed *= WaveSystem::instance().currentSpeedMultiplier();
@@ -73,7 +86,6 @@ void Player::updateMovement(qreal deltaTime) {
     if (m_keyD) moveDir.rx() += 1;
 
     if (!moveDir.isNull()) {
-        // ========== Qt6修复：用QVector2D做归一化 ==========
         QVector2D dirVec(moveDir);
         dirVec.normalize();
         m_worldPos += dirVec.toPointF() * m_currentSpeed * deltaTime;
@@ -92,9 +104,9 @@ void Player::checkBorder() {
         m_isDead = true;
         emit playerDied();
     }
-    if (m_worldPos.y() < GameConfig::TOP_BORDER) m_worldPos.setY(GameConfig::TOP_BORDER);
+    if (m_worldPos.y() < GameConfig::TOP_BORDER)    m_worldPos.setY(GameConfig::TOP_BORDER);
     if (m_worldPos.y() > GameConfig::BOTTOM_BORDER) m_worldPos.setY(GameConfig::BOTTOM_BORDER);
-    if (m_worldPos.x() > GameConfig::RIGHT_BORDER) m_worldPos.setX(GameConfig::RIGHT_BORDER);
+    if (m_worldPos.x() > GameConfig::RIGHT_BORDER)  m_worldPos.setX(GameConfig::RIGHT_BORDER);
 }
 
 void Player::takeDurabilityDamage(int damage) {

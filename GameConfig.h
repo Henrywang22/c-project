@@ -96,4 +96,30 @@ namespace Config {
         const std::string PREFIX_ITEM     = "使用了：";
         const std::string PREFIX_WEAPON   = "已装备：";
     }
+
+    // ==========================================
+// 海浪系统
+// ==========================================
+    const int WAVE_WARNING_MS = 3000;      // 警告持续3秒
+    const int WAVE_DURATION_MS = 8000;     // 海浪持续8秒
+    const qreal WAVE_SPEED_UP_MULTIPLIER = 1.5;  // 顺风加速50%
+    const qreal WAVE_SPEED_DOWN_MULTIPLIER = 0.6; // 逆风减速40%
+
+    // ==========================================
+// 天气系统
+// ==========================================
+    const int WEATHER_MIN_FRAMES = 1800;   // 天气最短持续30秒
+    const int WEATHER_MAX_FRAMES = 3600;   // 天气最长持续60秒
+    const qreal FOG_VISION_REDUCTION = 0.3; // 大雾减少30%视野
+    const qreal STORM_FISH_VALUE_BONUS = 1.5; // 暴风雨鱼价值+50%
+    const int STORM_LIGHTNING_DAMAGE = 15;  // 闪电伤害15点
+
+    // Player相关
+    const qreal SHIP_BASE_SPEED = 150.0;
+    const qreal SHIP_BOOST_SPEED = 250.0;
+    const int MAX_STAMINA = 100;
+    const int BOOST_STAMINA_COST_PER_FRAME = 1;
+    const int TOP_BORDER = 60;
+    const int BOTTOM_BORDER = 700;
+    const int RIGHT_BORDER = 10000;
 }

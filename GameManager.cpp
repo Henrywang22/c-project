@@ -6,7 +6,6 @@
 
 GameManager::GameManager()
 {
-    player = new Player(100, 360);
     currentWeapon = new Harpoon(
         "铁制鱼叉",
         Config::PRICE_HARPOON_T1,
@@ -14,13 +13,13 @@ GameManager::GameManager()
         Config::DUR_HARPOON_T1,
         Config::RANGE_HARPOON,
         Config::CONS_HARPOON);
+
     spawnObstacles();
     for (int i = 0; i < 5; i++) spawnFish();
 }
 
 GameManager::~GameManager()
 {
-    delete player;
     delete currentWeapon;
     if (boss) delete boss;
     for (auto f : fish)        delete f;
@@ -34,8 +33,22 @@ void GameManager::update()
 {
     if (gameOver || victory) return;
 
+    Player& p = Player::instance();
+
+    // 更新天气和海浪
+    WaveSystem::instance().update(m_deltaTime);
+    WeatherSystem::instance().update(m_deltaTime);
+
+    // 更新Player
+    p.update(m_deltaTime);
+
+    if (p.isDead()) { gameOver = true; return; }
+
     gameTimer++;
-    if (gameTimer % 60 == 0) player->gameSeconds++;
+    if (gameTimer % 60 == 0) p.gameSeconds++;
+
+    // 更新距离（用x坐标）
+    p.distance = playerX();
 
     // 清理鱼
     fish.erase(std::remove_if(fish.begin(), fish.end(),
@@ -44,19 +57,16 @@ void GameManager::update()
             return false;
         }), fish.end());
 
-    waves.update(*player);
-    weather.update(*player);
+    int px = playerX();
+    int py = playerY();
 
-    for (auto f : fish)        f->update(player->x, player->y);
-    for (auto s : sharks)      s->update(*player);
-    for (auto s : swordfishes) s->update(*player);
-    for (auto o : octopuses)   o->update(*player);
-    if (boss && boss->alive)   boss->update(*player);
+    for (auto f : fish)        f->update(px, py);
+    for (auto s : sharks)      s->update(px, py);
+    for (auto s : swordfishes) s->update(px, py);
+    for (auto o : octopuses)   o->update(px, py);
+    if (boss && boss->alive)   boss->update(px, py);
 
-    for (auto o : obstacles)
-        o->isVisible(player->x - cameraX, player->y);
-    // 船始终居中
-    cameraX = player->x - 640;
+    cameraX = px - 640;
     if (cameraX < 0) cameraX = 0;
 
     spawnTimer++;
@@ -68,23 +78,23 @@ void GameManager::update()
 
     if (spawnTimer % 400 == 0 && !bossSpawned) spawnShark();
     if (spawnTimer % 500 == 0) spawnSwordfish();
-    if (spawnTimer % 800 == 0 && octopuses.size() < 3) spawnOctopus();
+    if (spawnTimer % 800 == 0 && (int)octopuses.size() < 3) spawnOctopus();
 
-    if (player->distance > stage * 2000 && !bossSpawned) {
+    if (px > stage * 2000 && !bossSpawned) {
         spawnBoss(stage);
         bossSpawned = true;
     }
 
     checkCollisions();
 
-    if (player->durability <= 0) gameOver = true;
-    if (player->stamina <= 0)    player->speed = 1;
+    if (p.durability() <= 0) gameOver = true;
     if (stage > 5) victory = true;
 }
 
 void GameManager::spawnFish()
 {
-    int x = player->x + 300 + rand() % 600;
+    int px = playerX();
+    int x = px + 300 + rand() % 600;
     int y = 80 + rand() % 580;
     int r = rand() % 10;
     Fish* f;
@@ -97,10 +107,10 @@ void GameManager::spawnFish()
 
 void GameManager::spawnObstacles()
 {
+    int px = playerX();
     int count = 6 + stage * 2;
     for (int i = 0; i < count; i++) {
-        // 最近的障碍离玩家至少800距离，给足反应空间
-        int x = player->x + 800 + rand() % (stage * 800 + 1200);
+        int x = px + 800 + rand() % (stage * 800 + 1200);
         int y = 80 + rand() % 580;
         if (rand() % 3 == 0)
             obstacles.push_back(new Whirlpool(x, y));
@@ -111,21 +121,24 @@ void GameManager::spawnObstacles()
 
 void GameManager::spawnShark()
 {
-    int x = player->x + 200 + rand() % 150;
+    int px = playerX();
+    int x = px + 200 + rand() % 150;
     int y = 80 + rand() % 580;
     sharks.push_back(new Shark(x, y));
 }
 
 void GameManager::spawnSwordfish()
 {
-    int x = player->x + 300 + rand() % 400;
+    int px = playerX();
+    int x = px + 300 + rand() % 400;
     int y = 80 + rand() % 580;
     swordfishes.push_back(new Swordfish(x, y));
 }
 
 void GameManager::spawnOctopus()
 {
-    int x = player->x + 300 + rand() % 400;
+    int px = playerX();
+    int x = px + 300 + rand() % 400;
     int y = 80 + rand() % 580;
     octopuses.push_back(new Octopus(x, y));
 }
@@ -133,25 +146,33 @@ void GameManager::spawnOctopus()
 void GameManager::spawnBoss(int stageNum)
 {
     if (boss) { delete boss; boss = nullptr; }
-    int x = player->x + 500;
+    int x = playerX() + 500;
     int y = 360;
     boss = new Boss(x, y);
 }
 
 void GameManager::checkCollisions()
 {
+    Player& p = Player::instance();
+    int px = playerX();
+    int py = playerY();
+
     // 障碍物
     for (auto o : obstacles) {
         if (!o->visible) continue;
-        int dx = player->x - o->x;
-        int dy = player->y - o->y;
+        int dx = px - o->x;
+        int dy = py - o->y;
         int dist2 = dx * dx + dy * dy;
         int r = o->size + 20;
         if (dist2 < r * r) {
-            o->triggerEffect(*player);
             if (o->type == REEF) {
-                Reef* reef = static_cast<Reef*>(o);
-                reef->applyRebound(*player, (float)player->speed);
+                p.takeDurabilityDamage(10);
+                float len = sqrt((float)(dx * dx + dy * dy));
+                if (len > 0)
+                    p.applyRebound(QPointF(dx / len, dy / len));
+            }
+            else {
+                p.applySpeedReduction(0.5);
             }
         }
     }
@@ -159,11 +180,10 @@ void GameManager::checkCollisions()
     // 普通鲨鱼
     for (auto s : sharks) {
         if (!s->alive) continue;
-        if (s->collidesWithPlayer(player->x, player->y)) {
+        if (s->collidesWithPlayer(px, py)) {
             s->attackTimer++;
             if (s->attackTimer >= 60) {
-                player->durability -= s->attack;
-                if (player->durability < 0) player->durability = 0;
+                p.takeDurabilityDamage(s->attack);
                 s->attackTimer = 0;
             }
         }
@@ -172,13 +192,12 @@ void GameManager::checkCollisions()
         }
     }
 
-    // 剑鱼冲撞伤害
+    // 剑鱼冲撞
     for (auto s : swordfishes) {
         if (!s->alive) continue;
         if (s->state == Swordfish::CHARGE &&
-            s->collidesWithPlayer(player->x, player->y)) {
-            player->durability -= s->attack;
-            if (player->durability < 0) player->durability = 0;
+            s->collidesWithPlayer(px, py)) {
+            p.takeDurabilityDamage(s->attack);
             s->state = Swordfish::IDLE;
         }
     }
@@ -186,33 +205,32 @@ void GameManager::checkCollisions()
     // 墨鱼接触
     for (auto o : octopuses) {
         if (!o->alive || o->isInvisible) continue;
-        if (o->collidesWithPlayer(player->x, player->y)) {
+        if (o->collidesWithPlayer(px, py)) {
             o->contactTimer++;
             if (o->contactTimer >= 30)
-                player->visionReduced = true;
+                p.visionReduced = true;
         }
     }
 
     // Boss
     if (boss && boss->alive) {
-        if (boss->collidesWithPlayer(player->x, player->y)) {
+        if (boss->collidesWithPlayer(px, py)) {
             boss->attackTimer++;
             if (boss->attackTimer >= 60) {
-                player->durability -= boss->attack;
-                if (player->durability < 0) player->durability = 0;
+                p.takeDurabilityDamage(boss->attack);
                 boss->attackTimer = 0;
             }
         }
         else {
             boss->attackTimer = 0;
         }
-        // Boss二阶段召唤
+
         if (boss->state == Boss::PHASE2 && !boss->minionSpawned)
             boss->spawnMinions(sharks);
 
         if (boss->hp <= 0) {
             boss->alive = false;
-            player->coins += boss->dropValue;
+            p.coins += boss->dropValue; // Boss掉落金币
             killCount++;
             stageClear = true;
         }
@@ -221,35 +239,35 @@ void GameManager::checkCollisions()
 
 void GameManager::attackNearest(int damage, int range)
 {
-    if (currentWeapon && currentWeapon->durability <= 0) return;
+    if (currentWeapon && currentWeapon->isBroken()) return;
     int actualDamage = currentWeapon ? currentWeapon->fire() : damage;
 
-    // 优先攻击Boss
+    int px = playerX();
+    int py = playerY();
+
     if (boss && boss->alive) {
-        float dx = (float)(player->x - boss->x);
-        float dy = (float)(player->y - boss->y);
+        float dx = (float)(px - boss->x);
+        float dy = (float)(py - boss->y);
         if (dx * dx + dy * dy < (float)(range * range)) {
             boss->hp -= actualDamage;
             return;
         }
     }
 
-    // 攻击最近的普通鲨鱼
     Shark* nearest = nullptr;
     float minDist = (float)(range * range);
     for (auto s : sharks) {
         if (!s->alive) continue;
-        float dx = (float)(player->x - s->x);
-        float dy = (float)(player->y - s->y);
+        float dx = (float)(px - s->x);
+        float dy = (float)(py - s->y);
         float dist = dx * dx + dy * dy;
         if (dist < minDist) { minDist = dist; nearest = s; }
     }
 
-    // 攻击最近的剑鱼
     for (auto s : swordfishes) {
         if (!s->alive) continue;
-        float dx = (float)(player->x - s->x);
-        float dy = (float)(player->y - s->y);
+        float dx = (float)(px - s->x);
+        float dy = (float)(py - s->y);
         float dist = dx * dx + dy * dy;
         if (dist < minDist) {
             minDist = dist;
@@ -257,7 +275,7 @@ void GameManager::attackNearest(int damage, int range)
             s->hp -= actualDamage;
             if (s->hp <= 0) {
                 s->alive = false;
-                player->coins += s->dropValue;
+                Player::instance().coins += s->dropValue;
                 killCount++;
             }
             return;
@@ -268,7 +286,7 @@ void GameManager::attackNearest(int damage, int range)
         nearest->hp -= actualDamage;
         if (nearest->hp <= 0) {
             nearest->alive = false;
-            player->coins += nearest->dropValue;
+            Player::instance().coins += nearest->dropValue;
             killCount++;
         }
     }
@@ -276,15 +294,16 @@ void GameManager::attackNearest(int damage, int range)
 
 void GameManager::saveAndQuit()
 {
+    Player& p = Player::instance();
     SaveData data;
     data.stage = stage;
-    data.distance = player->distance;
-    data.coins = player->coins;
-    data.durability = player->durability;
-    data.stamina = player->stamina;
-    data.fishCaught = player->fishCaught;
-    data.fishTotalValue = player->fishTotalValue;
-    data.gameSeconds = player->gameSeconds;
+    data.distance = p.distance;
+    data.coins = p.coins;
+    data.durability = p.durability();
+    data.stamina = p.stamina();
+    data.fishCaught = p.fishCaught;
+    data.fishTotalValue = p.fishTotalValue;
+    data.gameSeconds = p.gameSeconds;
     data.isDead = false;
     fileManager.saveGame(data);
 }
@@ -294,13 +313,11 @@ void GameManager::loadSave()
     SaveData data;
     if (fileManager.loadGame(data) && !data.isDead) {
         stage = data.stage;
-        player->distance = data.distance;
-        player->coins = data.coins;
-        player->durability = data.durability;
-        player->stamina = data.stamina;
-        player->fishCaught = data.fishCaught;
-        player->fishTotalValue = data.fishTotalValue;
-        player->gameSeconds = data.gameSeconds;
+        Player& p = Player::instance();
+        p.coins = data.coins;
+        p.fishCaught = data.fishCaught;
+        p.fishTotalValue = data.fishTotalValue;
+        p.gameSeconds = data.gameSeconds;
     }
 }
 
@@ -308,4 +325,3 @@ bool GameManager::isBossDefeated()
 {
     return boss && !boss->alive;
 }
-//.

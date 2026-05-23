@@ -28,17 +28,17 @@ public:
     void loadSave();
     bool isBossDefeated();
 
-    Player* player;
-    std::vector<Fish*>     fish;
-    std::vector<Obstacle*> obstacles;
-    std::vector<Shark*>    sharks;
+    // Player改为引用C同学的单例
+    Player& getPlayer() { return Player::instance(); }
+
+    std::vector<Fish*>      fish;
+    std::vector<Obstacle*>  obstacles;
+    std::vector<Shark*>     sharks;
     std::vector<Swordfish*> swordfishes;
-    std::vector<Octopus*>  octopuses;
+    std::vector<Octopus*>   octopuses;
     Boss* boss = nullptr;
 
-    WaveSystem    waves;
-    WeatherSystem weather;
-    FileManager   fileManager;
+    FileManager fileManager;
     Weapon* currentWeapon = nullptr;
 
     int stage = 1;
@@ -50,6 +50,11 @@ public:
     int gameTimer = 0;
     int cameraX = 0;
 
+    // 辅助函数：从Player单例取坐标
+    int playerX() const { return (int)Player::instance().worldPos().x(); }
+    int playerY() const { return (int)Player::instance().worldPos().y(); }
+
 private:
     int spawnTimer = 0;
+    qreal m_deltaTime = 0.016; // 固定16ms帧时间
 };

@@ -1,133 +1,107 @@
 #pragma once
+
 #include "Enemy.h"
-#include <vector>
 #include <QPointF>
 #include <QRectF>
+#include <vector>
 
-// Boss攻击危险区域类型
-enum class BossHazardType {
-    BombWarning, BombHitbox, MeleeHitbox, MouthStrike,
-    EyeSector, CloneExplosionWarning, CloneExplosionHitbox,
-    SoulSong, ElegyWarning, SeaweedZone, ReefWarning,
-    ReefHitbox, ResonancePillar
-};
-
-// Boss召唤类型
-enum class BossSpawnType { Shark, TaliClone, SirenPhantom };
-
-// Boss种类
 enum class BossKind {
     FiveHeadShark,
     TaliMonster,
     Siren
 };
 
-// 危险区域结构
+enum class BossHazardType {
+    BombWarning,
+    BombHitbox,
+    MeleeHitbox,
+    MouthStrike,
+    EyeSector,
+    CloneExplosionWarning,
+    SoulSong,
+    ElegyWarning,
+    SeaweedZone,
+    ReefHitbox
+};
+
 struct BossHazard {
     BossHazardType type;
     QPointF position;
-    QRectF  rect;
-    qreal   radius = 0.0;
-    qreal   angleDegrees = 0.0;
-    qreal   arcDegrees = 0.0;
-    qreal   durationMs = 0.0;
-    qreal   elapsedMs = 0.0;
-    int     damage = 0;
-    bool    active = true;
-    bool    triggered = false;
+    QRectF rect;
+    qreal radius = 0.0;
+    qreal durationMs = 0.0;
+    qreal elapsedMs = 0.0;
+    int damage = 0;
+    bool active = true;
 };
 
-// 召唤请求结构
 struct BossSpawnRequest {
-    BossSpawnType type;
     QPointF position;
-    QPointF dir;
-    int hp = 0;
-    int dmg = 0;
 };
 
-// ============================================================
-// Boss 基类 — 继承 Enemy，兼容 GameManager 的调用接口
-// ============================================================
 class Boss : public Enemy {
 public:
     enum State { PHASE1, PHASE2 };
 
     Boss(BossKind kind, int x, int y, int maxHp, int attack, int dropValue);
-    virtual ~Boss() = default;
+    ~Boss() override = default;
 
-    // Enemy 接口（GameManager 调用）
     void update(Player& player) override;
     bool collidesWithPlayer(int px, int py) override;
-
-    // Boss 专有接口
     virtual void takeDamage(int damage);
     virtual void applyShockStun(int durationMs);
     virtual void forceReleasePlayer();
     virtual bool isInvulnerable() const { return invulnerable; }
 
-    virtual void spawnMinions(std::vector<Shark*>& sharks) {}
-    std::vector<BossSpawnRequest> takeSpawnRequests();
-    const std::vector<BossHazard>& hazards() const { return m_hazards; }
+    void spawnMinions(std::vector<Shark*>& sharks);
+    const std::vector<BossHazard>& getHazards() const { return hazards; }
 
-    // GameManager 访问的公开成员
     BossKind kind;
     State state = PHASE1;
-    bool  minionSpawned = false;
-    bool  invulnerable = false;
-    bool  enraged = false;
-    bool  holdingPlayer = false;
-    int   stunRemainingMs = 0;
+    bool minionSpawned = false;
 
 protected:
     virtual void updateBoss(Player& player) = 0;
-    void setPhase(State newState);
-
-    bool isStunned() const { return stunRemainingMs > 0; }
-    int  scaledDamage(int base) const;
-    void addHazard(const BossHazard& h);
-    void updateHazards(int frameMs);
-    void updateCommonTimers(int frameMs);
-    void requestSpawn(BossSpawnType type, const QPointF& pos,
-        const QPointF& dir = QPointF(), int hp = 0, int dmg = 0);
-
+    void updateTimers();
+    void updateHazards();
+    void addHazard(const BossHazard& hazard);
+    void requestSharkSpawn(const QPointF& position);
+    int scaledDamage(int baseDamage) const;
     QPointF position() const { return QPointF(x, y); }
+    bool stunned() const { return stunRemainingMs > 0; }
 
-    std::vector<BossHazard>       m_hazards;
-    std::vector<BossSpawnRequest> m_spawnRequests;
+    bool invulnerable = false;
+    bool enraged = false;
+    bool holdingPlayer = false;
+    int stunRemainingMs = 0;
+    std::vector<BossHazard> hazards;
+    std::vector<BossSpawnRequest> sharkSpawnRequests;
 };
 
-// ============================================================
-// FiveHeadSharkBoss — 五头鲨鱼Boss（第1关）
-// ============================================================
 class FiveHeadSharkBoss : public Boss {
 public:
     FiveHeadSharkBoss(int x, int y);
     bool collidesWithPlayer(int px, int py) override;
-    void spawnMinions(std::vector<Shark*>& sharks) override;
 
 protected:
     void updateBoss(Player& player) override;
 
 private:
-    void updatePatrol(int frameMs);
-    void updateMelee(Player& player, int frameMs);
-    void updateSummon(int frameMs);
-    void updateBombardment(Player& player, int frameMs);
+    void updatePatrol();
+    void updateMelee(Player& player);
+    void updateSummon();
+    void updateBombardment(Player& player);
 
-    int   patrolDir = 1;
-    int   summonTimerMs = 5000;
-    int   bombardmentTimerMs = 15000;
-    int   bombardmentCastMs = 0;
-    int   meleeCooldownMs = 0;
-    int   meleeWindupMs = 0;
-    int   meleeRecoveryMs = 0;
+    int patrolDir = 1;
+    int summonTimerMs = 5000;
+    int bombardmentTimerMs = 15000;
+    int bombardmentCastMs = 0;
+    int meleeCooldownMs = 0;
+    int meleeWindupMs = 0;
+    int meleeRecoveryMs = 0;
     std::vector<QRectF> pendingBombRects;
 };
 
-// ============================================================
-// TaliMonsterBoss — 符咒怪Boss（第3关）
-// ============================================================
 class TaliMonsterBoss : public Boss {
 public:
     TaliMonsterBoss(int x, int y);
@@ -138,33 +112,29 @@ protected:
     void updateBoss(Player& player) override;
 
 private:
-    void updatePhase1(Player& player, int frameMs);
-    void updatePhase2(Player& player, int frameMs);
+    void updatePhase1(Player& player);
+    void updatePhase2(Player& player);
     void updateMovement(Player& player);
-    void updateMouthStrike(Player& player, int frameMs);
-    void updateEyeSweep(Player& player, int frameMs);
+    void updateMouthStrike(Player& player);
+    void updateEyeSweep(Player& player);
     void spawnClone();
-    void updateClone(Player& player, int frameMs);
+    void updateClone(Player& player);
     void startCloneExplosion();
     void finishCloneExplosion(Player& player);
 
-    bool    cloneSpawned = false;
-    bool    cloneAlive = false;
-    bool    phase2InvulnerabilityEnded = false;
-    int     mouthTimerMs = 15000;
-    int     mouthSequenceTimerMs = 0;
-    int     mouthStrikeIndex = 0;
-    int     eyeSweepTimerMs = 30000;
-    int     eyeSweepRemainingMs = 0;
-    float   eyeAngleDegrees = 0.0f;
-    int     cloneHp = 0;
+    bool cloneSpawned = false;
+    bool cloneAlive = false;
+    bool phase2InvulnerabilityEnded = false;
     QPointF clonePos;
-    int     cloneExplosionTimerMs = 0;
+    int cloneHp = 0;
+    int cloneExplosionTimerMs = 0;
+    int mouthTimerMs = 15000;
+    int mouthSequenceTimerMs = 0;
+    int mouthStrikeIndex = 0;
+    int eyeSweepTimerMs = 60000;
+    int eyeSweepRemainingMs = 0;
 };
 
-// ============================================================
-// SirenBoss — 海妖Boss（第5关）
-// ============================================================
 class SirenBoss : public Boss {
 public:
     SirenBoss(int x, int y);
@@ -174,27 +144,26 @@ protected:
     void updateBoss(Player& player) override;
 
 private:
-    void updatePhase1(Player& player, int frameMs);
-    void updatePhase2(Player& player, int frameMs);
-    void updateSoulSong(Player& player, int frameMs);
-    void updatePhantom(Player& player, int frameMs);
-    void updateElegy(Player& player, int frameMs);
-    void updateEndlessReturn(Player& player, int frameMs);
-    void updateResonancePillars();
+    void updatePhase1(Player& player);
+    void updatePhase2(Player& player);
+    void updateSoulSong(Player& player);
+    void updatePhantom(Player& player);
+    void updateElegy(Player& player);
+    void updateEndlessReturn(Player& player);
     void applyNaturalDecay();
-    void checkPhase2StaminaCheckpoints(Player& player);
+    void checkStaminaCheckpoints(Player& player);
 
-    bool    phantomSpawned = false;
-    bool    checkpoint75Used = false;
-    bool    checkpoint50Used = false;
-    bool    checkpoint25Used = false;
-    int     soulSongTimerMs = 20000;
-    int     soulSongCastMs = 0;
-    int     elegyTimerMs = 30000;
-    int     elegyCastMs = 0;
-    int     endlessReturnTimerMs = 20000;
-    int     poisonRemainingMs = 0;
-    int     naturalDecayAccumulatorMs = 0;
-    int     phantomStunMs = 0;
+    bool phantomSpawned = false;
     QPointF phantomPos;
-};
+    int phantomStunMs = 0;
+    bool checkpoint75Used = false;
+    bool checkpoint50Used = false;
+    bool checkpoint25Used = false;
+    int soulSongTimerMs = 20000;
+    int soulSongCastMs = 0;
+    int elegyTimerMs = 30000;
+    int elegyCastMs = 0;
+    int endlessReturnTimerMs = 20000;
+    int naturalDecayTimerMs = 0;
+    int poisonRemainingMs = 0;
+}; 

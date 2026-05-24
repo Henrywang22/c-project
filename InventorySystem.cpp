@@ -337,3 +337,90 @@ void InventorySystem::clearAll()
     m_shipRepairT3Count = 0;
     m_emergencyWeaponRepairCount = 0;
 }
+
+InventorySystem::InventoryLoadData InventorySystem::exportData() const
+{
+    InventoryLoadData data;
+
+    data.foodCount = m_foodCount;
+    data.shipRepairT1Count = m_shipRepairT1Count;
+    data.shipRepairT2Count = m_shipRepairT2Count;
+    data.shipRepairT3Count = m_shipRepairT3Count;
+    data.emergencyWeaponRepairCount = m_emergencyWeaponRepairCount;
+
+    data.currentWeaponIndex = m_currentWeaponIndex;
+
+    for (const Weapon* weapon : m_weapons) {
+        if (!weapon) {
+            continue;
+        }
+
+        WeaponLoadData w;
+
+        w.typeCode = weapon->getTypeCode();
+        w.tier = weapon->getTier();
+        w.damage = weapon->getDamage();
+        w.maxDurability = weapon->getMaxDur();
+        w.currentDurability = weapon->getCurrentDur();
+        w.range = weapon->getRange();
+        w.durabilityConsumption = weapon->getDurabilityConsumption();
+
+        data.weapons.push_back(w);
+    }
+
+    return data;
+}
+
+void InventorySystem::loadFromData(const InventoryLoadData& data)
+{
+    clearAll();
+
+    m_foodCount = data.foodCount;
+    m_shipRepairT1Count = data.shipRepairT1Count;
+    m_shipRepairT2Count = data.shipRepairT2Count;
+    m_shipRepairT3Count = data.shipRepairT3Count;
+    m_emergencyWeaponRepairCount = data.emergencyWeaponRepairCount;
+
+    if (m_foodCount < 0) m_foodCount = 0;
+    if (m_shipRepairT1Count < 0) m_shipRepairT1Count = 0;
+    if (m_shipRepairT2Count < 0) m_shipRepairT2Count = 0;
+    if (m_shipRepairT3Count < 0) m_shipRepairT3Count = 0;
+    if (m_emergencyWeaponRepairCount < 0) m_emergencyWeaponRepairCount = 0;
+
+    int maxCount = Config::MAX_WEAPON_BACKPACK;
+
+    for (int i = 0; i < static_cast<int>(data.weapons.size()) && i < maxCount; ++i) {
+        const WeaponLoadData& savedWeapon = data.weapons[i];
+
+        Weapon* weapon = ItemFactory::createWeapon(savedWeapon.typeCode, savedWeapon.tier);
+
+        if (!weapon) {
+            continue;
+        }
+
+        weapon->loadRuntimeState(
+            savedWeapon.damage,
+            savedWeapon.maxDurability,
+            savedWeapon.currentDurability,
+            savedWeapon.range,
+            savedWeapon.durabilityConsumption
+        );
+
+        m_weapons.push_back(weapon);
+    }
+
+    if (m_weapons.empty()) {
+        initDefaultWeaponIfNeeded();
+        return;
+    }
+
+    if (data.currentWeaponIndex >= 0 &&
+        data.currentWeaponIndex < static_cast<int>(m_weapons.size())) {
+        m_currentWeaponIndex = data.currentWeaponIndex;
+    }
+    else {
+        m_currentWeaponIndex = 0;
+    }
+
+    Player::instance().equipWeapon(m_weapons[m_currentWeaponIndex]);
+}

@@ -1,3 +1,4 @@
+#define QT_DISABLE_DEPRECATED_BEFORE 0x060000
 #define QT_NO_DEPRECATED_WARNINGS
 #include<QApplication>
 #include"GameWindow.h"

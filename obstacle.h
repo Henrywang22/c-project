@@ -5,6 +5,8 @@
 #include <QRectF>
 #include <QElapsedTimer>
 #include "GameConfig.h"
+#include <QList>
+
 
 enum class ObstacleType { REEF, WHIRLPOOL };
 

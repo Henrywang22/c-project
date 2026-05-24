@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <QtGlobal>  // 提供 qreal 类型
 
 // ==========================================
 // 渔途 (Fishing Voyage) - 全局数值配置表
@@ -15,7 +16,7 @@ namespace Config {
 
     // ---- 食物类 ----
     const int PRICE_FOOD_RATION = 20;
-    const int HEAL_FOOD_RATION  = 30;
+    const int HEAL_FOOD_RATION = 30;
 
     // ---- 修理包 (大中小) ----
     const int PRICE_REPAIR_T1 = 30;   const int HEAL_REPAIR_T1 = 20;
@@ -24,106 +25,104 @@ namespace Config {
 
     // ==========================================
     // 2. 武器系统 (5种武器 x 3等级)
-    // CONS = 每次攻击损耗的耐久度
     // ==========================================
 
-    // ---- 1. 鱼竿 (高耐久，低伤害，低损耗) ----
+    // ---- 鱼竿 ----
     const int RANGE_ROD = 60;
-    const int CONS_ROD = 1; // 每次开火扣1点
+    const int CONS_ROD = 1;
     const int PRICE_ROD_T1 = 60;  const int DMG_ROD_T1 = 5;  const int DUR_ROD_T1 = 50;
     const int PRICE_ROD_T2 = 120; const int DMG_ROD_T2 = 12; const int DUR_ROD_T2 = 60;
     const int PRICE_ROD_T3 = 240; const int DMG_ROD_T3 = 25; const int DUR_ROD_T3 = 80;
 
-    // ---- 2. 渔网 (中射程，中低伤害) ----
+    // ---- 渔网 ----
     const int RANGE_NET = 80;
     const int CONS_NET = 1;
     const int PRICE_NET_T1 = 80;  const int DMG_NET_T1 = 8;  const int DUR_NET_T1 = 40;
     const int PRICE_NET_T2 = 160; const int DMG_NET_T2 = 18; const int DUR_NET_T2 = 50;
     const int PRICE_NET_T3 = 300; const int DMG_NET_T3 = 35; const int DUR_NET_T3 = 60;
 
-    // ---- 3. 鱼叉 (远射程，中高伤害) ----
+    // ---- 鱼叉 ----
     const int RANGE_HARPOON = 120;
-    const int CONS_HARPOON = 2; // 鱼叉较重，损耗稍大
+    const int CONS_HARPOON = 2;
     const int PRICE_HARPOON_T1 = 100; const int DMG_HARPOON_T1 = 30;  const int DUR_HARPOON_T1 = 25;
     const int PRICE_HARPOON_T2 = 220; const int DMG_HARPOON_T2 = 55;  const int DUR_HARPOON_T2 = 30;
     const int PRICE_HARPOON_T3 = 450; const int DMG_HARPOON_T3 = 100; const int DUR_HARPOON_T3 = 40;
 
-    // ---- 4. 手枪 (极远射程，高伤害) ----
+    // ---- 手枪 ----
     const int RANGE_PISTOL = 200;
     const int CONS_PISTOL = 3;
     const int PRICE_PISTOL_T1 = 180; const int DMG_PISTOL_T1 = 50;  const int DUR_PISTOL_T1 = 15;
     const int PRICE_PISTOL_T2 = 380; const int DMG_PISTOL_T2 = 90;  const int DUR_PISTOL_T2 = 20;
     const int PRICE_PISTOL_T3 = 750; const int DMG_PISTOL_T3 = 150; const int DUR_PISTOL_T3 = 25;
 
-    // ---- 5. 猎枪 (高伤害，极高损耗) ----
+    // ---- 猎枪 ----
     const int RANGE_SHOTGUN = 150;
-    const int CONS_SHOTGUN = 5; // 威力大，但容易坏
+    const int CONS_SHOTGUN = 5;
     const int PRICE_SHOTGUN_T1 = 250;  const int DMG_SHOTGUN_T1 = 80;  const int DUR_SHOTGUN_T1 = 10;
     const int PRICE_SHOTGUN_T2 = 550;  const int DMG_SHOTGUN_T2 = 140; const int DUR_SHOTGUN_T2 = 12;
     const int PRICE_SHOTGUN_T3 = 1200; const int DMG_SHOTGUN_T3 = 250; const int DUR_SHOTGUN_T3 = 15;
 
-
     // ==========================================
-    // 3. 属性升级系统 (3等级)
+    // 3. 属性升级系统
     // ==========================================
 
-    // ---- 船速强化 ----
     const int PRICE_UPG_SPEED_T1 = 120; const float VAL_UPG_SPEED_T1 = 1.0f;
     const int PRICE_UPG_SPEED_T2 = 250; const float VAL_UPG_SPEED_T2 = 2.0f;
     const int PRICE_UPG_SPEED_T3 = 500; const float VAL_UPG_SPEED_T3 = 3.5f;
 
-    // ---- 耐久上限强化 ----
     const int PRICE_UPG_DUR_T1 = 100; const int VAL_UPG_DUR_T1 = 20;
     const int PRICE_UPG_DUR_T2 = 220; const int VAL_UPG_DUR_T2 = 50;
     const int PRICE_UPG_DUR_T3 = 450; const int VAL_UPG_DUR_T3 = 100;
 
-    // ---- 体力上限强化 ----
     const int PRICE_UPG_STAMINA_T1 = 100; const int VAL_UPG_STAMINA_T1 = 20;
     const int PRICE_UPG_STAMINA_T2 = 220; const int VAL_UPG_STAMINA_T2 = 50;
     const int PRICE_UPG_STAMINA_T3 = 450; const int VAL_UPG_STAMINA_T3 = 100;
 
-    // ---- 当前武器强化 ----
     const int PRICE_UPG_WEAPON_T1 = 80;  const int VAL_UPG_WPN_DMG_T1 = 5;  const int VAL_UPG_WPN_DUR_T1 = 10;
     const int PRICE_UPG_WEAPON_T2 = 180; const int VAL_UPG_WPN_DMG_T2 = 15; const int VAL_UPG_WPN_DUR_T2 = 25;
     const int PRICE_UPG_WEAPON_T3 = 400; const int VAL_UPG_WPN_DMG_T3 = 40; const int VAL_UPG_WPN_DUR_T3 = 50;
 
+    // ==========================================
+    // 4. 文字消息
+    // ==========================================
     namespace Messages {
-        const std::string SUCCESS_USE    = "【使用成功】";
+        const std::string SUCCESS_USE = "【使用成功】";
         const std::string SUCCESS_UPGRADE = "【属性提升】";
-        const std::string SUCCESS_WEAPON  = "【装备系统】";
-        const std::string FAIL_WEAPON     = "【强化失败】你当前未装备任何武器。";
-        const std::string WARN_BROKEN     = "【战斗警告】武器已损坏，无法继续攻击！";
-        const std::string PREFIX_ITEM     = "使用了：";
-        const std::string PREFIX_WEAPON   = "已装备：";
+        const std::string SUCCESS_WEAPON = "【装备系统】";
+        const std::string FAIL_WEAPON = "【强化失败】你当前未装备任何武器。";
+        const std::string WARN_BROKEN = "【战斗警告】武器已损坏，无法继续攻击！";
+        const std::string PREFIX_ITEM = "使用了：";
+        const std::string PREFIX_WEAPON = "已装备：";
     }
 
     // ==========================================
-    // 4. 游戏系统数值 (海浪 / 天气 / 玩家 / 障碍)
+    // 5. 游戏系统数值（海浪/天气/玩家/障碍）
+    // 用 inline namespace 让 GameConfig:: 和 Config:: 都能访问
     // ==========================================
-    namespace GameConfig {
+    inline namespace GameConfig {
         const qreal SHIP_BASE_SPEED = 150.0;
         const qreal SHIP_BOOST_SPEED = 250.0;
-        const int MAX_STAMINA = 100;
-        const int BOOST_STAMINA_COST_PER_FRAME = 1;
-        const int TOP_BORDER = 60;
-        const int BOTTOM_BORDER = 700;
-        const int RIGHT_BORDER = 10000;
-        const int WAVE_WARNING_MS = 3000;
-        const int WAVE_DURATION_MS = 8000;
+        const int   MAX_STAMINA = 100;
+        const int   BOOST_STAMINA_COST_PER_FRAME = 1;
+        const int   TOP_BORDER = 60;
+        const int   BOTTOM_BORDER = 700;
+        const int   RIGHT_BORDER = 10000;
+        const int   WAVE_WARNING_MS = 3000;
+        const int   WAVE_DURATION_MS = 8000;
         const qreal WAVE_SPEED_UP_MULTIPLIER = 1.5;
         const qreal WAVE_SPEED_DOWN_MULTIPLIER = 0.6;
-        const int WEATHER_MIN_FRAMES = 1800;
-        const int WEATHER_MAX_FRAMES = 3600;
+        const int   WEATHER_MIN_FRAMES = 1800;
+        const int   WEATHER_MAX_FRAMES = 3600;
         const qreal FOG_VISION_REDUCTION = 0.3;
         const qreal STORM_FISH_VALUE_BONUS = 1.5;
-        const int STORM_LIGHTNING_DAMAGE = 15;
-        const int REEF_MIN_SIZE = 20;
-        const int REEF_MAX_SIZE = 40;
-        const int REEF_DAMAGE = 10;
-        const int STUN_DURATION_MS = 500;
+        const int   STORM_LIGHTNING_DAMAGE = 15;
+        const int   REEF_MIN_SIZE = 20;
+        const int   REEF_MAX_SIZE = 40;
+        const int   REEF_DAMAGE = 10;
+        const int   STUN_DURATION_MS = 500;
         const qreal REEF_REBOUND_FACTOR = 1.5;
         const qreal WHIRLPOOL_MAX_SPEED_REDUCTION = 0.7;
-        const int VISION_RANGE = 800;
-        const int WINDOW_HEIGHT = 720;
+        const int   VISION_RANGE = 800;
+        const int   WINDOW_HEIGHT = 720;
     }
 }

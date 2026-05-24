@@ -6,7 +6,10 @@
 #include <QRectF>
 #include <QElapsedTimer>
 #include <QKeyEvent>
+#include <QVector2D>
 #include "GameConfig.h"
+
+class Weapon;
 
 class Player : public QObject
 {
@@ -16,21 +19,52 @@ public:
     void update(qreal deltaTime);
     void keyPress(QKeyEvent* e);
     void keyRelease(QKeyEvent* e);
+
+    // 坐标和碰撞
     QPointF worldPos() const { return m_worldPos; }
     QRectF collider() const { return { m_worldPos.x(), m_worldPos.y(), 50, 30 }; }
+
+    // 速度状态
     qreal currentSpeed() const { return m_currentSpeed; }
+
+    // 耐久和体力（只读接口）
     int durability() const { return m_durability; }
     int stamina() const { return m_stamina; }
+
+    // 状态查询
     bool isStunned() const { return m_isStunned; }
     bool isDead() const { return m_isDead; }
+
+    // 战斗接口
     void takeDurabilityDamage(int damage);
     void applyStun(int durationMs);
     void applyRebound(const QPointF& direction);
     void applySpeedReduction(qreal reduction);
     void resetSpeedReduction();
+
+    // Item.cpp需要的接口
+    void restoreStamina(int amount);
+    void restoreDurability(int amount);
+    void upgradeBaseSpeed(float amount);
+    void upgradeMaxDurability(int amount);
+    void upgradeMaxStamina(int amount);
+    Weapon* getCurrentWeapon();
+    void equipWeapon(Weapon* weapon);
+
+    // 存档接口
     void saveState();
     void loadState();
-    //1111
+
+    // 游戏进度数据
+    int coins = 0;
+    int fishCaught = 0;
+    int fishTotalValue = 0;
+    int distance = 0;
+    int gameSeconds = 0;
+    bool visionReduced = false;
+    int maxDurability = 100;
+    int maxStamina = 100;
+
 signals:
     void stateChanged();
     void playerDied();
@@ -39,6 +73,7 @@ private:
     Player();
     void checkBorder();
     void updateMovement(qreal deltaTime);
+
     QPointF m_worldPos;
     qreal m_currentSpeed;
     qreal m_baseSpeed;
@@ -52,6 +87,7 @@ private:
     bool m_reboundActive;
     QPointF m_reboundDir;
     bool m_keyW, m_keyA, m_keyS, m_keyD, m_keyShift;
+    Weapon* m_currentWeapon = nullptr;
 };
 
 #endif // PLAYER_H

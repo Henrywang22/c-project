@@ -72,4 +72,4 @@ public:
 private:
     int invisTimer = 0;
     float posX, posY;
-};#pragma once
+};

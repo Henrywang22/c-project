@@ -92,12 +92,18 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Enymy.cpp" />
+    <ClCompile Include="boss.cpp" />
+    <ClCompile Include="Enemy.cpp" />
+    <ClCompile Include="Filemanager.cpp" />
     <ClCompile Include="Fish.cpp" />
     <ClCompile Include="GameManager.cpp" />
     <ClCompile Include="GameManager.h" />
     <ClCompile Include="Item.cpp" />
+    <ClCompile Include="player.cpp" />
+    <ClCompile Include="Shopdialog.cpp" />
+    <ClCompile Include="wavesystem.cpp" />
     <ClCompile Include="Weapon.cpp" />
+    <ClCompile Include="weathersystem.cpp" />
     <QtRcc Include="FishingVoyage.qrc" />
     <QtUic Include="FishingVoyage.ui" />
     <QtMoc Include="GameWindow.h" />
@@ -105,12 +111,18 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="D:\cpp_group\FishingVoyage\FishingVoyage\player.h" />
+    <ClInclude Include="boss.h" />
     <ClInclude Include="Enemy.h" />
+    <ClInclude Include="FileManager.h" />
     <ClInclude Include="Fish.h" />
     <ClInclude Include="GameConfig.h" />
     <ClInclude Include="Item.h" />
     <ClInclude Include="ItemFactory.h" />
+    <ClInclude Include="obstacle.h" />
+    <QtMoc Include="weathersystem.h" />
+    <QtMoc Include="player.h" />
+    <QtMoc Include="wavesystem.h" />
+    <QtMoc Include="Shopdialog.h" />
     <ClInclude Include="Weapon.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

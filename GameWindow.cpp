@@ -1,6 +1,7 @@
 #include "GameWindow.h"
 #include "ShopDialog.h"
 #include "Obstacle.h"
+#include "InventorySystem.h"
 #include <QPainter>
 #include <QFont>
 #include <QKeyEvent>
@@ -398,26 +399,28 @@ void GameWindow::drawSharks(QPainter& p)
     }
 
     // Boss
-    if (gm->boss && gm->boss->alive) {
-        int screenX = gm->boss->x - gm->cameraX;
+    if (gm->boss && gm->boss->isAlive()) {
+        int screenX = (int)gm->boss->worldPos().x() - gm->cameraX;
+        int screenY = (int)gm->boss->worldPos().y();
         if (screenX >= -50 && screenX <= 1330) {
+            bool isPhase2 = gm->boss->phase() == BossPhase::Phase2;
             if (!imgShark.isNull()) {
-                p.drawPixmap(screenX - 40, gm->boss->y - 20, 80, 40, imgShark);
-                if (gm->boss->state == Boss::PHASE2)
-                    p.fillRect(screenX - 40, gm->boss->y - 20, 80, 40, QColor(255, 0, 0, 80));
+                p.drawPixmap(screenX - 40, screenY - 20, 80, 40, imgShark);
+                if (isPhase2)
+                    p.fillRect(screenX - 40, screenY - 20, 80, 40, QColor(255, 0, 0, 80));
             }
             else {
-                p.setBrush(gm->boss->state == Boss::PHASE2 ? QColor(220, 0, 0) : QColor(160, 0, 0));
+                p.setBrush(isPhase2 ? QColor(220, 0, 0) : QColor(160, 0, 0));
                 p.setPen(Qt::NoPen);
-                p.drawEllipse(screenX - 35, gm->boss->y - 20, 70, 40);
+                p.drawEllipse(screenX - 35, screenY - 20, 70, 40);
             }
-            p.fillRect(screenX - 35, gm->boss->y - 32, 70, 8, QColor(60, 60, 60));
-            int bw4 = (int)(70.0f * gm->boss->hp / gm->boss->maxHp);
-            p.fillRect(screenX - 35, gm->boss->y - 32, bw4, 8, QColor(220, 50, 50));
-            if (gm->boss->state == Boss::PHASE2) {
+            p.fillRect(screenX - 35, screenY - 32, 70, 8, QColor(60, 60, 60));
+            int bw4 = (int)(70.0f * gm->boss->hp() / gm->boss->maxHp());
+            p.fillRect(screenX - 35, screenY - 32, bw4, 8, QColor(220, 50, 50));
+            if (isPhase2) {
                 p.setPen(QColor(255, 100, 100));
                 p.setFont(QFont("Microsoft YaHei", 10));
-                p.drawText(screenX - 20, gm->boss->y - 36, "狂暴！");
+                p.drawText(screenX - 20, screenY - 36, "狂暴！");
             }
         }
     }
@@ -479,11 +482,12 @@ void GameWindow::drawHUD(QPainter& p)
         .arg(sec % 60, 2, 10, QChar('0')));
 
     // 武器信息
-    if (gm->currentWeapon) {
+    Weapon* w = InventorySystem::instance().currentWeapon();
+    if (w) {
         p.drawText(680, 28, QString("%1 %2/%3")
-            .arg(QString::fromStdString(gm->currentWeapon->getName()))
-            .arg(gm->currentWeapon->getCurrentDur())
-            .arg(gm->currentWeapon->getMaxDur()));
+            .arg(QString::fromStdString(w->getName()))
+            .arg(w->getCurrentDur())
+            .arg(w->getMaxDur()));
     }
 
     // 天气

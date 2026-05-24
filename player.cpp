@@ -1,14 +1,18 @@
 #include "Player.h"
+#include "Weapon.h"
 #include "WaveSystem.h"
 #include "WeatherSystem.h"
 
 Player::Player()
-    : m_worldPos(200, 300), m_currentSpeed(GameConfig::SHIP_BASE_SPEED),
-    m_baseSpeed(GameConfig::SHIP_BASE_SPEED), m_durability(100), m_stamina(GameConfig::MAX_STAMINA),
-    m_isStunned(false), m_isDead(false), m_stunDuration(0), m_speedReduction(0),
-    m_reboundActive(false), m_keyW(false), m_keyA(false), m_keyS(false), m_keyD(false), m_keyShift(false)
+    : m_worldPos(200, 300),
+    m_currentSpeed(GameConfig::SHIP_BASE_SPEED),
+    m_baseSpeed(GameConfig::SHIP_BASE_SPEED),
+    m_durability(100), m_stamina(GameConfig::MAX_STAMINA),
+    m_isStunned(false), m_isDead(false),
+    m_stunDuration(0), m_speedReduction(0),
+    m_reboundActive(false),
+    m_keyW(false), m_keyA(false), m_keyS(false), m_keyD(false), m_keyShift(false)
 {
-    // 初始化游戏进度数据
     coins = 0;
     fishCaught = 0;
     fishTotalValue = 0;
@@ -49,14 +53,11 @@ void Player::keyRelease(QKeyEvent* e) {
 void Player::update(qreal deltaTime) {
     if (m_isDead) return;
 
-    if (m_isStunned && m_stunTimer.elapsed() >= m_stunDuration) {
+    if (m_isStunned && m_stunTimer.elapsed() >= m_stunDuration)
         m_isStunned = false;
-    }
 
-    // 闪电伤害
-    if (WeatherSystem::instance().shouldTriggerLightning()) {
+    if (WeatherSystem::instance().shouldTriggerLightning())
         takeDurabilityDamage(GameConfig::STORM_LIGHTNING_DAMAGE);
-    }
 
     updateMovement(deltaTime);
     checkBorder();
@@ -100,10 +101,7 @@ void Player::updateMovement(qreal deltaTime) {
 }
 
 void Player::checkBorder() {
-    if (m_worldPos.x() < 0) {
-        m_isDead = true;
-        emit playerDied();
-    }
+    if (m_worldPos.x() < 0) { m_isDead = true; emit playerDied(); }
     if (m_worldPos.y() < GameConfig::TOP_BORDER)    m_worldPos.setY(GameConfig::TOP_BORDER);
     if (m_worldPos.y() > GameConfig::BOTTOM_BORDER) m_worldPos.setY(GameConfig::BOTTOM_BORDER);
     if (m_worldPos.x() > GameConfig::RIGHT_BORDER)  m_worldPos.setX(GameConfig::RIGHT_BORDER);
@@ -111,10 +109,7 @@ void Player::checkBorder() {
 
 void Player::takeDurabilityDamage(int damage) {
     m_durability = qMax(0, m_durability - damage);
-    if (m_durability <= 0) {
-        m_isDead = true;
-        emit playerDied();
-    }
+    if (m_durability <= 0) { m_isDead = true; emit playerDied(); }
 }
 
 void Player::applyStun(int durationMs) {
@@ -134,6 +129,37 @@ void Player::applySpeedReduction(qreal reduction) {
 
 void Player::resetSpeedReduction() {
     m_speedReduction = 0;
+}
+
+// Item.cpp需要的接口实现
+void Player::restoreStamina(int amount) {
+    m_stamina = qMin(maxStamina, m_stamina + amount);
+}
+
+void Player::restoreDurability(int amount) {
+    m_durability = qMin(maxDurability, m_durability + amount);
+}
+
+void Player::upgradeBaseSpeed(float amount) {
+    m_baseSpeed += amount;
+}
+
+void Player::upgradeMaxDurability(int amount) {
+    maxDurability += amount;
+    m_durability += amount; // 升级时同时补满新增的耐久
+}
+
+void Player::upgradeMaxStamina(int amount) {
+    maxStamina += amount;
+    m_stamina += amount;
+}
+
+Weapon* Player::getCurrentWeapon() {
+    return m_currentWeapon;
+}
+
+void Player::equipWeapon(Weapon* weapon) {
+    m_currentWeapon = weapon;
 }
 
 void Player::saveState() {}

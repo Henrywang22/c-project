@@ -1,4 +1,6 @@
 #include "GameWindow.h"
+#include "ShopDialog.h"
+#include "Obstacle.h"
 #include <QPainter>
 #include <QFont>
 #include <QKeyEvent>
@@ -272,12 +274,39 @@ void GameWindow::drawFish(QPainter& p)
 }
 
 // ============================================================
-// 障碍物（等C同学Obstacle类完成后实现）
+// 障碍物（用ObstacleManager）
 // ============================================================
 
 void GameWindow::drawObstacles(QPainter& p)
 {
-    // TODO: 等C同学Obstacle类完成后实现
+    const auto& obstacles = ObstacleManager::instance().obstacles();
+    for (auto* o : obstacles) {
+        QPointF playerPos(gm->playerX(), gm->playerY());
+        if (!o->isVisible(playerPos)) continue;
+
+        int screenX = (int)o->worldPos().x() - gm->cameraX;
+        int screenY = (int)o->worldPos().y();
+        int size = o->size();
+
+        if (screenX < -size || screenX > 1280 + size) continue;
+
+        if (o->type() == ObstacleType::REEF) {
+            // 暗礁：棕色方块
+            p.setBrush(QColor(120, 80, 40));
+            p.setPen(QPen(QColor(80, 50, 20), 2));
+            p.drawRect(screenX - size, screenY - size, size * 2, size * 2);
+        }
+        else {
+            // 漩涡：半透明蓝圆
+            p.setBrush(QColor(80, 180, 200, 160));
+            p.setPen(QPen(QColor(100, 200, 220), 2));
+            p.drawEllipse(screenX - size, screenY - size, size * 2, size * 2);
+            // 旋转箭头提示
+            p.setPen(QColor(200, 240, 255));
+            p.setFont(QFont("Microsoft YaHei", 10));
+            p.drawText(screenX - 8, screenY + 5, "〜");
+        }
+    }
 }
 
 // ============================================================
@@ -533,12 +562,13 @@ void GameWindow::drawFishingHUD(QPainter& p)
 }
 
 // ============================================================
-// 商店（等D同学完成后实现）
+// 商店
 // ============================================================
 
 void GameWindow::openShop()
 {
-    // TODO: 等D同学ShopDialog完成后实现
+    ShopDialog dlg(this);
+    dlg.exec();
 }
 
 // ============================================================

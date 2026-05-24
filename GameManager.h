@@ -28,11 +28,11 @@ public:
     void loadSave();
     bool isBossDefeated();
 
-    // Player改为引用C同学的单例
-    Player& getPlayer() { return Player::instance(); }
+    // 辅助函数取Player坐标
+    int playerX() const { return (int)Player::instance().worldPos().x(); }
+    int playerY() const { return (int)Player::instance().worldPos().y(); }
 
     std::vector<Fish*>      fish;
-    std::vector<Obstacle*>  obstacles;
     std::vector<Shark*>     sharks;
     std::vector<Swordfish*> swordfishes;
     std::vector<Octopus*>   octopuses;
@@ -50,11 +50,7 @@ public:
     int gameTimer = 0;
     int cameraX = 0;
 
-    // 辅助函数：从Player单例取坐标
-    int playerX() const { return (int)Player::instance().worldPos().x(); }
-    int playerY() const { return (int)Player::instance().worldPos().y(); }
-
 private:
     int spawnTimer = 0;
-    qreal m_deltaTime = 0.016; // 固定16ms帧时间
+    qreal m_deltaTime = 0.016;
 };

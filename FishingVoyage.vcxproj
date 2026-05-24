@@ -99,6 +99,7 @@
     <ClCompile Include="GameManager.h" />
     <ClCompile Include="Item.cpp" />
     <ClCompile Include="player.cpp" />
+    <ClCompile Include="Shopdialog.cpp" />
     <ClCompile Include="wavesystem.cpp" />
     <ClCompile Include="Weapon.cpp" />
     <ClCompile Include="weathersystem.cpp" />
@@ -119,6 +120,7 @@
     <QtMoc Include="weathersystem.h" />
     <QtMoc Include="player.h" />
     <QtMoc Include="wavesystem.h" />
+    <QtMoc Include="Shopdialog.h" />
     <ClInclude Include="Weapon.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

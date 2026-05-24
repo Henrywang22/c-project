@@ -9,6 +9,8 @@
 #include <QVector2D>
 #include "GameConfig.h"
 
+class Weapon;
+
 class Player : public QObject
 {
     Q_OBJECT
@@ -40,21 +42,26 @@ public:
     void applySpeedReduction(qreal reduction);
     void resetSpeedReduction();
 
+    // Item.cpp需要的接口
+    void restoreStamina(int amount);
+    void restoreDurability(int amount);
+    void upgradeBaseSpeed(float amount);
+    void upgradeMaxDurability(int amount);
+    void upgradeMaxStamina(int amount);
+    Weapon* getCurrentWeapon();
+    void equipWeapon(Weapon* weapon);
+
     // 存档接口
     void saveState();
     void loadState();
 
-    // ==========================================
-    // 游戏进度数据（GameManager和GameWindow需要）
-    // ==========================================
-    int coins = 0;   // 金币
-    int fishCaught = 0;   // 捕鱼数量
-    int fishTotalValue = 0;   // 捕鱼总价值
-    int distance = 0;   // 航行距离
-    int gameSeconds = 0;   // 游戏时间（秒）
-    bool visionReduced = false; // 墨鱼遮挡视野
-
-    // 最大值（供HUD显示血条用）
+    // 游戏进度数据
+    int coins = 0;
+    int fishCaught = 0;
+    int fishTotalValue = 0;
+    int distance = 0;
+    int gameSeconds = 0;
+    bool visionReduced = false;
     int maxDurability = 100;
     int maxStamina = 100;
 
@@ -80,6 +87,7 @@ private:
     bool m_reboundActive;
     QPointF m_reboundDir;
     bool m_keyW, m_keyA, m_keyS, m_keyD, m_keyShift;
+    Weapon* m_currentWeapon = nullptr;
 };
 
 #endif // PLAYER_H

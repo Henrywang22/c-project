@@ -3,7 +3,10 @@
 #include "GameConfig.h"
 
 #include <iostream>
-#include <algorithm>
+
+// ============================================================
+// 构造函数
+// ============================================================
 
 Weapon::Weapon(
     std::string specificName,
@@ -42,14 +45,24 @@ Weapon::Weapon(
 {
 }
 
+// ============================================================
+// Item 接口
+// ============================================================
+
 void Weapon::use(Player& player)
 {
+    // 兼容旧代码：购买或使用武器时直接装备到 Player
+    // 后续正式逻辑中，装备应主要进入 InventorySystem 的装备背包
     player.equipWeapon(this);
 
     std::cout << Config::Messages::SUCCESS_WEAPON
               << Config::Messages::PREFIX_WEAPON
               << name << std::endl;
 }
+
+// ============================================================
+// 攻击接口
+// ============================================================
 
 int Weapon::fire()
 {
@@ -62,7 +75,8 @@ int Weapon::fire()
         return 0;
     }
 
-    // 兼容旧逻辑：fire() 会立即扣耐久。
+    // 旧逻辑：fire() 会立即扣耐久
+    // 后续鼠标攻击联调时，不建议继续用 fire()
     if (!consumeAttackDurability()) {
         return 0;
     }
@@ -78,6 +92,10 @@ bool Weapon::consumeAttackDurability()
 
     return consumeDurability(durabilityConsumption);
 }
+
+// ============================================================
+// 捕鱼接口
+// ============================================================
 
 bool Weapon::consumeFishingDurability(Config::FishingResult result)
 {
@@ -105,6 +123,10 @@ int Weapon::getFishingDurabilityCost(Config::FishingResult result) const
     return fishCostFail;
 }
 
+// ============================================================
+// 通用耐久接口
+// ============================================================
+
 bool Weapon::consumeDurability(int amount)
 {
     if (amount <= 0) {
@@ -130,7 +152,8 @@ void Weapon::upgradeStats(int dmgBoost, int durBoost)
     damage += dmgBoost;
     maxDurability += durBoost;
 
-    // 强化会顺带恢复一部分耐久，但不直接补满。
+    // 强化时顺带恢复一部分耐久，但不直接修满
+    // 这样不会完全替代“装备修复”系统
     currentDurability += durBoost / 2;
 
     if (currentDurability > maxDurability) {
@@ -149,6 +172,8 @@ void Weapon::repairByPercent(int percent)
     }
 
     int amount = maxDurability * percent / 100;
+
+    // 防止百分比太小导致 0 修复
     if (amount <= 0) {
         amount = 1;
     }
@@ -173,6 +198,45 @@ void Weapon::repairToFull()
 {
     currentDurability = maxDurability;
 }
+
+void Weapon::loadRuntimeState(
+    int savedDamage,
+    int savedMaxDurability,
+    int savedCurrentDurability,
+    int savedRange,
+    int savedDurabilityConsumption
+)
+{
+    if (savedDamage >= 0) {
+        damage = savedDamage;
+    }
+
+    if (savedMaxDurability > 0) {
+        maxDurability = savedMaxDurability;
+    }
+
+    if (savedCurrentDurability < 0) {
+        currentDurability = 0;
+    }
+    else if (savedCurrentDurability > maxDurability) {
+        currentDurability = maxDurability;
+    }
+    else {
+        currentDurability = savedCurrentDurability;
+    }
+
+    if (savedRange > 0) {
+        range = savedRange;
+    }
+
+    if (savedDurabilityConsumption >= 0) {
+        durabilityConsumption = savedDurabilityConsumption;
+    }
+}
+
+// ============================================================
+// 状态查询
+// ============================================================
 
 bool Weapon::isBroken() const
 {
@@ -262,7 +326,7 @@ std::string Weapon::getFishingModeName() const
         return "不可捕鱼";
 
     case Config::FishingMode::QTE:
-        return "QTE 捕鱼";
+        return "QTE捕鱼";
 
     case Config::FishingMode::Calibration:
         return "校准捕鱼";

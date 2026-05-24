@@ -15,8 +15,12 @@ enum class BossHazardType {
 // Boss召唤类型
 enum class BossSpawnType { Shark, TaliClone, SirenPhantom };
 
-// Boss类型
-enum class BossType { FiveHeadShark, TaliMonster, Siren };
+// Boss种类
+enum class BossKind {
+    FiveHeadShark,
+    TaliMonster,
+    Siren
+};
 
 // 危险区域结构
 struct BossHazard {
@@ -37,9 +41,9 @@ struct BossHazard {
 struct BossSpawnRequest {
     BossSpawnType type;
     QPointF position;
-    QPointF direction;
+    QPointF dir;
     int hp = 0;
-    int damage = 0;
+    int dmg = 0;
 };
 
 // ============================================================
@@ -49,7 +53,7 @@ class Boss : public Enemy {
 public:
     enum State { PHASE1, PHASE2 };
 
-    Boss(BossType type, int startX, int startY, int startMaxHp, int startAttack, int startDropValue);
+    Boss(BossKind kind, int x, int y, int maxHp, int attack, int dropValue);
     virtual ~Boss() = default;
 
     // Enemy 接口（GameManager 调用）
@@ -60,13 +64,16 @@ public:
     virtual void takeDamage(int damage);
     virtual void applyShockStun(int durationMs);
     virtual void forceReleasePlayer();
+    virtual bool isInvulnerable() const { return invulnerable; }
 
+    virtual void spawnMinions(std::vector<Shark*>& sharks) {}
     std::vector<BossSpawnRequest> takeSpawnRequests();
     const std::vector<BossHazard>& hazards() const { return m_hazards; }
 
     // GameManager 访问的公开成员
+    BossKind kind;
     State state = PHASE1;
-    bool  minionSpawned = false; // 兼容 GameManager::checkCollisions
+    bool  minionSpawned = false;
     bool  invulnerable = false;
     bool  enraged = false;
     bool  holdingPlayer = false;
@@ -84,12 +91,10 @@ protected:
     void requestSpawn(BossSpawnType type, const QPointF& pos,
         const QPointF& dir = QPointF(), int hp = 0, int dmg = 0);
 
-    // 子类用
-    void spawnMinionsInternal(std::vector<Shark*>& sharks);
+    QPointF position() const { return QPointF(x, y); }
 
-    BossType m_bossType;
-    std::vector<BossHazard>      m_hazards;
-    std::vector<BossSpawnRequest> spawnRequests;
+    std::vector<BossHazard>       m_hazards;
+    std::vector<BossSpawnRequest> m_spawnRequests;
 };
 
 // ============================================================
@@ -97,23 +102,27 @@ protected:
 // ============================================================
 class FiveHeadSharkBoss : public Boss {
 public:
-    FiveHeadSharkBoss(int startX, int startY);
-    void updateBoss(Player& player) override;
+    FiveHeadSharkBoss(int x, int y);
+    bool collidesWithPlayer(int px, int py) override;
+    void spawnMinions(std::vector<Shark*>& sharks) override;
 
-    // GameManager 调用：召唤小兵
-    void spawnMinions(std::vector<Shark*>& sharks);
+protected:
+    void updateBoss(Player& player) override;
 
 private:
     void updatePatrol(int frameMs);
     void updateMelee(Player& player, int frameMs);
     void updateSummon(int frameMs);
-    void updateBombardment(int frameMs);
+    void updateBombardment(Player& player, int frameMs);
 
-    float patrolDirection = 1.0f;
-    int   summonTimerMs = 8000;
-    int   bombardTimerMs = 12000;
+    int   patrolDir = 1;
+    int   summonTimerMs = 5000;
+    int   bombardmentTimerMs = 15000;
+    int   bombardmentCastMs = 0;
     int   meleeCooldownMs = 0;
-    int   meleeStateTimerMs = 0;
+    int   meleeWindupMs = 0;
+    int   meleeRecoveryMs = 0;
+    std::vector<QRectF> pendingBombRects;
 };
 
 // ============================================================
@@ -121,10 +130,12 @@ private:
 // ============================================================
 class TaliMonsterBoss : public Boss {
 public:
-    TaliMonsterBoss(int startX, int startY);
-    void updateBoss(Player& player) override;
+    TaliMonsterBoss(int x, int y);
+    void takeDamage(int damage) override;
     void forceReleasePlayer() override;
-    void spawnMinions(std::vector<Shark*>& sharks) {} // 不召唤鲨鱼
+
+protected:
+    void updateBoss(Player& player) override;
 
 private:
     void updatePhase1(Player& player, int frameMs);
@@ -137,18 +148,18 @@ private:
     void startCloneExplosion();
     void finishCloneExplosion(Player& player);
 
-    bool  cloneSpawned = false;
-    bool  cloneAlive = false;
-    bool  phase2InvulnerabilityEnded = false;
-    int   mouthTimerMs = 15000;
-    int   mouthSequenceTimerMs = 0;
-    int   mouthStrikeIndex = 0;
-    int   eyeSweepTimerMs = 30000;
-    int   eyeSweepRemainingMs = 0;
-    float eyeAngleDegrees = 0.0f;
-    int   cloneHp = 0;
+    bool    cloneSpawned = false;
+    bool    cloneAlive = false;
+    bool    phase2InvulnerabilityEnded = false;
+    int     mouthTimerMs = 15000;
+    int     mouthSequenceTimerMs = 0;
+    int     mouthStrikeIndex = 0;
+    int     eyeSweepTimerMs = 30000;
+    int     eyeSweepRemainingMs = 0;
+    float   eyeAngleDegrees = 0.0f;
+    int     cloneHp = 0;
     QPointF clonePos;
-    int   cloneExplosionTimerMs = 0;
+    int     cloneExplosionTimerMs = 0;
 };
 
 // ============================================================
@@ -156,10 +167,11 @@ private:
 // ============================================================
 class SirenBoss : public Boss {
 public:
-    SirenBoss(int startX, int startY);
-    void updateBoss(Player& player) override;
+    SirenBoss(int x, int y);
     void takeDamage(int damage) override;
-    void spawnMinions(std::vector<Shark*>& sharks) {} // 不召唤鲨鱼
+
+protected:
+    void updateBoss(Player& player) override;
 
 private:
     void updatePhase1(Player& player, int frameMs);

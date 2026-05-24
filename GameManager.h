@@ -9,6 +9,7 @@
 #include "WeatherSystem.h"
 #include "FileManager.h"
 #include "Weapon.h"
+#include "InventorySystem.h"
 
 class GameManager {
 public:
@@ -39,7 +40,6 @@ public:
     Boss* boss = nullptr;
 
     FileManager fileManager;
-    Weapon* currentWeapon = nullptr;
 
     int stage = 1;
     int killCount = 0;

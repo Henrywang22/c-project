@@ -34,6 +34,35 @@ enum class InventoryItemType {
 class InventorySystem
 {
 public:
+        // -------------------------
+    // 存档读写数据结构
+    // -------------------------
+
+    struct WeaponLoadData {
+        std::string typeCode;
+        int tier = 1;
+        int damage = 0;
+        int maxDurability = 0;
+        int currentDurability = 0;
+        int range = 0;
+        int durabilityConsumption = 0;
+    };
+
+    struct InventoryLoadData {
+        int foodCount = 0;
+        int shipRepairT1Count = 0;
+        int shipRepairT2Count = 0;
+        int shipRepairT3Count = 0;
+        int emergencyWeaponRepairCount = 0;
+
+        int currentWeaponIndex = -1;
+
+        std::vector<WeaponLoadData> weapons;
+    };
+
+    InventoryLoadData exportData() const;
+    void loadFromData(const InventoryLoadData& data);
+
     static InventorySystem& instance();
 
     // 禁止复制

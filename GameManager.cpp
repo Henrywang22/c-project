@@ -139,7 +139,12 @@ void GameManager::spawnBoss(int stageNum)
     if (boss) { delete boss; boss = nullptr; }
     int x = playerX() + 500;
     int y = 360;
-    boss = new Boss(x, y);
+    if (stageNum >= 15)
+        boss = new SirenBoss(x, y);
+    else if (stageNum >= 10)
+        boss = new TaliMonsterBoss(x, y);
+    else
+        boss = new FiveHeadSharkBoss(x, y);
 }
 
 void GameManager::checkCollisions()
@@ -206,8 +211,7 @@ void GameManager::checkCollisions()
             boss->attackTimer = 0;
         }
 
-        if (boss->state == Boss::PHASE2 && !boss->minionSpawned)
-            boss->spawnMinions(sharks);
+        boss->spawnMinions(sharks);
 
         if (boss->hp <= 0) {
             boss->alive = false;
@@ -230,7 +234,7 @@ void GameManager::attackNearest(int damage, int range)
         float dx = (float)(px - boss->x);
         float dy = (float)(py - boss->y);
         if (dx * dx + dy * dy < (float)(range * range)) {
-            boss->hp -= actualDamage;
+            boss->takeDamage(actualDamage);
             return;
         }
     }

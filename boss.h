@@ -1,4 +1,4 @@
-/#ifndef BOSS_H
+#ifndef BOSS_H
 #define BOSS_H
 
 #include <QList>

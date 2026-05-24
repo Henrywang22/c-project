@@ -6,15 +6,6 @@
 
 GameManager::GameManager()
 {
-    currentWeapon = new Harpoon(
-        "铁制鱼叉",
-        Config::PRICE_HARPOON_T1,
-        Config::DMG_HARPOON_T1,
-        Config::DUR_HARPOON_T1,
-        Config::RANGE_HARPOON,
-        Config::CONS_HARPOON);
-
-    // 用ObstacleManager生成障碍
     ObstacleManager::instance().generateLevel(stage);
 
     for (int i = 0; i < 5; i++) spawnFish();
@@ -22,7 +13,6 @@ GameManager::GameManager()
 
 GameManager::~GameManager()
 {
-    delete currentWeapon;
     if (boss) delete boss;
     for (auto f : fish)        delete f;
     for (auto s : sharks)      delete s;
@@ -64,7 +54,7 @@ void GameManager::update()
     for (auto s : sharks)      s->update(p);
     for (auto s : swordfishes) s->update(p);
     for (auto o : octopuses)   o->update(p);
-    if (boss && boss->alive)   boss->update(p);
+    if (boss && boss->isAlive()) boss->update(m_deltaTime, &p);
 
     cameraX = px - 640;
     if (cameraX < 0) cameraX = 0;
@@ -137,14 +127,13 @@ void GameManager::spawnOctopus()
 void GameManager::spawnBoss(int stageNum)
 {
     if (boss) { delete boss; boss = nullptr; }
-    int x = playerX() + 500;
-    int y = 360;
+    QPointF spawnPos(playerX() + 500, 360);
     if (stageNum >= 15)
-        boss = new SirenBoss(x, y);
+        boss = new SirenBoss(spawnPos);
     else if (stageNum >= 10)
-        boss = new TaliMonsterBoss(x, y);
+        boss = new TaliMonsterBoss(spawnPos);
     else
-        boss = new FiveHeadSharkBoss(x, y);
+        boss = new FiveHeadSharkBoss(spawnPos);
 }
 
 void GameManager::checkCollisions()
@@ -154,7 +143,7 @@ void GameManager::checkCollisions()
     int py = playerY();
     QPointF playerPos(px, py);
 
-    // 障碍物碰撞（用ObstacleManager）
+    // 障碍物碰撞
     const auto& obstacles = ObstacleManager::instance().obstacles();
     for (auto* o : obstacles) {
         if (!o->isVisible(playerPos)) continue;
@@ -198,24 +187,24 @@ void GameManager::checkCollisions()
         }
     }
 
-    // Boss
-    if (boss && boss->alive) {
-        if (boss->collidesWithPlayer(px, py)) {
-            boss->attackTimer++;
-            if (boss->attackTimer >= 60) {
-                p.takeDurabilityDamage(boss->attack);
-                boss->attackTimer = 0;
+    // Boss — 使用新 API
+    if (boss && boss->isAlive()) {
+        QRectF playerRect(px - 20, py - 10, 40, 20);
+        if (boss->collider().intersects(playerRect)) {
+            boss->onPlayerCollision(&p);
+        }
+
+        // 处理 Boss 的召唤请求
+        auto requests = boss->takeSpawnRequests();
+        for (const auto& req : requests) {
+            if (req.type == BossSpawnType::Shark) {
+                sharks.push_back(new Shark(
+                    (int)req.position.x(), (int)req.position.y()));
             }
         }
-        else {
-            boss->attackTimer = 0;
-        }
 
-        boss->spawnMinions(sharks);
-
-        if (boss->hp <= 0) {
-            boss->alive = false;
-            p.coins += boss->dropValue;
+        if (!boss->isAlive()) {
+            p.coins += 200;
             killCount++;
             stageClear = true;
         }
@@ -224,15 +213,17 @@ void GameManager::checkCollisions()
 
 void GameManager::attackNearest(int damage, int range)
 {
-    if (currentWeapon && currentWeapon->isBroken()) return;
-    int actualDamage = currentWeapon ? currentWeapon->fire() : damage;
+    Weapon* weapon = InventorySystem::instance().currentWeapon();
+    if (weapon && !weapon->canAttack()) return;
+    if (weapon && weapon->isBroken()) return;
+    int actualDamage = weapon ? weapon->fire() : damage;
 
     int px = playerX();
     int py = playerY();
 
-    if (boss && boss->alive) {
-        float dx = (float)(px - boss->x);
-        float dy = (float)(py - boss->y);
+    if (boss && boss->isAlive()) {
+        float dx = (float)(px - boss->worldPos().x());
+        float dy = (float)(py - boss->worldPos().y());
         if (dx * dx + dy * dy < (float)(range * range)) {
             boss->takeDamage(actualDamage);
             return;
@@ -309,5 +300,5 @@ void GameManager::loadSave()
 
 bool GameManager::isBossDefeated()
 {
-    return boss && !boss->alive;
+    return boss && !boss->isAlive();
 }

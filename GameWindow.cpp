@@ -224,6 +224,7 @@ void GameWindow::drawGame(QPainter& p)
     drawObstacles(p);
     drawWaves(p);
     drawFish(p);
+    drawBossHazards(p);
     drawSharks(p);
     drawPlayer(p);
     drawHUD(p);
@@ -332,6 +333,60 @@ void GameWindow::drawWaves(QPainter& p)
 // ============================================================
 // 敌人
 // ============================================================
+
+void GameWindow::drawBossHazards(QPainter& p)
+{
+    if (!gm->boss || !gm->boss->alive) return;
+
+    for (const auto& h : gm->boss->getHazards()) {
+        if (!h.active) continue;
+
+        QColor fill(255, 80, 80, 80);
+        QColor stroke(255, 100, 100, 180);
+
+        switch (h.type) {
+        case BossHazardType::BombWarning:
+        case BossHazardType::ElegyWarning:
+        case BossHazardType::CloneExplosionWarning:
+            fill = QColor(255, 220, 60, 70);
+            stroke = QColor(255, 220, 60, 190);
+            break;
+        case BossHazardType::BombHitbox:
+        case BossHazardType::MeleeHitbox:
+        case BossHazardType::MouthStrike:
+        case BossHazardType::ReefHitbox:
+            fill = QColor(255, 70, 70, 95);
+            stroke = QColor(255, 70, 70, 210);
+            break;
+        case BossHazardType::EyeSector:
+            fill = QColor(120, 170, 255, 55);
+            stroke = QColor(120, 170, 255, 160);
+            break;
+        case BossHazardType::SoulSong:
+            fill = QColor(190, 90, 255, 75);
+            stroke = QColor(210, 140, 255, 200);
+            break;
+        case BossHazardType::SeaweedZone:
+            fill = QColor(40, 180, 100, 70);
+            stroke = QColor(40, 220, 130, 180);
+            break;
+        }
+
+        p.setBrush(fill);
+        p.setPen(QPen(stroke, 2));
+
+        if (h.radius > 0.0) {
+            int sx = int(h.position.x()) - gm->cameraX;
+            int sy = int(h.position.y());
+            int r = int(h.radius);
+            p.drawEllipse(sx - r, sy - r, r * 2, r * 2);
+        } else {
+            QRectF rect = h.rect;
+            rect.translate(-gm->cameraX, 0);
+            p.drawRect(rect);
+        }
+    }
+}
 
 void GameWindow::drawSharks(QPainter& p)
 {

@@ -56,6 +56,7 @@ private:
     void drawFish(QPainter& p);
     void drawObstacles(QPainter& p);
     void drawSharks(QPainter& p);
+    void drawBossHazards(QPainter& p);
     void drawPlayer(QPainter& p);
     void drawWaves(QPainter& p);
     void drawHUD(QPainter& p);

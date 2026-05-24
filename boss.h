@@ -1,23 +1,14 @@
-/#ifndef BOSS_H
-#define BOSS_H
+#pragma once
 
-#include <QList>
+#include "Enemy.h"
 #include <QPointF>
 #include <QRectF>
-#include <QtGlobal>
+#include <vector>
 
-class Player;
-
-enum class BossType {
+enum class BossKind {
     FiveHeadShark,
     TaliMonster,
     Siren
-};
-
-enum class BossPhase {
-    Phase1,
-    Phase2,
-    Dead
 };
 
 enum class BossHazardType {
@@ -27,19 +18,10 @@ enum class BossHazardType {
     MouthStrike,
     EyeSector,
     CloneExplosionWarning,
-    CloneExplosionHitbox,
     SoulSong,
     ElegyWarning,
     SeaweedZone,
-    ReefWarning,
-    ReefHitbox,
-    ResonancePillar
-};
-
-enum class BossSpawnType {
-    Shark,
-    TaliClone,
-    SirenPhantom
+    ReefHitbox
 };
 
 struct BossHazard {
@@ -47,8 +29,6 @@ struct BossHazard {
     QPointF position;
     QRectF rect;
     qreal radius = 0.0;
-    qreal angleDegrees = 0.0;
-    qreal arcDegrees = 0.0;
     qreal durationMs = 0.0;
     qreal elapsedMs = 0.0;
     int damage = 0;
@@ -56,147 +36,134 @@ struct BossHazard {
 };
 
 struct BossSpawnRequest {
-    BossSpawnType type;
     QPointF position;
-    QPointF direction;
-    int hp = 0;
-    int damage = 0;
 };
 
-class Boss
-{
+class Boss : public Enemy {
 public:
-    explicit Boss(BossType type, const QPointF& spawnPos);
-    virtual ~Boss() = default;
+    enum State { PHASE1, PHASE2 };
 
-    virtual void update(qreal deltaTimeMs, Player* player) = 0;
-    virtual QRectF collider() const = 0;
+    Boss(BossKind kind, int x, int y, int maxHp, int attack, int dropValue);
+    ~Boss() override = default;
 
-    virtual QPointF worldPos() const;
-    virtual BossType type() const;
-    virtual BossPhase phase() const;
-
-    virtual int hp() const;
-    virtual int maxHp() const;
-    virtual bool isAlive() const;
-    virtual bool isInvulnerable() const;
-    virtual bool isStunned() const;
-    virtual bool isHoldingPlayer() const;
-
+    void update(Player& player) override;
+    bool collidesWithPlayer(int px, int py) override;
     virtual void takeDamage(int damage);
-    virtual void applyShockStun(qreal durationMs);
+    virtual void applyShockStun(int durationMs);
     virtual void forceReleasePlayer();
-    virtual void onPlayerCollision(Player* player);
+    virtual bool isInvulnerable() const { return invulnerable; }
 
-    const QList<BossHazard>& hazards() const;
-    QList<BossSpawnRequest> takeSpawnRequests();
+    void spawnMinions(std::vector<Shark*>& sharks);
+    const std::vector<BossHazard>& getHazards() const { return hazards; }
+
+    BossKind kind;
+    State state = PHASE1;
+    bool minionSpawned = false;
 
 protected:
-    void setPhase(BossPhase phase);
-    void die();
-
-    int scaledDamage(int baseDamage) const;
+    virtual void updateBoss(Player& player) = 0;
+    void updateTimers();
+    void updateHazards();
     void addHazard(const BossHazard& hazard);
-    void updateHazards(qreal deltaTimeMs);
-    void requestSpawn(BossSpawnType type, const QPointF& position,
-                      const QPointF& direction = QPointF(), int hp = 0, int damage = 0);
+    void requestSharkSpawn(const QPointF& position);
+    int scaledDamage(int baseDamage) const;
+    QPointF position() const { return QPointF(x, y); }
+    bool stunned() const { return stunRemainingMs > 0; }
+
+    bool invulnerable = false;
+    bool enraged = false;
+    bool holdingPlayer = false;
+    int stunRemainingMs = 0;
+    std::vector<BossHazard> hazards;
+    std::vector<BossSpawnRequest> sharkSpawnRequests;
+};
+
+class FiveHeadSharkBoss : public Boss {
+public:
+    FiveHeadSharkBoss(int x, int y);
+    bool collidesWithPlayer(int px, int py) override;
 
 protected:
-    BossType m_type;
-    BossPhase m_phase = BossPhase::Phase1;
-    QPointF m_worldPos;
-
-    int m_hp = 1;
-    int m_maxHp = 1;
-    bool m_alive = true;
-    bool m_invulnerable = false;
-    bool m_enraged = false;
-    bool m_holdingPlayer = false;
-
-    qreal m_stunRemainingMs = 0.0;
-    QList<BossHazard> m_hazards;
-    QList<BossSpawnRequest> m_spawnRequests;
-};
-
-class FiveHeadSharkBoss : public Boss
-{
-public:
-    explicit FiveHeadSharkBoss(const QPointF& spawnPos);
-
-    void update(qreal deltaTimeMs, Player* player) override;
-    QRectF collider() const override;
-    void onPlayerCollision(Player* player) override;
+    void updateBoss(Player& player) override;
 
 private:
-    void updatePatrol(qreal deltaTimeMs);
-    void updateMelee(qreal deltaTimeMs, Player* player);
-    void updateSummon(qreal deltaTimeMs);
-    void updateBombardment(qreal deltaTimeMs);
+    void updatePatrol();
+    void updateMelee(Player& player);
+    void updateSummon();
+    void updateBombardment(Player& player);
 
-private:
-    qreal m_patrolDirection = 1.0;
-    qreal m_summonTimerMs = 0.0;
-    qreal m_bombardmentTimerMs = 0.0;
-    qreal m_meleeCooldownMs = 0.0;
-    qreal m_meleeStateTimerMs = 0.0;
+    int patrolDir = 1;
+    int summonTimerMs = 5000;
+    int bombardmentTimerMs = 15000;
+    int bombardmentCastMs = 0;
+    int meleeCooldownMs = 0;
+    int meleeWindupMs = 0;
+    int meleeRecoveryMs = 0;
+    std::vector<QRectF> pendingBombRects;
 };
 
-class TaliMonsterBoss : public Boss
-{
+class TaliMonsterBoss : public Boss {
 public:
-    explicit TaliMonsterBoss(const QPointF& spawnPos);
-
-    void update(qreal deltaTimeMs, Player* player) override;
-    QRectF collider() const override;
+    TaliMonsterBoss(int x, int y);
+    void takeDamage(int damage) override;
     void forceReleasePlayer() override;
 
-private:
-    void updatePhase1(qreal deltaTimeMs, Player* player);
-    void updatePhase2(qreal deltaTimeMs, Player* player);
-    void updateMovement(qreal deltaTimeMs, Player* player);
-    void updateMouthStrike(qreal deltaTimeMs, Player* player);
-    void updateEyeSweep(qreal deltaTimeMs, Player* player);
-    void spawnClone();
-    void onCloneDeath(bool explosionNearBoss);
+protected:
+    void updateBoss(Player& player) override;
 
 private:
-    bool m_cloneSpawned = false;
-    bool m_cloneAlive = false;
-    bool m_phase2InvulnerabilityEnded = false;
-    qreal m_mouthTimerMs = 0.0;
-    qreal m_eyeSweepTimerMs = 0.0;
-    qreal m_eyeSweepRemainingMs = 0.0;
-    qreal m_eyeAngleDegrees = 0.0;
-    int m_mouthStrikeIndex = 0;
+    void updatePhase1(Player& player);
+    void updatePhase2(Player& player);
+    void updateMovement(Player& player);
+    void updateMouthStrike(Player& player);
+    void updateEyeSweep(Player& player);
+    void spawnClone();
+    void updateClone(Player& player);
+    void startCloneExplosion();
+    void finishCloneExplosion(Player& player);
+
+    bool cloneSpawned = false;
+    bool cloneAlive = false;
+    bool phase2InvulnerabilityEnded = false;
+    QPointF clonePos;
+    int cloneHp = 0;
+    int cloneExplosionTimerMs = 0;
+    int mouthTimerMs = 15000;
+    int mouthSequenceTimerMs = 0;
+    int mouthStrikeIndex = 0;
+    int eyeSweepTimerMs = 60000;
+    int eyeSweepRemainingMs = 0;
 };
 
-class SirenBoss : public Boss
-{
+class SirenBoss : public Boss {
 public:
-    explicit SirenBoss(const QPointF& spawnPos);
-
-    void update(qreal deltaTimeMs, Player* player) override;
-    QRectF collider() const override;
+    SirenBoss(int x, int y);
     void takeDamage(int damage) override;
 
-private:
-    void updatePhase1(qreal deltaTimeMs, Player* player);
-    void updatePhase2(qreal deltaTimeMs, Player* player);
-    void updateSoulSong(qreal deltaTimeMs, Player* player);
-    void updateElegy(qreal deltaTimeMs, Player* player);
-    void updateEndlessReturn(qreal deltaTimeMs, Player* player);
-    void updateResonancePillars(qreal deltaTimeMs);
-    void applyNaturalDecay(qreal deltaTimeMs);
-    void checkPhase2StaminaCheckpoints(Player* player);
+protected:
+    void updateBoss(Player& player) override;
 
 private:
-    bool m_phantomSpawned = false;
-    bool m_checkpoint75Used = false;
-    bool m_checkpoint50Used = false;
-    bool m_checkpoint25Used = false;
-    qreal m_soulSongTimerMs = 0.0;
-    qreal m_elegyTimerMs = 0.0;
-    qreal m_endlessReturnTimerMs = 0.0;
+    void updatePhase1(Player& player);
+    void updatePhase2(Player& player);
+    void updateSoulSong(Player& player);
+    void updatePhantom(Player& player);
+    void updateElegy(Player& player);
+    void updateEndlessReturn(Player& player);
+    void applyNaturalDecay();
+    void checkStaminaCheckpoints(Player& player);
+
+    bool phantomSpawned = false;
+    QPointF phantomPos;
+    int phantomStunMs = 0;
+    bool checkpoint75Used = false;
+    bool checkpoint50Used = false;
+    bool checkpoint25Used = false;
+    int soulSongTimerMs = 20000;
+    int soulSongCastMs = 0;
+    int elegyTimerMs = 30000;
+    int elegyCastMs = 0;
+    int endlessReturnTimerMs = 20000;
+    int naturalDecayTimerMs = 0;
+    int poisonRemainingMs = 0;
 };
-
-#endif // BOSS_H

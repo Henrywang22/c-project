@@ -116,7 +116,6 @@
     <QtMoc Include="GameWindow.h" />
     <ClCompile Include="GameWindow.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="InventorySystem.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="boss.h" />
@@ -133,7 +132,6 @@
     <QtMoc Include="wavesystem.h" />
     <QtMoc Include="Shopdialog.h" />
     <ClInclude Include="Weapon.h" />
-    <ClInclude Include="InventorySystem.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Condition="Exists('$(QtMsBuild)\qt.targets')">

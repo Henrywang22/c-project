@@ -122,4 +122,32 @@ namespace Config {
     const int TOP_BORDER = 60;
     const int BOTTOM_BORDER = 700;
     const int RIGHT_BORDER = 10000;
+
+
+    namespace GameConfig {
+        const qreal SHIP_BASE_SPEED = 150.0;
+        const qreal SHIP_BOOST_SPEED = 250.0;
+        const int MAX_STAMINA = 100;
+        const int BOOST_STAMINA_COST_PER_FRAME = 1;
+        const int TOP_BORDER = 60;
+        const int BOTTOM_BORDER = 700;
+        const int RIGHT_BORDER = 10000;
+        const int WAVE_WARNING_MS = 3000;
+        const int WAVE_DURATION_MS = 8000;
+        const qreal WAVE_SPEED_UP_MULTIPLIER = 1.5;
+        const qreal WAVE_SPEED_DOWN_MULTIPLIER = 0.6;
+        const int WEATHER_MIN_FRAMES = 1800;
+        const int WEATHER_MAX_FRAMES = 3600;
+        const qreal FOG_VISION_REDUCTION = 0.3;
+        const qreal STORM_FISH_VALUE_BONUS = 1.5;
+        const int STORM_LIGHTNING_DAMAGE = 15;
+        const int REEF_MIN_SIZE = 20;
+        const int REEF_MAX_SIZE = 40;
+        const int REEF_DAMAGE = 10;
+        const int STUN_DURATION_MS = 500;
+        const qreal REEF_REBOUND_FACTOR = 1.5;
+        const qreal WHIRLPOOL_MAX_SPEED_REDUCTION = 0.7;
+        const int VISION_RANGE = 800;
+        const int WINDOW_HEIGHT = 720;
+    }
 }

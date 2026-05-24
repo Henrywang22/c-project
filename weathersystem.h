@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QElapsedTimer>
 #include "GameConfig.h"
+#include <QColor>
 
 enum class WeatherType { SUNNY, FOG, STORM };
 

@@ -83,9 +83,9 @@ void GameWindow::gameLoop()
                 });
 
             openShop();
-
-            for (auto o : gm->obstacles) delete o;
-            gm->obstacles.clear();
+            const QList<Obstacle*>& obstacleList = ObstacleManager::instance().obstacles();
+            for (Obstacle* o : obstacleList)
+            ObstacleManager::instance().clear();
             for (auto s : gm->sharks) delete s;
             gm->sharks.clear();
 

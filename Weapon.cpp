@@ -18,9 +18,8 @@ Weapon::Weapon(std::string specificName, int price, int dmg, int dur, int rng, i
  * 装备武器逻辑
  */
 void Weapon::use(Player& player) {
-    // 提示：具体 equipWeapon 逻辑由成员 C 在 Player 类中实现
-    // player.equipWeapon(this); 
-    std::cout << Config::Messages::SUCCESS_WEAPON 
+    player.equipWeapon(this);
+    std::cout << Config::Messages::SUCCESS_WEAPON
               << Config::Messages::PREFIX_WEAPON << name << std::endl;
 }
 

@@ -1,6 +1,8 @@
 #include "WaveSystem.h"
 #include <QRandomGenerator>
 
+using namespace Config;
+
 WaveSystem::WaveSystem()
     : m_isWarning(false), m_isWaveActive(false),
     m_currentDir(WaveDirection::RIGHT), m_speedMultiplier(1.0f) {}

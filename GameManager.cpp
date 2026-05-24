@@ -61,10 +61,10 @@ void GameManager::update()
     ObstacleManager::instance().update(m_deltaTime);
 
     for (auto f : fish)        f->update(px, py);
-    for (auto s : sharks)      s->update(px, py);
-    for (auto s : swordfishes) s->update(px, py);
-    for (auto o : octopuses)   o->update(px, py);
-    if (boss && boss->alive)   boss->update(px, py);
+    for (auto s : sharks)      s->update(p);
+    for (auto s : swordfishes) s->update(p);
+    for (auto o : octopuses)   o->update(p);
+    if (boss && boss->alive)   boss->update(p);
 
     cameraX = px - 640;
     if (cameraX < 0) cameraX = 0;

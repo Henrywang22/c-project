@@ -65,4 +65,4 @@ private:
     QList<Obstacle*> m_obstacles;
 };
 
-#endif // OBSTACLE_H#pragma once
+#endif // OBSTACLE_H

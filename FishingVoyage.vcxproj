@@ -94,7 +94,7 @@
   <ItemGroup>
     <ClCompile Include="boss.cpp" />
     <ClCompile Include="Enemy.cpp" />
-    <ClCompile Include="Filemanager.cpp" />
+    <ClCompile Include="FileManager.cpp" />
     <ClCompile Include="Fish.cpp" />
     <ClCompile Include="GameManager.cpp" />
     <ClCompile Include="GameManager.h" />

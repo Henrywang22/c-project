@@ -12,14 +12,14 @@ namespace Config {
     // ==========================================
     // 1. 消耗品 (食物 & 修理包)
     // ==========================================
-    
+
     // ---- 食物类 ----
-    const int PRICE_FOOD_RATION = 20;    
-    const int HEAL_FOOD_RATION  = 30;    
+    const int PRICE_FOOD_RATION = 20;
+    const int HEAL_FOOD_RATION  = 30;
 
     // ---- 修理包 (大中小) ----
     const int PRICE_REPAIR_T1 = 30;   const int HEAL_REPAIR_T1 = 20;
-    const int PRICE_REPAIR_T2 = 50;   const int HEAL_REPAIR_T2 = 40;  
+    const int PRICE_REPAIR_T2 = 50;   const int HEAL_REPAIR_T2 = 40;
     const int PRICE_REPAIR_T3 = 100;  const int HEAL_REPAIR_T3 = 100;
 
     // ==========================================
@@ -28,7 +28,7 @@ namespace Config {
     // ==========================================
 
     // ---- 1. 鱼竿 (高耐久，低伤害，低损耗) ----
-    const int RANGE_ROD = 60; 
+    const int RANGE_ROD = 60;
     const int CONS_ROD = 1; // 每次开火扣1点
     const int PRICE_ROD_T1 = 60;  const int DMG_ROD_T1 = 5;  const int DUR_ROD_T1 = 50;
     const int PRICE_ROD_T2 = 120; const int DMG_ROD_T2 = 12; const int DUR_ROD_T2 = 60;
@@ -50,7 +50,7 @@ namespace Config {
 
     // ---- 4. 手枪 (极远射程，高伤害) ----
     const int RANGE_PISTOL = 200;
-    const int CONS_PISTOL = 3; 
+    const int CONS_PISTOL = 3;
     const int PRICE_PISTOL_T1 = 180; const int DMG_PISTOL_T1 = 50;  const int DUR_PISTOL_T1 = 15;
     const int PRICE_PISTOL_T2 = 380; const int DMG_PISTOL_T2 = 90;  const int DUR_PISTOL_T2 = 20;
     const int PRICE_PISTOL_T3 = 750; const int DMG_PISTOL_T3 = 150; const int DUR_PISTOL_T3 = 25;
@@ -98,32 +98,8 @@ namespace Config {
     }
 
     // ==========================================
-// 海浪系统
-// ==========================================
-    const int WAVE_WARNING_MS = 3000;      // 警告持续3秒
-    const int WAVE_DURATION_MS = 8000;     // 海浪持续8秒
-    const qreal WAVE_SPEED_UP_MULTIPLIER = 1.5;  // 顺风加速50%
-    const qreal WAVE_SPEED_DOWN_MULTIPLIER = 0.6; // 逆风减速40%
-
+    // 4. 游戏系统数值 (海浪 / 天气 / 玩家 / 障碍)
     // ==========================================
-// 天气系统
-// ==========================================
-    const int WEATHER_MIN_FRAMES = 1800;   // 天气最短持续30秒
-    const int WEATHER_MAX_FRAMES = 3600;   // 天气最长持续60秒
-    const qreal FOG_VISION_REDUCTION = 0.3; // 大雾减少30%视野
-    const qreal STORM_FISH_VALUE_BONUS = 1.5; // 暴风雨鱼价值+50%
-    const int STORM_LIGHTNING_DAMAGE = 15;  // 闪电伤害15点
-
-    // Player相关
-    const qreal SHIP_BASE_SPEED = 150.0;
-    const qreal SHIP_BOOST_SPEED = 250.0;
-    const int MAX_STAMINA = 100;
-    const int BOOST_STAMINA_COST_PER_FRAME = 1;
-    const int TOP_BORDER = 60;
-    const int BOTTOM_BORDER = 700;
-    const int RIGHT_BORDER = 10000;
-
-
     namespace GameConfig {
         const qreal SHIP_BASE_SPEED = 150.0;
         const qreal SHIP_BOOST_SPEED = 250.0;

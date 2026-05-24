@@ -1,6 +1,8 @@
 #include "WeatherSystem.h"
 #include <QRandomGenerator>
 
+using namespace Config;
+
 WeatherSystem::WeatherSystem()
     : m_currentWeather(WeatherType::SUNNY), m_weatherFrameCount(0),
     m_weatherDurationFrames(GameConfig::WEATHER_MAX_FRAMES), m_lightningTriggered(false) {}

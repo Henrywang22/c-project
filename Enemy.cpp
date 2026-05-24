@@ -30,8 +30,8 @@ void Shark::update(Player& player)
     if (!alive) return;
 
     // 直接追踪玩家
-    float dx = (float)(player.x - x);
-    float dy = (float)(player.y - y);
+    float dx = (float)(player.worldPos().x() - x);
+    float dy = (float)(player.worldPos().y() - y);
     float dist = sqrt(dx * dx + dy * dy);
 
     if (dist > 0) {
@@ -74,8 +74,8 @@ void Swordfish::update(Player& player)
 {
     if (!alive) return;
 
-    float dx = (float)(player.x - x);
-    float dy = (float)(player.y - y);
+    float dx = (float)(player.worldPos().x() - x);
+    float dy = (float)(player.worldPos().y() - y);
     float dist = sqrt(dx * dx + dy * dy);
 
     switch (state) {
@@ -122,7 +122,7 @@ void Swordfish::update(Player& player)
         // 冲出范围后重置
         if (x < -100 || x > 6000 || y < 0 || y > 800) {
             state = IDLE;
-            posX = (float)(player.x + 300 + rand() % 200);
+            posX = (float)(player.worldPos().x() + 300 + rand() % 200);
             posY = (float)(80 + rand() % 580);
             x = (int)posX;
             y = (int)posY;
@@ -168,8 +168,8 @@ void Octopus::update(Player& player)
     if (isInvisible) return;
 
     // 可见时缓慢追踪玩家
-    float dx = (float)(player.x - x);
-    float dy = (float)(player.y - y);
+    float dx = (float)(player.worldPos().x() - x);
+    float dy = (float)(player.worldPos().y() - y);
     float dist = sqrt(dx * dx + dy * dy);
 
     if (dist > 0 && dist < 300) {
@@ -183,7 +183,7 @@ void Octopus::update(Player& player)
     if (posY > 700) { posY = 700; y = (int)posY; }
 
     // 离开玩家后重置接触计时
-    if (!collidesWithPlayer(player.x, player.y)) {
+    if (!collidesWithPlayer((int)player.worldPos().x(), (int)player.worldPos().y())) {
         contactTimer = 0;
     }
 }

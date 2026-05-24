@@ -42,33 +42,33 @@ public:
      */
     static Weapon* createWeapon(const std::string& type, int tier) {
         if (type == "Rod") {
-            if (tier == 2) return new Weapon("进阶鱼竿", Config::PRICE_ROD_T2, Config::DMG_ROD_T2, Config::DUR_ROD_T2, Config::RANGE_ROD, Config::CONS_ROD);
-            if (tier == 3) return new Weapon("传世鱼竿", Config::PRICE_ROD_T3, Config::DMG_ROD_T3, Config::DUR_ROD_T3, Config::RANGE_ROD, Config::CONS_ROD);
-            return new Weapon("基础鱼竿", Config::PRICE_ROD_T1, Config::DMG_ROD_T1, Config::DUR_ROD_T1, Config::RANGE_ROD, Config::CONS_ROD);
+            if (tier == 2) return new FishingRod("进阶鱼竿", Config::PRICE_ROD_T2, Config::DMG_ROD_T2, Config::DUR_ROD_T2, Config::RANGE_ROD, Config::CONS_ROD);
+            if (tier == 3) return new FishingRod("传世鱼竿", Config::PRICE_ROD_T3, Config::DMG_ROD_T3, Config::DUR_ROD_T3, Config::RANGE_ROD, Config::CONS_ROD);
+            return new FishingRod("基础鱼竿", Config::PRICE_ROD_T1, Config::DMG_ROD_T1, Config::DUR_ROD_T1, Config::RANGE_ROD, Config::CONS_ROD);
         }
-        
+
         if (type == "Net") {
-            if (tier == 2) return new Weapon("加固渔网", Config::PRICE_NET_T2, Config::DMG_NET_T2, Config::DUR_NET_T2, Config::RANGE_NET, Config::CONS_NET);
-            if (tier == 3) return new Weapon("捕捉大师渔网", Config::PRICE_NET_T3, Config::DMG_NET_T3, Config::DUR_NET_T3, Config::RANGE_NET, Config::CONS_NET);
-            return new Weapon("普通渔网", Config::PRICE_NET_T1, Config::DMG_NET_T1, Config::DUR_NET_T1, Config::RANGE_NET, Config::CONS_NET);
+            if (tier == 2) return new FishingNet("加固渔网", Config::PRICE_NET_T2, Config::DMG_NET_T2, Config::DUR_NET_T2, Config::RANGE_NET, Config::CONS_NET);
+            if (tier == 3) return new FishingNet("捕捉大师渔网", Config::PRICE_NET_T3, Config::DMG_NET_T3, Config::DUR_NET_T3, Config::RANGE_NET, Config::CONS_NET);
+            return new FishingNet("普通渔网", Config::PRICE_NET_T1, Config::DMG_NET_T1, Config::DUR_NET_T1, Config::RANGE_NET, Config::CONS_NET);
         }
 
         if (type == "Harpoon") {
-            if (tier == 2) return new Weapon("合金鱼叉", Config::PRICE_HARPOON_T2, Config::DMG_HARPOON_T2, Config::DUR_HARPOON_T2, Config::RANGE_HARPOON, Config::CONS_HARPOON);
-            if (tier == 3) return new Weapon("海王鱼叉", Config::PRICE_HARPOON_T3, Config::DMG_HARPOON_T3, Config::DUR_HARPOON_T3, Config::RANGE_HARPOON, Config::CONS_HARPOON);
-            return new Weapon("铁制鱼叉", Config::PRICE_HARPOON_T1, Config::DMG_HARPOON_T1, Config::DUR_HARPOON_T1, Config::RANGE_HARPOON, Config::CONS_HARPOON);
+            if (tier == 2) return new Harpoon("合金鱼叉", Config::PRICE_HARPOON_T2, Config::DMG_HARPOON_T2, Config::DUR_HARPOON_T2, Config::RANGE_HARPOON, Config::CONS_HARPOON);
+            if (tier == 3) return new Harpoon("海王鱼叉", Config::PRICE_HARPOON_T3, Config::DMG_HARPOON_T3, Config::DUR_HARPOON_T3, Config::RANGE_HARPOON, Config::CONS_HARPOON);
+            return new Harpoon("铁制鱼叉", Config::PRICE_HARPOON_T1, Config::DMG_HARPOON_T1, Config::DUR_HARPOON_T1, Config::RANGE_HARPOON, Config::CONS_HARPOON);
         }
 
         if (type == "Pistol") {
-            if (tier == 2) return new Weapon("改良手枪", Config::PRICE_PISTOL_T2, Config::DMG_PISTOL_T2, Config::DUR_PISTOL_T2, Config::RANGE_PISTOL, Config::CONS_PISTOL);
-            if (tier == 3) return new Weapon("执法者手枪", Config::PRICE_PISTOL_T3, Config::DMG_PISTOL_T3, Config::DUR_PISTOL_T3, Config::RANGE_PISTOL, Config::CONS_PISTOL);
-            return new Weapon("旧式手枪", Config::PRICE_PISTOL_T1, Config::DMG_PISTOL_T1, Config::DUR_PISTOL_T1, Config::RANGE_PISTOL, Config::CONS_PISTOL);
+            if (tier == 2) return new Pistol("改良手枪", Config::PRICE_PISTOL_T2, Config::DMG_PISTOL_T2, Config::DUR_PISTOL_T2, Config::RANGE_PISTOL, Config::CONS_PISTOL);
+            if (tier == 3) return new Pistol("执法者手枪", Config::PRICE_PISTOL_T3, Config::DMG_PISTOL_T3, Config::DUR_PISTOL_T3, Config::RANGE_PISTOL, Config::CONS_PISTOL);
+            return new Pistol("旧式手枪", Config::PRICE_PISTOL_T1, Config::DMG_PISTOL_T1, Config::DUR_PISTOL_T1, Config::RANGE_PISTOL, Config::CONS_PISTOL);
         }
 
         if (type == "Shotgun") {
-            if (tier == 2) return new Weapon("双管猎枪", Config::PRICE_SHOTGUN_T2, Config::DMG_SHOTGUN_T2, Config::DUR_SHOTGUN_T2, Config::RANGE_SHOTGUN, Config::CONS_SHOTGUN);
-            if (tier == 3) return new Weapon("破灭者猎枪", Config::PRICE_SHOTGUN_T3, Config::DMG_SHOTGUN_T3, Config::DUR_SHOTGUN_T3, Config::RANGE_SHOTGUN, Config::CONS_SHOTGUN);
-            return new Weapon("锈蚀猎枪", Config::PRICE_SHOTGUN_T1, Config::DMG_SHOTGUN_T1, Config::DUR_SHOTGUN_T1, Config::RANGE_SHOTGUN, Config::CONS_SHOTGUN);
+            if (tier == 2) return new Shotgun("双管猎枪", Config::PRICE_SHOTGUN_T2, Config::DMG_SHOTGUN_T2, Config::DUR_SHOTGUN_T2, Config::RANGE_SHOTGUN, Config::CONS_SHOTGUN);
+            if (tier == 3) return new Shotgun("破灭者猎枪", Config::PRICE_SHOTGUN_T3, Config::DMG_SHOTGUN_T3, Config::DUR_SHOTGUN_T3, Config::RANGE_SHOTGUN, Config::CONS_SHOTGUN);
+            return new Shotgun("锈蚀猎枪", Config::PRICE_SHOTGUN_T1, Config::DMG_SHOTGUN_T1, Config::DUR_SHOTGUN_T1, Config::RANGE_SHOTGUN, Config::CONS_SHOTGUN);
         }
 
         return nullptr;

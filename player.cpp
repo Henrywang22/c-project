@@ -3,6 +3,8 @@
 #include "WaveSystem.h"
 #include "WeatherSystem.h"
 
+using namespace Config;
+
 Player::Player()
     : m_worldPos(200, 300),
     m_currentSpeed(GameConfig::SHIP_BASE_SPEED),

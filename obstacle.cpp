@@ -4,6 +4,8 @@
 #include <QRandomGenerator>
 #include <QVector2D>
 
+using namespace Config;
+
 Obstacle::Obstacle(ObstacleType type, const QPointF& worldPos)
     : m_type(type), m_worldPos(worldPos), m_size(30) {}
 

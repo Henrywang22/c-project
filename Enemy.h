@@ -1,5 +1,5 @@
 #pragma once
-#include "Player.h"
+class Player;
 
 // ============================================================
 // Enemy — 所有敌人的基类

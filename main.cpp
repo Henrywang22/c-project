@@ -1,3 +1,4 @@
+#define QT_NO_DEPRECATED_WARNINGS
 #include<QApplication>
 #include"GameWindow.h"
 int main(int argc, char* argv[])

@@ -166,3 +166,22 @@ void Player::equipWeapon(Weapon* weapon) {
 
 void Player::saveState() {}
 void Player::loadState() {}
+
+void Player::reset() {
+    m_worldPos = QPointF(200, 300);
+    m_currentSpeed = GameConfig::SHIP_BASE_SPEED;
+    m_baseSpeed = GameConfig::SHIP_BASE_SPEED;
+    m_durability = maxDurability;
+    m_stamina = maxStamina;
+    m_isStunned = false;
+    m_isDead = false;
+    m_reboundActive = false;
+    m_speedReduction = 0;
+    m_keyW = m_keyA = m_keyS = m_keyD = m_keyShift = false;
+    coins = 0;
+    fishCaught = 0;
+    fishTotalValue = 0;
+    distance = 0;
+    gameSeconds = 0;
+    visionReduced = false;
+}

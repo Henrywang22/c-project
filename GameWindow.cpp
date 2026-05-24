@@ -457,70 +457,60 @@ void GameWindow::drawHUD(QPainter& p)
 
     // 耐久条
     p.drawText(10, 28, "耐久");
-    p.fillRect(50, 8, 100, 14, QColor(60, 60, 60));
-    int durW = (int)(100.0f * pl.durability() / 100);
-    p.fillRect(50, 8, durW, 14, QColor(80, 200, 80));
+    p.fillRect(50, 8, 80, 12, QColor(60, 60, 60));
+    int durW = 80 * pl.durability() / pl.maxDurability;
+    p.fillRect(50, 8, durW, 12, QColor(80, 200, 80));
 
     // 体力条
-    p.drawText(165, 28, "体力");
-    p.fillRect(205, 8, 100, 14, QColor(60, 60, 60));
-    int staW = (int)(100.0f * pl.stamina() / 100);
-    p.fillRect(205, 8, staW, 14, QColor(200, 200, 50));
+    p.drawText(145, 28, "体力");
+    p.fillRect(185, 8, 80, 12, QColor(60, 60, 60));
+    int staW = 80 * pl.stamina() / pl.maxStamina;
+    p.fillRect(185, 8, staW, 12, QColor(200, 200, 50));
 
     // 文字信息
-    p.drawText(315, 28, QString("金币:%1").arg(pl.coins));
-    p.drawText(390, 28, QString("距离:%1m").arg(pl.distance));
-    p.drawText(480, 28, QString("捕鱼:%1").arg(pl.fishCaught));
-    p.drawText(560, 28, QString("击杀:%1").arg(gm->killCount));
+    p.drawText(280, 28, QString("金:%1").arg(pl.coins));
+    p.drawText(360, 28, QString("距:%1m").arg(pl.distance));
+    p.drawText(460, 28, QString("鱼:%1").arg(pl.fishCaught));
+    p.drawText(530, 28, QString("杀:%1").arg(gm->killCount));
 
     int sec = pl.gameSeconds;
-    p.drawText(630, 28, QString("时间:%1:%2")
+    p.drawText(600, 28, QString("%1:%2")
         .arg(sec / 60, 2, 10, QChar('0'))
         .arg(sec % 60, 2, 10, QChar('0')));
 
     // 武器信息
     if (gm->currentWeapon) {
-        p.drawText(520, 28, QString("%1 耐久:%2/%3")
+        p.drawText(680, 28, QString("%1 %2/%3")
             .arg(QString::fromStdString(gm->currentWeapon->getName()))
             .arg(gm->currentWeapon->getCurrentDur())
             .arg(gm->currentWeapon->getMaxDur()));
     }
 
-    // 天气状态
+    // 天气
     switch (WeatherSystem::instance().currentWeather()) {
     case WeatherType::SUNNY:
         p.setPen(QColor(255, 220, 80));
-        p.drawText(820, 28, "☀ 晴天");
-        break;
+        p.drawText(900, 28, "晴天"); break;
     case WeatherType::FOG:
         p.setPen(QColor(200, 200, 200));
-        p.drawText(820, 28, "🌫 大雾");
-        break;
+        p.drawText(900, 28, "大雾"); break;
     case WeatherType::STORM:
         p.setPen(QColor(100, 150, 255));
-        p.drawText(820, 28, "⛈ 暴风雨");
-        break;
-    }
-
-    // 海浪速度
-    qreal waveMulti = WaveSystem::instance().currentSpeedMultiplier();
-    if (qAbs(waveMulti - 1.0) > 0.05) {
-        p.setPen(waveMulti > 1.0 ? QColor(100, 255, 100) : QColor(255, 100, 100));
-        p.drawText(920, 28, QString("海浪x%1").arg(waveMulti, 0, 'f', 1));
+        p.drawText(900, 28, "暴风雨"); break;
     }
 
     // 关卡进度条
     p.setPen(Qt::white);
-    p.drawText(1100, 18, QString("关卡 %1/5").arg(gm->stage));
-    p.fillRect(1100, 24, 160, 10, QColor(60, 60, 60));
-    int prog = std::min(160, (int)(gm->playerX() * 160 / (gm->stage * 2000)));
-    p.fillRect(1100, 24, prog, 10, QColor(100, 200, 100));
+    p.drawText(1000, 18, QString("关卡%1/5").arg(gm->stage));
+    p.fillRect(1000, 24, 120, 8, QColor(60, 60, 60));
+    int prog = std::min(120, (int)(pl.distance * 120 / (gm->stage * 2000)));
+    p.fillRect(1000, 24, prog, 8, QColor(100, 200, 100));
     p.setPen(QPen(Qt::white, 1));
-    p.drawRect(1100, 24, 160, 10);
+    p.drawRect(1000, 24, 120, 8);
 
     p.setPen(QColor(180, 180, 180));
-    p.setFont(QFont("Microsoft YaHei", 9));
-    p.drawText(1100, 40, "空格:攻击 F:捕鱼 P:商店 ESC:暂停");
+    p.setFont(QFont("Microsoft YaHei", 8));
+    p.drawText(1140, 28, "空格攻击 F捕鱼 P商店 ESC暂停");
 }
 
 // ============================================================
@@ -725,7 +715,18 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
     }
 
     if (state == STATE_DEFEAT) {
-        if (event->key() == Qt::Key_Space) {
+        if (event->key() == Qt::Key_Space || event->key() == Qt::Key_N) {
+            // 重置Player单例状态
+            Player& p = Player::instance();
+            p.coins = 0;
+            p.fishCaught = 0;
+            p.fishTotalValue = 0;
+            p.distance = 0;
+            p.gameSeconds = 0;
+            p.visionReduced = false;
+            // 调用重置接口
+            p.reset();  // 需要在Player里加这个函数
+
             delete gm;
             gm = new GameManager();
             state = STATE_MENU;
@@ -736,6 +737,9 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
 
     if (state == STATE_VICTORY) {
         if (event->key() == Qt::Key_Space) {
+            Player& p = Player::instance();
+            p.reset();  // 重置Player状态
+
             delete gm;
             gm = new GameManager();
             state = STATE_MENU;

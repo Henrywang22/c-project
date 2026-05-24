@@ -64,6 +64,8 @@ public:
     bool visionReduced = false;
     int maxDurability = 100;
     int maxStamina = 100;
+    
+    void reset();
 
 signals:
     void stateChanged();

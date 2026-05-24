@@ -166,4 +166,4 @@ private:
     int endlessReturnTimerMs = 20000;
     int naturalDecayTimerMs = 0;
     int poisonRemainingMs = 0;
-};
+}; 

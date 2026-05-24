@@ -3,6 +3,7 @@
 #include <QPainter>
 #include <QTimer>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include "GameManager.h"
 
 enum GameState
@@ -26,6 +27,7 @@ protected:
     void paintEvent(QPaintEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override; // 新增：鼠标点击事件
 
 private slots:
     void gameLoop();
@@ -65,7 +67,6 @@ private:
     void drawDefeat(QPainter& p);
     void drawVictory(QPainter& p);
 
-    void tryStartFishing();
     void updateFishing();
     void openShop();
 

@@ -7,7 +7,6 @@
 GameManager::GameManager()
 {
     ObstacleManager::instance().generateLevel(stage);
-
     for (int i = 0; i < 5; i++) spawnFish();
 }
 
@@ -37,7 +36,6 @@ void GameManager::update()
     if (gameTimer % 60 == 0) p.gameSeconds++;
     p.distance = playerX();
 
-    // 清理鱼
     fish.erase(std::remove_if(fish.begin(), fish.end(),
         [](Fish* f) {
             if (f->caught || f->escaped) { delete f; return true; }
@@ -47,14 +45,15 @@ void GameManager::update()
     int px = playerX();
     int py = playerY();
 
-    // 更新障碍物
     ObstacleManager::instance().update(m_deltaTime);
 
     for (auto f : fish)        f->update(px, py);
     for (auto s : sharks)      s->update(p);
     for (auto s : swordfishes) s->update(p);
     for (auto o : octopuses)   o->update(p);
-    if (boss && boss->isAlive()) boss->update(m_deltaTime, &p);
+
+    // 接入 B 模块真实接口，仅传入 p
+    if (boss && boss->alive) boss->update(p);
 
     cameraX = px - 640;
     if (cameraX < 0) cameraX = 0;
@@ -128,12 +127,12 @@ void GameManager::spawnBoss(int stageNum)
 {
     if (boss) { delete boss; boss = nullptr; }
     QPointF spawnPos(playerX() + 500, 360);
-    if (stageNum >= 15)
-        boss = new SirenBoss(spawnPos);
-    else if (stageNum >= 10)
-        boss = new TaliMonsterBoss(spawnPos);
+    if (stageNum >= 5)
+        boss = new SirenBoss(spawnPos.x(), spawnPos.y());
+    else if (stageNum >= 3)
+        boss = new TaliMonsterBoss(spawnPos.x(), spawnPos.y());
     else
-        boss = new FiveHeadSharkBoss(spawnPos);
+        boss = new FiveHeadSharkBoss(spawnPos.x(), spawnPos.y());
 }
 
 void GameManager::checkCollisions()
@@ -187,83 +186,104 @@ void GameManager::checkCollisions()
         }
     }
 
-    // Boss — 使用新 API
-    if (boss && boss->isAlive()) {
-        QRectF playerRect(px - 20, py - 10, 40, 20);
-        if (boss->collider().intersects(playerRect)) {
-            boss->onPlayerCollision(&p);
-        }
+    // Boss 逻辑
+    if (boss && boss->alive) {
+        // 调用 Boss.cpp 内真实的召唤小兵接口
+        boss->spawnMinions(sharks);
+    }
 
-        // 处理 Boss 的召唤请求
-        auto requests = boss->takeSpawnRequests();
-        for (const auto& req : requests) {
-            if (req.type == BossSpawnType::Shark) {
-                sharks.push_back(new Shark(
-                    (int)req.position.x(), (int)req.position.y()));
-            }
-        }
-
-        if (!boss->isAlive()) {
-            p.coins += 200;
-            killCount++;
-            stageClear = true;
-        }
+    // Boss 死亡结算
+    if (boss && !boss->alive && !stageClear) {
+        p.coins += 200;
+        killCount++;
+        stageClear = true;
     }
 }
 
-void GameManager::attackNearest(int damage, int range)
+// 采用最新的由鼠标位置决定的真实战斗判定逻辑
+void GameManager::attackAt(int targetX, int targetY, Weapon* weapon)
 {
-    Weapon* weapon = InventorySystem::instance().currentWeapon();
-    if (weapon && !weapon->canAttack()) return;
-    if (weapon && weapon->isBroken()) return;
-    int actualDamage = weapon ? weapon->fire() : damage;
+    if (!weapon || !weapon->canAttack() || weapon->isBroken()) return;
 
     int px = playerX();
     int py = playerY();
+    int range = weapon->getRange();
+    int damage = weapon->getDamage();
 
-    if (boss && boss->isAlive()) {
-        float dx = (float)(px - boss->worldPos().x());
-        float dy = (float)(py - boss->worldPos().y());
-        if (dx * dx + dy * dy < (float)(range * range)) {
-            boss->takeDamage(actualDamage);
-            return;
+    // 判断鼠标点击的位置是否超出了武器射程
+    float clickDist = (targetX - px) * (targetX - px) + (targetY - py) * (targetY - py);
+    if (clickDist > range * range) return;
+
+    bool isHit = false;
+
+    // 1. 优先判定 Boss
+    if (boss && boss->alive && !boss->isInvulnerable()) {
+        if (std::abs(boss->x - targetX) < 100 && std::abs(boss->y - targetY) < 100) {
+            boss->takeDamage(damage);
+            isHit = true;
         }
     }
 
-    Shark* nearest = nullptr;
-    float minDist = (float)(range * range);
+    // 2. 判定普通鲨鱼与剑鱼
+    if (!isHit) {
+        for (auto s : sharks) {
+            if (!s->alive) continue;
+            if (std::abs(s->x - targetX) < 40 && std::abs(s->y - targetY) < 40) {
+                s->hp -= damage;
+                if (s->hp <= 0) {
+                    s->alive = false;
+                    Player::instance().coins += s->dropValue;
+                    killCount++;
+                }
+                isHit = true; break;
+            }
+        }
+    }
+    if (!isHit) {
+        for (auto s : swordfishes) {
+            if (!s->alive) continue;
+            if (std::abs(s->x - targetX) < 40 && std::abs(s->y - targetY) < 40) {
+                s->hp -= damage;
+                if (s->hp <= 0) {
+                    s->alive = false;
+                    Player::instance().coins += s->dropValue;
+                    killCount++;
+                }
+                isHit = true; break;
+            }
+        }
+    }
+
+    // 只有命中敌人才扣除耐久 (遵循 D 模块设计)
+    if (isHit) {
+        weapon->consumeAttackDurability();
+    }
+}
+
+void GameManager::triggerShockWave()
+{
+    Player& p = Player::instance();
+    if (!p.isShockActive()) return;
+
+    QRectF shockRect = p.shockArea();
+
+    // 击退小怪
     for (auto s : sharks) {
         if (!s->alive) continue;
-        float dx = (float)(px - s->x);
-        float dy = (float)(py - s->y);
-        float dist = dx * dx + dy * dy;
-        if (dist < minDist) { minDist = dist; nearest = s; }
-    }
-
-    for (auto s : swordfishes) {
-        if (!s->alive) continue;
-        float dx = (float)(px - s->x);
-        float dy = (float)(py - s->y);
-        float dist = dx * dx + dy * dy;
-        if (dist < minDist) {
-            minDist = dist;
-            nearest = nullptr;
-            s->hp -= actualDamage;
+        if (shockRect.contains(s->x, s->y)) {
+            s->hp -= 200;
             if (s->hp <= 0) {
                 s->alive = false;
-                Player::instance().coins += s->dropValue;
-                killCount++;
+                p.coins += s->dropValue;
             }
-            return;
         }
     }
 
-    if (nearest) {
-        nearest->hp -= actualDamage;
-        if (nearest->hp <= 0) {
-            nearest->alive = false;
-            Player::instance().coins += nearest->dropValue;
-            killCount++;
+    // 眩晕 Boss 并强制打断抓取
+    if (boss && boss->alive) {
+        if (shockRect.intersects(QRectF(boss->x - 100, boss->y - 100, 200, 200))) {
+            boss->applyShockStun(800);
+            boss->forceReleasePlayer();
         }
     }
 }
@@ -300,5 +320,5 @@ void GameManager::loadSave()
 
 bool GameManager::isBossDefeated()
 {
-    return boss && !boss->isAlive();
+    return boss && !boss->alive;
 }

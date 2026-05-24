@@ -24,7 +24,12 @@ public:
     void spawnOctopus();
     void spawnBoss(int stage);
     void checkCollisions();
-    void attackNearest(int damage, int range);
+
+    // 替换原本旧版本的 attackNearest，接入最新战斗判定
+    void attackAt(int targetX, int targetY, class Weapon* weapon);
+    // 新增：触发主角 E 键震荡波效果
+    void triggerShockWave();
+
     void saveAndQuit();
     void loadSave();
     bool isBossDefeated();

@@ -201,28 +201,42 @@ void GameManager::checkCollisions()
     }
 }
 
-// 采用最新的由鼠标位置决定的真实战斗判定逻辑
-void GameManager::attackAt(int targetX, int targetY, Weapon* weapon)
+// 采用鼠标位置决定的真实战斗判定逻辑
+// 返回值：
+// true  = 命中了敌人 / Boss
+// false = 没命中任何敌人
+bool GameManager::attackAt(int targetX, int targetY, Weapon* weapon)
 {
-    if (!weapon || !weapon->canAttack() || weapon->isBroken()) return;
+    if (!weapon || !weapon->canAttack() || weapon->isBroken()) {
+        return false;
+    }
 
     // 攻击冷却检查
-    if (m_attackCooldown.elapsed() < weapon->getAttackCooldownMs()) return;
+    if (m_attackCooldown.elapsed() < weapon->getAttackCooldownMs()) {
+        return false;
+    }
 
     int px = playerX();
     int py = playerY();
+
     int range = weapon->getRange();
     int damage = weapon->getDamage();
 
-    // 判断鼠标点击的位置是否超出了武器射程
-    float clickDist = (targetX - px) * (targetX - px) + (targetY - py) * (targetY - py);
-    if (clickDist > range * range) return;
+    // 判断鼠标点击位置是否超出武器射程
+    float clickDist =
+        float((targetX - px) * (targetX - px) + (targetY - py) * (targetY - py));
+
+    if (clickDist > range * range) {
+        return false;
+    }
 
     bool isHit = false;
 
     // 1. 优先判定 Boss
     if (boss && boss->alive) {
-        if (std::abs(boss->x - targetX) < 100 && std::abs(boss->y - targetY) < 100) {
+        if (std::abs(boss->x - targetX) < 100 &&
+            std::abs(boss->y - targetY) < 100) {
+
             boss->takeDamage(damage);
             isHit = true;
         }
@@ -232,89 +246,74 @@ void GameManager::attackAt(int targetX, int targetY, Weapon* weapon)
     if (!isHit) {
         for (auto s : sharks) {
             if (!s->alive) continue;
-            if (std::abs(s->x - targetX) < 40 && std::abs(s->y - targetY) < 40) {
+
+            if (std::abs(s->x - targetX) < 40 &&
+                std::abs(s->y - targetY) < 40) {
+
                 s->takeDamage(damage);
+
                 if (!s->alive) {
                     Player::instance().coins += s->dropValue;
                     killCount++;
                 }
-                isHit = true; break;
+
+                isHit = true;
+                break;
             }
         }
     }
+
     // 3. 判定剑鱼
     if (!isHit) {
         for (auto s : swordfishes) {
             if (!s->alive) continue;
-            if (std::abs(s->x - targetX) < 40 && std::abs(s->y - targetY) < 40) {
+
+            if (std::abs(s->x - targetX) < 40 &&
+                std::abs(s->y - targetY) < 40) {
+
                 s->takeDamage(damage);
+
                 if (!s->alive) {
                     Player::instance().coins += s->dropValue;
                     killCount++;
                 }
-                isHit = true; break;
+
+                isHit = true;
+                break;
             }
         }
     }
+
     // 4. 判定墨鱼
     if (!isHit) {
         for (auto o : octopuses) {
             if (!o->alive) continue;
-            if (std::abs(o->x - targetX) < 40 && std::abs(o->y - targetY) < 40) {
+
+            if (std::abs(o->x - targetX) < 40 &&
+                std::abs(o->y - targetY) < 40) {
+
                 o->takeDamage(damage);
+
                 if (!o->alive) {
                     Player::instance().coins += o->dropValue;
                     killCount++;
                 }
-                isHit = true; break;
+
+                isHit = true;
+                break;
             }
         }
     }
 
     // 只有命中敌人才扣除耐久并进入冷却
+    // 当前版本保留你们现有设计：没命中不扣耐久，也不进入冷却。
+    // 如果后期想改成“空枪也进入冷却”，可以把 restart() 移到 isHit 判断外面。
     if (isHit) {
         weapon->consumeAttackDurability();
         m_attackCooldown.restart();
     }
-}
 
-void GameManager::triggerShockWave()
-{
-    Player& p = Player::instance();
-    if (!p.isShockActive()) return;
-
-    QRectF shockRect = p.shockArea();
-
-    // 击退所有小怪
-    for (auto s : sharks) {
-        if (!s->alive) continue;
-        if (shockRect.contains(s->x, s->y)) {
-            s->takeDamage(200);
-            if (!s->alive) p.coins += s->dropValue;
-        }
-    }
-    for (auto s : swordfishes) {
-        if (!s->alive) continue;
-        if (shockRect.contains(s->x, s->y)) {
-            s->takeDamage(200);
-            if (!s->alive) p.coins += s->dropValue;
-        }
-    }
-    for (auto o : octopuses) {
-        if (!o->alive) continue;
-        if (shockRect.contains(o->x, o->y)) {
-            o->takeDamage(200);
-            if (!o->alive) p.coins += o->dropValue;
-        }
-    }
-
-    // 眩晕 Boss 并强制打断抓取
-    if (boss && boss->alive) {
-        if (shockRect.intersects(QRectF(boss->x - 100, boss->y - 100, 200, 200))) {
-            boss->applyShockStun(800);
-            boss->forceReleasePlayer();
-        }
-    }
+    return isHit;
 }
 
 void GameManager::saveAndQuit()
@@ -330,6 +329,8 @@ void GameManager::saveAndQuit()
     data.fishTotalValue = p.fishTotalValue;
     data.gameSeconds = p.gameSeconds;
     data.isDead = false;
+    data.maxDurability = p.maxDurability;
+    data.maxStamina = p.maxStamina;
     fileManager.saveGame(data);
 }
 

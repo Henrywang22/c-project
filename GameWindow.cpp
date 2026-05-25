@@ -146,20 +146,22 @@ void GameWindow::drawIntro(QPainter& p)
     p.drawLine(200, 195, 1080, 195);
 
     QStringList lines = {
-        "【目标】  驾船向右航行，闯过 5 个关卡，击败每关的 Boss 鲨鱼",
+        "【目标】  驾船向右航行，闯过 5 个关卡，击败每关的 Boss",
         "",
-        "【移动】  WASD 移动    Shift 加速    空格键 极限冲刺/挣脱",
+        "【移动】  WASD 移动    Shift 加速（消耗体力）    空格键 闪避冲刺（短暂无敌）",
         "",
-        "【捕鱼】  鼠标左键点击鱼：靠近后用工具开始捕捉，倒计时内狂按 F 完成捕获",
-        "             黄色沙丁鱼：价值低，易捕    蓝色金枪鱼：价值中，易捕",
-        "             紫色深海鳗：价值高，难捕    金色金鱼：价值极高，极难捕",
+        "【捕鱼】  装备鱼竿/渔网/鱼叉后，鼠标左键点击鱼即可开始捕捉",
+        "             倒计时内狂按 F 完成捕获，时间过半完成则体力消耗减半",
+        "             黄色沙丁鱼：价值低，易捕      蓝色金枪鱼：价值中，易捕",
+        "             紫色深海鳗：价值高，难捕      金色金鱼：价值极高，极难捕",
         "",
-        "【战斗】  鼠标左键点击怪物进行攻击（消耗当前武器耐久）",
-        "          E键 释放震荡波（击退小怪并打断Boss，每局限2次）",
+        "【战斗】  装备武器后，鼠标左键点击敌人进行攻击（命中才扣耐久，有冷却）",
+        "          优先攻击敌人；未命中时，若武器支持捕鱼则自动尝试捕鱼",
+        "          E键 震荡波：伤害范围内所有小怪并眩晕Boss（每局限2次）",
         "",
-        "【障碍】  暗礁：碰撞损失耐久并反弹    漩涡：减少体力并降速",
+        "【障碍】  暗礁：碰撞损失耐久并反弹      漩涡：减少体力并降速",
         "",
-        "【商店】  按 B 随时打开背包，按 P 打开商店    ESC 暂停",
+        "【商店】  按 B / P 打开商店背包      ESC 暂停",
         "",
         "【存档】  按 Q 保存并退出，下次可继续上一关",
     };
@@ -812,25 +814,24 @@ void GameWindow::mousePressEvent(QMouseEvent* event)
     Weapon* weapon = InventorySystem::instance().currentWeapon();
     if (!weapon || weapon->isBroken()) return;
 
-    // 1. 尝试捕鱼 (如果没在捕鱼状态且武器支持)
+    // 1. 优先尝试攻击敌人
+    if (weapon->canAttack()) {
+        gm->attackAt(worldX, worldY, weapon);
+    }
+
+    // 2. 再尝试捕鱼 (如果没在捕鱼状态且武器支持)
     if (weapon->canFish() && !isFishing) {
         for (auto f : gm->fish) {
             if (f->caught || f->escaped) continue;
             int dx = f->x - worldX;
             int dy = f->y - worldY;
-            // 判定是否点中鱼
             if (dx * dx + dy * dy < 40 * 40 && f->isNearPlayer(gm->playerX(), gm->playerY(), weapon->getRange())) {
                 targetFish = f;
                 isFishing = true;
                 fishClickCount = 0;
                 fishTimer = 0;
-                return; // 点中就退出
+                return;
             }
         }
-    }
-
-    // 2. 尝试攻击敌人
-    if (weapon->canAttack()) {
-        gm->attackAt(worldX, worldY, weapon);
     }
 }

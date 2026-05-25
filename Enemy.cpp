@@ -12,6 +12,16 @@ Enemy::Enemy(int x, int y)
     attack(10), speed(2.0f), dropValue(50) {
 }
 
+void Enemy::takeDamage(int damage)
+{
+    if (!alive) return;
+    hp -= damage;
+    if (hp <= 0) {
+        hp = 0;
+        alive = false;
+    }
+}
+
 // ============================================================
 // Shark — 普通鲨鱼
 // ============================================================

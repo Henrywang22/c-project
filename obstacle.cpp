@@ -3,6 +3,7 @@
 #include "Player.h"
 #include <QRandomGenerator>
 #include <QVector2D>
+#include <QLineF>
 
 using namespace Config;
 

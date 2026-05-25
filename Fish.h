@@ -1,5 +1,4 @@
 #pragma once
-#include <QRect>
 
 class Fish {
 public:

@@ -143,8 +143,8 @@ void Player::updateDebuffs() {
 void Player::updateMovement(qreal deltaTime) {
     // 如果处于Dash中，无视眩晕、不受减速影响，极高速强行位移
     if (m_isDashing) {
-        qreal dashSpeed = m_baseSpeed * 4.0; // Dash速度倍率
-        m_worldPos += m_dashDirection * dashSpeed * deltaTime * 60.0f;
+        qreal dashSpeed = m_baseSpeed * 10.0;
+        m_worldPos += m_dashDirection * dashSpeed * deltaTime;
         return;
     }
 

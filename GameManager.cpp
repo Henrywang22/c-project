@@ -8,6 +8,7 @@ GameManager::GameManager()
 {
     ObstacleManager::instance().generateLevel(stage);
     for (int i = 0; i < 5; i++) spawnFish();
+    m_attackCooldown.start();
 }
 
 GameManager::~GameManager()
@@ -205,6 +206,9 @@ void GameManager::attackAt(int targetX, int targetY, Weapon* weapon)
 {
     if (!weapon || !weapon->canAttack() || weapon->isBroken()) return;
 
+    // 攻击冷却检查
+    if (m_attackCooldown.elapsed() < weapon->getAttackCooldownMs()) return;
+
     int px = playerX();
     int py = playerY();
     int range = weapon->getRange();
@@ -217,21 +221,20 @@ void GameManager::attackAt(int targetX, int targetY, Weapon* weapon)
     bool isHit = false;
 
     // 1. 优先判定 Boss
-    if (boss && boss->alive && !boss->isInvulnerable()) {
+    if (boss && boss->alive) {
         if (std::abs(boss->x - targetX) < 100 && std::abs(boss->y - targetY) < 100) {
             boss->takeDamage(damage);
             isHit = true;
         }
     }
 
-    // 2. 判定普通鲨鱼与剑鱼
+    // 2. 判定普通鲨鱼
     if (!isHit) {
         for (auto s : sharks) {
             if (!s->alive) continue;
             if (std::abs(s->x - targetX) < 40 && std::abs(s->y - targetY) < 40) {
-                s->hp -= damage;
-                if (s->hp <= 0) {
-                    s->alive = false;
+                s->takeDamage(damage);
+                if (!s->alive) {
                     Player::instance().coins += s->dropValue;
                     killCount++;
                 }
@@ -239,14 +242,28 @@ void GameManager::attackAt(int targetX, int targetY, Weapon* weapon)
             }
         }
     }
+    // 3. 判定剑鱼
     if (!isHit) {
         for (auto s : swordfishes) {
             if (!s->alive) continue;
             if (std::abs(s->x - targetX) < 40 && std::abs(s->y - targetY) < 40) {
-                s->hp -= damage;
-                if (s->hp <= 0) {
-                    s->alive = false;
+                s->takeDamage(damage);
+                if (!s->alive) {
                     Player::instance().coins += s->dropValue;
+                    killCount++;
+                }
+                isHit = true; break;
+            }
+        }
+    }
+    // 4. 判定墨鱼
+    if (!isHit) {
+        for (auto o : octopuses) {
+            if (!o->alive) continue;
+            if (std::abs(o->x - targetX) < 40 && std::abs(o->y - targetY) < 40) {
+                o->takeDamage(damage);
+                if (!o->alive) {
+                    Player::instance().coins += o->dropValue;
                     killCount++;
                 }
                 isHit = true; break;
@@ -254,9 +271,10 @@ void GameManager::attackAt(int targetX, int targetY, Weapon* weapon)
         }
     }
 
-    // 只有命中敌人才扣除耐久 (遵循 D 模块设计)
+    // 只有命中敌人才扣除耐久并进入冷却
     if (isHit) {
         weapon->consumeAttackDurability();
+        m_attackCooldown.restart();
     }
 }
 
@@ -267,15 +285,26 @@ void GameManager::triggerShockWave()
 
     QRectF shockRect = p.shockArea();
 
-    // 击退小怪
+    // 击退所有小怪
     for (auto s : sharks) {
         if (!s->alive) continue;
         if (shockRect.contains(s->x, s->y)) {
-            s->hp -= 200;
-            if (s->hp <= 0) {
-                s->alive = false;
-                p.coins += s->dropValue;
-            }
+            s->takeDamage(200);
+            if (!s->alive) p.coins += s->dropValue;
+        }
+    }
+    for (auto s : swordfishes) {
+        if (!s->alive) continue;
+        if (shockRect.contains(s->x, s->y)) {
+            s->takeDamage(200);
+            if (!s->alive) p.coins += s->dropValue;
+        }
+    }
+    for (auto o : octopuses) {
+        if (!o->alive) continue;
+        if (shockRect.contains(o->x, o->y)) {
+            o->takeDamage(200);
+            if (!o->alive) p.coins += o->dropValue;
         }
     }
 

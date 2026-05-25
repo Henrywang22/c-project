@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <QElapsedTimer>
 #include "Player.h"
 #include "Fish.h"
 #include "Obstacle.h"
@@ -58,4 +59,5 @@ public:
 private:
     int spawnTimer = 0;
     qreal m_deltaTime = 0.016;
+    QElapsedTimer m_attackCooldown;
 };

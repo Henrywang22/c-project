@@ -36,7 +36,7 @@
     <Import Project="$(QtMsBuild)\qt_defaults.props" />
   </ImportGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'" Label="QtSettings">
-    <QtInstall>msvc2022_64</QtInstall>
+    <QtInstall>qt</QtInstall>
     <QtModules>core;gui;widgets</QtModules>
     <QtBuildConfig>debug</QtBuildConfig>
   </PropertyGroup>
@@ -102,7 +102,6 @@
     <ClCompile Include="FileManager.cpp" />
     <ClCompile Include="Fish.cpp" />
     <ClCompile Include="GameManager.cpp" />
-    <ClCompile Include="GameManager.h" />
     <ClCompile Include="InventorySystem.cpp" />
     <ClCompile Include="Item.cpp" />
     <ClCompile Include="obstacle.cpp" />

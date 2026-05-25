@@ -10,6 +10,7 @@ public:
     virtual ~Enemy() {}
     virtual void update(Player& player) = 0;
     virtual bool collidesWithPlayer(int px, int py) = 0;
+    virtual void takeDamage(int damage);
 
     int x, y;
     int hp;

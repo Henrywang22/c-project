@@ -146,7 +146,7 @@ void GameWindow::drawIntro(QPainter& p)
         "【移动】  WASD 移动    Shift 加速（消耗体力）    空格键 闪避冲刺（短暂无敌）",
         "",
         "【捕鱼】  装备鱼竿/渔网/鱼叉后，鼠标左键点击鱼即可开始捕捉",
-        "             倒计时内狂按 F 完成捕获，时间过半完成则体力消耗减半",
+        "             倒计时内连续点击鼠标左键完成捕获，时间过半完成则体力消耗减半",
         "             黄色沙丁鱼：价值低，易捕      蓝色金枪鱼：价值中，易捕",
         "             紫色深海鳗：价值高，难捕      金色金鱼：价值极高，极难捕",
         "",
@@ -613,7 +613,7 @@ void GameWindow::drawFishingHUD(QPainter& p)
     case Fish::DEEPSEAEEL:     fishName = "深海鳗"; break;
     case Fish::SWORDFISH_FISH: fishName = "金鱼";   break;
     }
-    p.drawText(barX, barY - 4, QString("捕捉 %1 — 狂按F: %2/%3")
+    p.drawText(barX, barY - 4, QString("捕捉 %1 — 点击鼠标: %2/%3")
         .arg(fishName).arg(fishClickCount).arg(targetFish->catchRequired));
 
     p.fillRect(barX, barY, barW, barH, QColor(50, 50, 50));
@@ -872,10 +872,7 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
 
     if (state == STATE_PLAYING) {
         switch (event->key()) {
-        case Qt::Key_F: // 保留 F 作为捕鱼过程中的 QTE 连击键
-            if (isFishing) fishClickCount++;
-            break;
-        case Qt::Key_Space: // 新增：极限冲刺
+        case Qt::Key_Space: // 极限冲刺
             Player::instance().triggerDash();
             break;
         case Qt::Key_E: // 新增：震荡波救场
@@ -902,7 +899,7 @@ void GameWindow::keyReleaseEvent(QKeyEvent* event)
     Player::instance().keyRelease(event);
 }
 
-// 鼠标左键：统一接管捕鱼触发与武器射击
+// 鼠标左键：统一接管捕鱼与武器射击
 void GameWindow::mousePressEvent(QMouseEvent* event)
 {
     if (state != STATE_PLAYING) return;
@@ -911,6 +908,16 @@ void GameWindow::mousePressEvent(QMouseEvent* event)
     QPointF clickPos = event->position();
     int worldX = (int)clickPos.x() + gm->cameraX;
     int worldY = (int)clickPos.y();
+
+    // 0. 正在捕鱼中：点击目标鱼附近视为 QTE 连击
+    if (isFishing && targetFish) {
+        int dx = targetFish->x - worldX;
+        int dy = targetFish->y - worldY;
+        if (dx * dx + dy * dy < 40 * 40) {
+            fishClickCount++;
+            return;
+        }
+    }
 
     Weapon* weapon = InventorySystem::instance().currentWeapon();
     if (!weapon || weapon->isBroken()) return;

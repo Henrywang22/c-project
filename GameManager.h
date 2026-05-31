@@ -27,7 +27,7 @@ public:
     void checkCollisions();
 
     // 替换原本旧版本的 attackNearest，接入最新战斗判定
-    void attackAt(int targetX, int targetY, class Weapon* weapon);
+    bool attackAt(int targetX, int targetY, class Weapon* weapon);
     // 新增：触发主角 E 键震荡波效果
     void triggerShockWave();
 

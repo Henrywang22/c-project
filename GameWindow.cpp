@@ -80,7 +80,9 @@ void GameWindow::gameLoop()
                 Player::instance().fishCaught,
                 Player::instance().fishTotalValue,
                 Player::instance().gameSeconds,
-                false
+                false,
+                Player::instance().maxDurability,
+                Player::instance().maxStamina
                 });
 
             openShop();
@@ -698,35 +700,62 @@ void GameWindow::drawVictory(QPainter& p)
 void GameWindow::updateFishing()
 {
     if (!isFishing || !targetFish) return;
+
     fishTimer++;
 
+    Weapon* weapon = InventorySystem::instance().currentWeapon();
+
+    // 捕捉超时：鱼逃跑，并按 Fail 结果消耗捕鱼工具耐久
     if (fishTimer >= targetFish->catchTimeLimit) {
+        if (weapon && weapon->canFish()) {
+            weapon->consumeFishingDurability(Config::FishingResult::Fail);
+        }
+
         targetFish->vx *= 3;
         targetFish->vy *= 3;
         targetFish->escaped = true;
+
         isFishing = false;
         targetFish = nullptr;
+        fishClickCount = 0;
+        fishTimer = 0;
+
         return;
     }
 
+    // 达到所需点击次数：捕鱼成功
     if (fishClickCount >= targetFish->catchRequired) {
         targetFish->caught = true;
+
         Player& pl = Player::instance();
+
         pl.coins += targetFish->value;
         pl.fishCaught++;
         pl.fishTotalValue += targetFish->value;
 
-        // 完美捕获：时间剩余超过一半，体力消耗减半
-        int cost = (fishTimer < targetFish->catchTimeLimit / 2)
+        // 时间剩余超过一半，视为 Perfect；否则 Normal
+        Config::FishingResult result =
+            (fishTimer < targetFish->catchTimeLimit / 2)
+            ? Config::FishingResult::Perfect
+            : Config::FishingResult::Normal;
+
+        // 体力消耗：Perfect 减半，Normal 正常
+        int cost =
+            (result == Config::FishingResult::Perfect)
             ? targetFish->staminaCost / 2
             : targetFish->staminaCost;
 
         pl.consumeStamina(cost);
-        Weapon* weapon = InventorySystem::instance().currentWeapon();
-        if (weapon) weapon->consumeFishingDurability(Config::FishingResult::Perfect);
+
+        // 捕鱼工具耐久消耗：根据 Perfect / Normal 区分
+        if (weapon && weapon->canFish()) {
+            weapon->consumeFishingDurability(result);
+        }
 
         isFishing = false;
         targetFish = nullptr;
+        fishClickCount = 0;
+        fishTimer = 0;
     }
 }
 
@@ -744,27 +773,57 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
     }
 
     if (state == STATE_MENU) {
-        if (event->key() == Qt::Key_N) {
-            gm->fileManager.deleteSave();
-            state = STATE_PLAYING;
-        }
-        else if (event->key() == Qt::Key_C && gm->fileManager.hasSave()) {
-            gm->loadSave();
-            state = STATE_PLAYING;
-        }
-        return;
+    if (event->key() == Qt::Key_N) {
+        gm->fileManager.deleteSave();
+
+        Player::instance().reset();
+
+        InventorySystem::instance().clearAll();
+        InventorySystem::instance().initDefaultWeaponIfNeeded();
+
+        delete gm;
+        gm = new GameManager();
+
+        isFishing = false;
+        targetFish = nullptr;
+        fishClickCount = 0;
+        fishTimer = 0;
+
+        state = STATE_PLAYING;
     }
+    else if (event->key() == Qt::Key_C && gm->fileManager.hasSave()) {
+        gm->loadSave();
+
+        isFishing = false;
+        targetFish = nullptr;
+        fishClickCount = 0;
+        fishTimer = 0;
+
+        state = STATE_PLAYING;
+    }
+    return;
+}
 
     if (state == STATE_DEFEAT || state == STATE_VICTORY) {
-        if (event->key() == Qt::Key_Space || event->key() == Qt::Key_N) {
-            Player::instance().reset();
-            delete gm;
-            gm = new GameManager();
-            state = STATE_MENU;
-            update();
-        }
-        return;
+    if (event->key() == Qt::Key_Space || event->key() == Qt::Key_N) {
+        Player::instance().reset();
+
+        InventorySystem::instance().clearAll();
+        InventorySystem::instance().initDefaultWeaponIfNeeded();
+
+        delete gm;
+        gm = new GameManager();
+
+        isFishing = false;
+        targetFish = nullptr;
+        fishClickCount = 0;
+        fishTimer = 0;
+
+        state = STATE_MENU;
+        update();
     }
+    return;
+}
 
     if (state == STATE_PAUSED) {
         if (event->key() == Qt::Key_Escape) state = STATE_PLAYING;
@@ -815,17 +874,34 @@ void GameWindow::mousePressEvent(QMouseEvent* event)
     if (!weapon || weapon->isBroken()) return;
 
     // 1. 优先尝试攻击敌人
+    // 如果命中敌人，则本次点击结束，不再进入捕鱼逻辑。
+    bool hitEnemy = false;
+
     if (weapon->canAttack()) {
-        gm->attackAt(worldX, worldY, weapon);
+        hitEnemy = gm->attackAt(worldX, worldY, weapon);
     }
 
-    // 2. 再尝试捕鱼 (如果没在捕鱼状态且武器支持)
+    if (hitEnemy) {
+        return;
+    }
+
+    // 2. 如果没有命中敌人，再尝试捕鱼
+    // 这样可以避免鱼叉同一次点击既打中敌人又开始捕鱼。
     if (weapon->canFish() && !isFishing) {
         for (auto f : gm->fish) {
             if (f->caught || f->escaped) continue;
+
             int dx = f->x - worldX;
             int dy = f->y - worldY;
-            if (dx * dx + dy * dy < 40 * 40 && f->isNearPlayer(gm->playerX(), gm->playerY(), weapon->getRange())) {
+
+            bool clickedFish = (dx * dx + dy * dy < 40 * 40);
+            bool fishInToolRange = f->isNearPlayer(
+                gm->playerX(),
+                gm->playerY(),
+                weapon->getRange()
+            );
+
+            if (clickedFish && fishInToolRange) {
                 targetFish = f;
                 isFishing = true;
                 fishClickCount = 0;

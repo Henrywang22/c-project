@@ -16,8 +16,7 @@ public:
     explicit Obstacle(ObstacleType type, const QPointF& worldPos);
     virtual ~Obstacle() = default;
 
-    // ========== 修复：把update()标记为const ==========
-    virtual void update(qreal deltaTime) const;
+    virtual void update(qreal deltaTime);
     virtual QRectF collider() const;
     virtual void onPlayerCollision(class Player* player);
     ObstacleType type() const { return m_type; }
@@ -42,15 +41,13 @@ class Whirlpool : public Obstacle
 {
 public:
     explicit Whirlpool(const QPointF& worldPos);
-    // ========== 修复：把update()标记为const ==========
-    void update(qreal deltaTime) const override;
+    void update(qreal deltaTime) override;
     void onPlayerCollision(Player* player) override;
     qreal currentSpeedReduction() const { return m_speedReduction; }
 
 private:
-    // ========== 修复：把成员变量标记为mutable，允许在const函数里修改 ==========
-    mutable qreal m_speedReduction;
-    mutable qreal m_timeInWhirlpool;
+    qreal m_speedReduction;
+    qreal m_timeInWhirlpool;
 };
 
 class ObstacleManager

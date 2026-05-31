@@ -10,7 +10,7 @@ using namespace Config;
 Obstacle::Obstacle(ObstacleType type, const QPointF& worldPos)
     : m_type(type), m_worldPos(worldPos), m_size(30) {}
 
-void Obstacle::update(qreal deltaTime) const { Q_UNUSED(deltaTime); }
+void Obstacle::update(qreal deltaTime) { Q_UNUSED(deltaTime); }
 
 QRectF Obstacle::collider() const {
     return {m_worldPos.x() - m_size/2.0f, m_worldPos.y() - m_size/2.0f,
@@ -43,7 +43,7 @@ void Reef::onPlayerCollision(Player* player) {
 Whirlpool::Whirlpool(const QPointF& worldPos)
     : Obstacle(ObstacleType::WHIRLPOOL, worldPos), m_speedReduction(0), m_timeInWhirlpool(0) {}
 
-void Whirlpool::update(qreal deltaTime) const { Q_UNUSED(deltaTime); }
+void Whirlpool::update(qreal deltaTime) { Q_UNUSED(deltaTime); }
 
 void Whirlpool::onPlayerCollision(Player* player) {
     if (!player) return;

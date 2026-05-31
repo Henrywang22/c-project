@@ -89,10 +89,6 @@ public:
     Weapon* getCurrentWeapon();
     void equipWeapon(Weapon* weapon);
 
-    // 存档接口
-    void saveState();
-    void loadState();
-
     // 游戏进度数据
     int coins = 0;
     int fishCaught = 0;

@@ -33,24 +33,27 @@ Shark::Shark(int x, int y) : Enemy(x, y)
     attack = 10;
     speed = 2.0f;
     dropValue = 30;
+    posX = (float)x;
+    posY = (float)y;
 }
 
 void Shark::update(Player& player)
 {
     if (!alive) return;
 
-    // 直接追踪玩家
-    float dx = (float)(player.worldPos().x() - x);
-    float dy = (float)(player.worldPos().y() - y);
+    float dx = (float)(player.worldPos().x() - posX);
+    float dy = (float)(player.worldPos().y() - posY);
     float dist = sqrt(dx * dx + dy * dy);
 
     if (dist > 0) {
-        x += (int)(speed * dx / dist);
-        y += (int)(speed * dy / dist);
+        posX += speed * dx / dist;
+        posY += speed * dy / dist;
+        x = (int)posX;
+        y = (int)posY;
     }
 
-    if (y < 60)  y = 60;
-    if (y > 700) y = 700;
+    if (posY < 60)  { posY = 60;  y = 60; }
+    if (posY > 700) { posY = 700; y = 700; }
 }
 
 bool Shark::collidesWithPlayer(int px, int py)

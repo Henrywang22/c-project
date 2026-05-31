@@ -392,5 +392,3 @@ void Player::upgradeMaxStamina(int amount) {
 
 Weapon* Player::getCurrentWeapon() { return m_currentWeapon; }
 void Player::equipWeapon(Weapon* weapon) { m_currentWeapon = weapon; }
-void Player::saveState() {}
-void Player::loadState() {}

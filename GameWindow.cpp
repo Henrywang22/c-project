@@ -1,5 +1,5 @@
 #include "GameWindow.h"
-#include "ShopDialog.h"
+#include "Shopdialog.h"
 #include "Obstacle.h"
 #include "InventorySystem.h"
 #include <QPainter>
@@ -86,7 +86,6 @@ void GameWindow::gameLoop()
                 });
 
             openShop();
-            const QList<Obstacle*>& obstacleList = ObstacleManager::instance().obstacles();
             ObstacleManager::instance().clear();
             for (auto s : gm->sharks) delete s;
             gm->sharks.clear();

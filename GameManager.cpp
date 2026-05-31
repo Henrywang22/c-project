@@ -76,7 +76,6 @@ void GameManager::update()
 
     checkCollisions();
 
-    if (p.durability() <= 0) gameOver = true;
     if (stage > 5) victory = true;
 }
 
@@ -354,5 +353,47 @@ bool GameManager::isBossDefeated()
 }
 
 void GameManager::triggerShockWave() {
-    // 实现内容
+    Player& p = Player::instance();
+    QRectF area = p.shockArea();
+
+    // 对小怪造成范围伤害
+    auto damageInArea = [&](int ex, int ey) -> bool {
+        return area.contains(QPointF(ex, ey));
+    };
+
+    for (auto s : sharks) {
+        if (!s->alive) continue;
+        if (damageInArea(s->x, s->y)) {
+            s->takeDamage(50);
+            if (!s->alive) {
+                p.coins += s->dropValue;
+                killCount++;
+            }
+        }
+    }
+    for (auto s : swordfishes) {
+        if (!s->alive) continue;
+        if (damageInArea(s->x, s->y)) {
+            s->takeDamage(50);
+            if (!s->alive) {
+                p.coins += s->dropValue;
+                killCount++;
+            }
+        }
+    }
+    for (auto o : octopuses) {
+        if (!o->alive) continue;
+        if (damageInArea(o->x, o->y)) {
+            o->takeDamage(50);
+            if (!o->alive) {
+                p.coins += o->dropValue;
+                killCount++;
+            }
+        }
+    }
+
+    // 眩晕Boss
+    if (boss && boss->alive && area.contains(QPointF(boss->x, boss->y))) {
+        boss->applyShockStun(3000);
+    }
 }

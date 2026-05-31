@@ -31,6 +31,9 @@ public:
     Shark(int x, int y);
     void update(Player& player) override;
     bool collidesWithPlayer(int px, int py) override;
+
+private:
+    float posX, posY;
 };
 
 // ============================================================

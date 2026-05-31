@@ -392,6 +392,9 @@ void TaliMonsterBoss::finishCloneExplosion(Player& player)
     if (circleHitsPlayer(clonePos, 170, player)) {
         player.maxDurability = std::max(1, int(player.maxDurability * 0.8f));
         player.maxStamina = std::max(1, int(player.maxStamina * 0.9f));
+        // 上限降低后同步 clamp 当前值，防止超出新上限
+        player.restoreDurability(0);
+        player.restoreStamina(0);
     }
     invulnerable = false;
     phase2InvulnerabilityEnded = true;

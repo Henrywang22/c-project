@@ -265,7 +265,7 @@ namespace Config {
     // 保留原来的 inline namespace，避免影响其他成员文件。
     // ==========================================
 
-    inline namespace GameConfig {
+    namespace GameConfig {
         const qreal SHIP_BASE_SPEED = 150.0;
         const qreal SHIP_BOOST_SPEED = 250.0;
         const int   MAX_STAMINA = 100;

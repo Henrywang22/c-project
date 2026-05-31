@@ -352,3 +352,7 @@ bool GameManager::isBossDefeated()
 {
     return boss && !boss->alive;
 }
+
+void GameManager::triggerShockWave() {
+    // 实现内容
+}

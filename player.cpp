@@ -63,6 +63,42 @@ void Player::reset() {
     visionReduced = false;
 }
 
+void Player::restoreSavedProgress(
+    int savedDistance,
+    int savedDurability,
+    int savedStamina,
+    int savedMaxDurability,
+    int savedMaxStamina,
+    qreal savedBaseSpeed
+) {
+    maxDurability = qMax(1, savedMaxDurability);
+    maxStamina = qMax(1, savedMaxStamina);
+
+    m_baseSpeed = savedBaseSpeed > 0
+        ? savedBaseSpeed
+        : GameConfig::SHIP_BASE_SPEED;
+    m_currentSpeed = m_baseSpeed;
+
+    m_durability = qBound(1, savedDurability, maxDurability);
+    m_stamina = qBound(0, savedStamina, maxStamina);
+    m_staminaPenalty = 0;
+
+    int clampedDistance = qBound(0, savedDistance, GameConfig::RIGHT_BORDER);
+    m_worldPos = QPointF(clampedDistance, 300);
+    distance = clampedDistance;
+
+    m_isDead = false;
+    m_isStunned = false;
+    m_reboundActive = false;
+    m_speedReduction = 0;
+    m_isDashing = false;
+    m_isShockActive = false;
+    m_isInputReversed = false;
+    m_noRangedAttack = false;
+    m_isPoisoned = false;
+    visionReduced = false;
+}
+
 void Player::keyPress(QKeyEvent* e) {
     if (e->isAutoRepeat()) return;
     switch (e->key()) {
@@ -148,6 +184,11 @@ void Player::updateMovement(qreal deltaTime) {
         return;
     }
 
+    if (m_reboundActive) {
+        m_worldPos += m_reboundDir * deltaTime * 200.0f;
+        m_reboundActive = false;
+    }
+
     if (m_isStunned) return;
 
     qreal targetBaseSpeed = m_baseSpeed;
@@ -183,11 +224,6 @@ void Player::updateMovement(qreal deltaTime) {
         QVector2D dirVec(moveDir);
         dirVec.normalize();
         m_worldPos += dirVec.toPointF() * m_currentSpeed * deltaTime;
-    }
-
-    if (m_reboundActive) {
-        m_worldPos += m_reboundDir * deltaTime * 200.0f;
-        m_reboundActive = false;
     }
 
     resetSpeedReduction();

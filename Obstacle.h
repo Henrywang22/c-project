@@ -48,6 +48,7 @@ public:
 private:
     qreal m_speedReduction;
     qreal m_timeInWhirlpool;
+    bool m_touchedThisFrame;
 };
 
 class ObstacleManager

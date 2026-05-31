@@ -1,6 +1,7 @@
 #include "GameConfig.h"
 #include "Obstacle.h"
 #include "Player.h"
+#include "WeatherSystem.h"
 #include <QRandomGenerator>
 #include <QVector2D>
 #include <QLineF>
@@ -20,7 +21,9 @@ QRectF Obstacle::collider() const {
 void Obstacle::onPlayerCollision(Player* player) { Q_UNUSED(player); }
 
 bool Obstacle::isVisible(const QPointF& playerPos) const {
-    return QLineF(m_worldPos, playerPos).length() < GameConfig::VISION_RANGE;
+    qreal visionRange =
+        GameConfig::VISION_RANGE * WeatherSystem::instance().currentVisionMultiplier();
+    return QLineF(m_worldPos, playerPos).length() < visionRange;
 }
 
 Reef::Reef(const QPointF& worldPos) : Obstacle(ObstacleType::REEF, worldPos) {
@@ -41,12 +44,24 @@ void Reef::onPlayerCollision(Player* player) {
 }
 
 Whirlpool::Whirlpool(const QPointF& worldPos)
-    : Obstacle(ObstacleType::WHIRLPOOL, worldPos), m_speedReduction(0), m_timeInWhirlpool(0) {}
+    : Obstacle(ObstacleType::WHIRLPOOL, worldPos),
+      m_speedReduction(0),
+      m_timeInWhirlpool(0),
+      m_touchedThisFrame(false) {}
 
-void Whirlpool::update(qreal deltaTime) { Q_UNUSED(deltaTime); }
+void Whirlpool::update(qreal deltaTime) {
+    if (!m_touchedThisFrame) {
+        m_timeInWhirlpool = qMax<qreal>(0.0, m_timeInWhirlpool - deltaTime);
+        m_speedReduction =
+            qMin(m_timeInWhirlpool * 0.5f, static_cast<qreal>(GameConfig::WHIRLPOOL_MAX_SPEED_REDUCTION));
+    }
+
+    m_touchedThisFrame = false;
+}
 
 void Whirlpool::onPlayerCollision(Player* player) {
     if (!player) return;
+    m_touchedThisFrame = true;
     m_timeInWhirlpool += 0.016f;
     m_speedReduction = qMin(m_timeInWhirlpool * 0.5f, static_cast<qreal>(GameConfig::WHIRLPOOL_MAX_SPEED_REDUCTION));
     player->applySpeedReduction(m_speedReduction);

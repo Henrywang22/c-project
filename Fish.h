@@ -27,6 +27,7 @@ public:
     int fleeCooldown = 0;
 
 protected:
+    float posX, posY;
     int moveTimer = 0;
     void changeDirection();
 };

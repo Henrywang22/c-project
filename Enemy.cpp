@@ -108,7 +108,7 @@ void Swordfish::update(Player& player)
         }
 
         // 发现玩家（距离小于200）时进入蓄力状态
-        if (dist < 200) {
+        if (dist > 0.001f && dist < 200) {
             state = WINDUP;
             windupTimer = 0;
             chargeVx = dx / dist * 8.0f;

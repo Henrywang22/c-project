@@ -27,6 +27,9 @@ struct SaveData {
     // 预留：后期联调 Player 时可以恢复这些数值
     int maxDurability;
     int maxStamina;
+
+    // 船速升级后的基础速度
+    float baseSpeed;
 };
 
 // ============================================================

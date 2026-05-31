@@ -15,8 +15,10 @@
 
 namespace {
 
-    const char SAVE_MAGIC[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '2', '\0' };
-    const int SAVE_VERSION = 2;
+    const char SAVE_MAGIC[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '3', '\0' };
+    const char SAVE_MAGIC_V2[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '2', '\0' };
+    const int SAVE_VERSION = 3;
+    const int SAVE_VERSION_V2 = 2;
 
     const int MAX_SAVE_WEAPONS = Config::MAX_WEAPON_BACKPACK;
 
@@ -49,10 +51,50 @@ namespace {
         WeaponSaveBlock weapons[MAX_SAVE_WEAPONS];
     };
 
-    struct FullSaveDataV2 {
+    struct SaveDataV2Core {
+        int stage;
+        int distance;
+        int coins;
+        int durability;
+        int stamina;
+        int fishCaught;
+        int fishTotalValue;
+        int gameSeconds;
+        bool isDead;
+        int maxDurability;
+        int maxStamina;
+    };
+
+    struct FullSaveData {
         SaveData core;
         InventorySaveBlock inventory;
     };
+
+    struct FullSaveDataV2 {
+        SaveDataV2Core core;
+        InventorySaveBlock inventory;
+    };
+
+    SaveData makeSaveDataFromV2(const SaveDataV2Core& oldCore)
+    {
+        SaveData data;
+        std::memset(&data, 0, sizeof(SaveData));
+
+        data.stage = oldCore.stage;
+        data.distance = oldCore.distance;
+        data.coins = oldCore.coins;
+        data.durability = oldCore.durability;
+        data.stamina = oldCore.stamina;
+        data.fishCaught = oldCore.fishCaught;
+        data.fishTotalValue = oldCore.fishTotalValue;
+        data.gameSeconds = oldCore.gameSeconds;
+        data.isDead = oldCore.isDead;
+        data.maxDurability = oldCore.maxDurability;
+        data.maxStamina = oldCore.maxStamina;
+        data.baseSpeed = static_cast<float>(Config::GameConfig::SHIP_BASE_SPEED);
+
+        return data;
+    }
 
     void copyStringToCharArray(char* dest, int destSize, const char* src)
     {
@@ -193,7 +235,7 @@ void FileManager::saveGame(const SaveData& data)
     std::memcpy(header.magic, SAVE_MAGIC, sizeof(SAVE_MAGIC));
     header.version = SAVE_VERSION;
 
-    FullSaveDataV2 fullSave;
+    FullSaveData fullSave;
     std::memset(&fullSave, 0, sizeof(fullSave));
 
     fullSave.core = data;
@@ -212,8 +254,9 @@ void FileManager::saveGame(const SaveData& data)
 // ============================================================
 // 读取游戏
 // 兼容旧版 save.dat：
-// 1. 如果识别到 YUTUSV2，就读取完整背包。
-// 2. 如果不是新格式，就按旧 SaveData 读取，并初始化默认鱼竿。
+// 1. 如果识别到 YUTUSV3，就读取完整背包和船速。
+// 2. 如果识别到 YUTUSV2，就读取完整背包，并用默认船速补齐。
+// 3. 如果不是新格式，就按旧 SaveData 读取，并初始化默认鱼竿。
 // ============================================================
 
 bool FileManager::loadGame(SaveData& data)
@@ -234,8 +277,13 @@ bool FileManager::loadGame(SaveData& data)
         && std::memcmp(header.magic, SAVE_MAGIC, sizeof(SAVE_MAGIC)) == 0
         && header.version == SAVE_VERSION;
 
+    bool isV2Save =
+        f.good()
+        && std::memcmp(header.magic, SAVE_MAGIC_V2, sizeof(SAVE_MAGIC_V2)) == 0
+        && header.version == SAVE_VERSION_V2;
+
     if (isNewSave) {
-        FullSaveDataV2 fullSave;
+        FullSaveData fullSave;
         std::memset(&fullSave, 0, sizeof(fullSave));
 
         f.read(reinterpret_cast<char*>(&fullSave), sizeof(fullSave));
@@ -250,20 +298,36 @@ bool FileManager::loadGame(SaveData& data)
         return true;
     }
 
+    if (isV2Save) {
+        FullSaveDataV2 oldSave;
+        std::memset(&oldSave, 0, sizeof(oldSave));
+
+        f.read(reinterpret_cast<char*>(&oldSave), sizeof(oldSave));
+
+        if (!f.good()) {
+            return false;
+        }
+
+        data = makeSaveDataFromV2(oldSave.core);
+        loadInventoryFromSaveBlock(oldSave.inventory);
+
+        return true;
+    }
+
     // 旧版存档兼容
     f.clear();
     f.seekg(0, std::ios::beg);
 
-    SaveData oldData;
+    SaveDataV2Core oldData;
     std::memset(&oldData, 0, sizeof(oldData));
 
-    f.read(reinterpret_cast<char*>(&oldData), sizeof(SaveData));
+    f.read(reinterpret_cast<char*>(&oldData), sizeof(SaveDataV2Core));
 
     if (!f.good()) {
         return false;
     }
 
-    data = oldData;
+    data = makeSaveDataFromV2(oldData);
 
     // 旧存档没有背包信息，给默认鱼竿
     InventorySystem::instance().clearAll();

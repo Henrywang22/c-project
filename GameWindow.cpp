@@ -71,31 +71,25 @@ void GameWindow::gameLoop()
         if (gm->stageClear) {
             timer->stop();
 
-            gm->fileManager.saveGame({
-                gm->stage,
-                gm->playerX(),
-                Player::instance().coins,
-                Player::instance().durability(),
-                Player::instance().stamina(),
-                Player::instance().fishCaught,
-                Player::instance().fishTotalValue,
-                Player::instance().gameSeconds,
-                false,
-                Player::instance().maxDurability,
-                Player::instance().maxStamina
-                });
-
-            openShop();
-            ObstacleManager::instance().clear();
-            for (auto s : gm->sharks) delete s;
-            gm->sharks.clear();
-
-            gm->stage++;
-            gm->bossSpawned = false;
-            gm->stageClear = false;
             isFishing = false;
             targetFish = nullptr;
-            gm->spawnObstacles();
+            fishClickCount = 0;
+            fishTimer = 0;
+
+            if (gm->stage >= 5) {
+                gm->stageClear = false;
+                gm->clearStageEntities();
+                gm->victory = true;
+                state = STATE_VICTORY;
+                timer->start(16);
+                update();
+                return;
+            }
+
+            gm->stage++;
+            openShop();
+            gm->resetStageRuntime();
+            gm->saveAndQuit();
 
             timer->start(16);
             return;
@@ -234,6 +228,10 @@ void GameWindow::drawGame(QPainter& p)
     QColor overlay = WeatherSystem::instance().overlayColor();
     if (overlay.alpha() > 0)
         p.fillRect(0, 0, 1280, 720, overlay);
+
+    if (Player::instance().visionReduced) {
+        p.fillRect(0, 44, 1280, 676, QColor(0, 0, 0, 125));
+    }
 
     if (state == STATE_PAUSED) drawPaused(p);
 }
@@ -445,6 +443,24 @@ void GameWindow::drawSharks(QPainter& p)
 
     // Boss
     if (gm->boss && gm->boss->alive) {
+        QPointF secondaryPos;
+        int secondaryHp = 0;
+        int secondaryMaxHp = 0;
+        if (gm->boss->getSecondaryTarget(secondaryPos, secondaryHp, secondaryMaxHp)) {
+            int cloneX = (int)secondaryPos.x() - gm->cameraX;
+            int cloneY = (int)secondaryPos.y();
+            if (cloneX >= -60 && cloneX <= 1340) {
+                p.setBrush(QColor(120, 40, 180));
+                p.setPen(QPen(QColor(230, 180, 255), 2));
+                p.drawEllipse(cloneX - 28, cloneY - 22, 56, 44);
+                p.fillRect(cloneX - 28, cloneY - 34, 56, 6, QColor(60, 60, 60));
+                int cloneBar = secondaryMaxHp > 0
+                    ? (int)(56.0f * secondaryHp / secondaryMaxHp)
+                    : 0;
+                p.fillRect(cloneX - 28, cloneY - 34, cloneBar, 6, QColor(220, 50, 50));
+            }
+        }
+
         int screenX = (int)gm->boss->x - gm->cameraX;
         int screenY = (int)gm->boss->y;
         if (screenX >= -50 && screenX <= 1330) {
@@ -728,9 +744,32 @@ void GameWindow::updateFishing()
 
         Player& pl = Player::instance();
 
-        pl.coins += targetFish->value;
+        int fishValue = (int)(targetFish->value * WeatherSystem::instance().currentFishValueBonus());
+        pl.coins += fishValue;
         pl.fishCaught++;
-        pl.fishTotalValue += targetFish->value;
+        pl.fishTotalValue += fishValue;
+
+        const char* fishNameForLog = "未知鱼";
+        int fishId = 0;
+        switch (targetFish->type) {
+        case Fish::SARDINE:
+            fishNameForLog = "沙丁鱼";
+            fishId = 0;
+            break;
+        case Fish::TUNA:
+            fishNameForLog = "金枪鱼";
+            fishId = 1;
+            break;
+        case Fish::DEEPSEAEEL:
+            fishNameForLog = "深海鳗";
+            fishId = 2;
+            break;
+        case Fish::SWORDFISH_FISH:
+            fishNameForLog = "金鱼";
+            fishId = 3;
+            break;
+        }
+        gm->fileManager.markFishDiscovered(fishId, fishNameForLog);
 
         // 时间剩余超过一半，视为 Perfect；否则 Normal
         Config::FishingResult result =
@@ -745,6 +784,7 @@ void GameWindow::updateFishing()
             : targetFish->staminaCost;
 
         pl.consumeStamina(cost);
+        pl.restoreStamina(targetFish->staminaGain);
 
         // 捕鱼工具耐久消耗：根据 Perfect / Normal 区分
         if (weapon && weapon->canFish()) {
@@ -839,8 +879,10 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
             Player::instance().triggerDash();
             break;
         case Qt::Key_E: // 新增：震荡波救场
-            Player::instance().triggerShock();
-            gm->triggerShockWave();
+            if (Player::instance().canShock()) {
+                Player::instance().triggerShock();
+                gm->triggerShockWave();
+            }
             break;
         case Qt::Key_P:
         case Qt::Key_B: // 新增：快捷键打开背包商店
@@ -866,8 +908,9 @@ void GameWindow::mousePressEvent(QMouseEvent* event)
     if (state != STATE_PLAYING) return;
     if (event->button() != Qt::LeftButton) return;
 
-    int worldX = event->x() + gm->cameraX;
-    int worldY = event->y();
+    QPointF clickPos = event->position();
+    int worldX = (int)clickPos.x() + gm->cameraX;
+    int worldY = (int)clickPos.y();
 
     Weapon* weapon = InventorySystem::instance().currentWeapon();
     if (!weapon || weapon->isBroken()) return;

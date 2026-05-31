@@ -48,10 +48,12 @@ public:
 
     void update(Player& player) override;
     bool collidesWithPlayer(int px, int py) override;
+    virtual bool canBeHitAt(int targetX, int targetY) const;
     virtual void takeDamage(int damage);
     virtual void applyShockStun(int durationMs);
     virtual void forceReleasePlayer();
     virtual bool isInvulnerable() const { return invulnerable; }
+    virtual bool getSecondaryTarget(QPointF& outPos, int& outHp, int& outMaxHp) const;
 
     void spawnMinions(std::vector<Shark*>& sharks);
     const std::vector<BossHazard>& getHazards() const { return hazards; }
@@ -105,8 +107,10 @@ private:
 class TaliMonsterBoss : public Boss {
 public:
     TaliMonsterBoss(int x, int y);
+    bool canBeHitAt(int targetX, int targetY) const override;
     void takeDamage(int damage) override;
     void forceReleasePlayer() override;
+    bool getSecondaryTarget(QPointF& outPos, int& outHp, int& outMaxHp) const override;
 
 protected:
     void updateBoss(Player& player) override;
@@ -138,6 +142,7 @@ private:
 class SirenBoss : public Boss {
 public:
     SirenBoss(int x, int y);
+    bool canBeHitAt(int targetX, int targetY) const override;
     void takeDamage(int damage) override;
 
 protected:
@@ -166,4 +171,4 @@ private:
     int endlessReturnTimerMs = 20000;
     int naturalDecayTimerMs = 0;
     int poisonRemainingMs = 0;
-}; 
+};

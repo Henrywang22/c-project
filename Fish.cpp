@@ -1,4 +1,5 @@
 #include "Fish.h"
+#include "GameConfig.h"
 #include <cstdlib>
 #include <cmath>
 
@@ -7,7 +8,8 @@
 // ============================================================
 
 Fish::Fish(int x, int y, Type type)
-    : x(x), y(y), type(type), maxLife(900 + rand() % 300)
+    : x(x), y(y), type(type), maxLife(900 + rand() % 300),
+      posX((float)x), posY((float)y)
 {
     value = 0;
     staminaGain = 0;
@@ -41,11 +43,13 @@ void Fish::update(int playerX, int playerY)
     lifeTimer++;
     moveTimer++;
     if (lifeTimer >= maxLife) { escaped = true; return; }
-    x += (int)vx;
-    y += (int)vy;
-    if (x < 0 || x > 5000) { escaped = true; return; }
-    if (y < 60) { y = 60;  vy = abs(vy); }
-    if (y > 700) { y = 700; vy = -abs(vy); }
+    posX += vx;
+    posY += vy;
+    x = (int)std::round(posX);
+    y = (int)std::round(posY);
+    if (x < 0 || x > Config::GameConfig::RIGHT_BORDER) { escaped = true; return; }
+    if (y < 60) { y = 60;  posY = 60;  vy = abs(vy); }
+    if (y > 700) { y = 700; posY = 700; vy = -abs(vy); }
 }
 
 // ============================================================
@@ -85,12 +89,14 @@ void CommonFish::update(int playerX, int playerY)
     // 每120帧随机改变方向（不在逃跑时）
     if (moveTimer % 120 == 0 && !fleeing) changeDirection();
 
-    x += (int)vx;
-    y += (int)vy;
+    posX += vx;
+    posY += vy;
+    x = (int)std::round(posX);
+    y = (int)std::round(posY);
 
-    if (x < 0 || x > 5000) { escaped = true; return; }
-    if (y < 60) { y = 60;  vy = abs(vy); }
-    if (y > 700) { y = 700; vy = -abs(vy); }
+    if (x < 0 || x > Config::GameConfig::RIGHT_BORDER) { escaped = true; return; }
+    if (y < 60) { y = 60;  posY = 60;  vy = abs(vy); }
+    if (y > 700) { y = 700; posY = 700; vy = -abs(vy); }
 }
 
 // ============================================================
@@ -130,12 +136,14 @@ void RareFish::update(int playerX, int playerY)
     // 每80帧随机改变方向（更频繁，更难预判）
     if (moveTimer % 80 == 0 && !fleeing) changeDirection();
 
-    x += (int)vx;
-    y += (int)vy;
+    posX += vx;
+    posY += vy;
+    x = (int)std::round(posX);
+    y = (int)std::round(posY);
 
-    if (x < 0 || x > 5000) { escaped = true; return; }
-    if (y < 60) { y = 60;  vy = abs(vy); }
-    if (y > 700) { y = 700; vy = -abs(vy); }
+    if (x < 0 || x > Config::GameConfig::RIGHT_BORDER) { escaped = true; return; }
+    if (y < 60) { y = 60;  posY = 60;  vy = abs(vy); }
+    if (y > 700) { y = 700; posY = 700; vy = -abs(vy); }
 }
 
 // ============================================================

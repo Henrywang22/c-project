@@ -25,6 +25,8 @@ public:
     void spawnOctopus();
     void spawnBoss(int stage);
     void checkCollisions();
+    void clearStageEntities();
+    void resetStageRuntime();
 
     // 替换原本旧版本的 attackNearest，接入最新战斗判定
     bool attackAt(int targetX, int targetY, class Weapon* weapon);

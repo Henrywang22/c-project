@@ -60,6 +60,12 @@ bool Boss::collidesWithPlayer(int px, int py)
     return dx * dx + dy * dy < 40 * 40;
 }
 
+bool Boss::canBeHitAt(int targetX, int targetY) const
+{
+    if (!alive || invulnerable) return false;
+    return std::abs(x - targetX) < 100 && std::abs(y - targetY) < 100;
+}
+
 void Boss::takeDamage(int damage)
 {
     if (!alive || invulnerable) return;
@@ -79,6 +85,14 @@ void Boss::applyShockStun(int durationMs)
 void Boss::forceReleasePlayer()
 {
     holdingPlayer = false;
+}
+
+bool Boss::getSecondaryTarget(QPointF& outPos, int& outHp, int& outMaxHp) const
+{
+    Q_UNUSED(outPos);
+    Q_UNUSED(outHp);
+    Q_UNUSED(outMaxHp);
+    return false;
 }
 
 void Boss::spawnMinions(std::vector<Shark*>& sharks)
@@ -236,6 +250,29 @@ TaliMonsterBoss::TaliMonsterBoss(int x, int y)
     : Boss(BossKind::TaliMonster, x, y, 2250, 100, 800)
 {
     speed = 0.8f;
+}
+
+bool TaliMonsterBoss::canBeHitAt(int targetX, int targetY) const
+{
+    if (!alive) return false;
+
+    if (state == PHASE2 && invulnerable && cloneAlive) {
+        return QLineF(clonePos, QPointF(targetX, targetY)).length() <= 80;
+    }
+
+    return Boss::canBeHitAt(targetX, targetY);
+}
+
+bool TaliMonsterBoss::getSecondaryTarget(QPointF& outPos, int& outHp, int& outMaxHp) const
+{
+    if (!(state == PHASE2 && cloneAlive)) {
+        return false;
+    }
+
+    outPos = clonePos;
+    outHp = cloneHp;
+    outMaxHp = 1200;
+    return true;
 }
 
 void TaliMonsterBoss::takeDamage(int damage)
@@ -405,6 +442,12 @@ SirenBoss::SirenBoss(int x, int y)
     : Boss(BossKind::Siren, x, y, 3000, 30, 1200)
 {
     speed = 0.0f;
+}
+
+bool SirenBoss::canBeHitAt(int targetX, int targetY) const
+{
+    if (state == PHASE2) return false;
+    return Boss::canBeHitAt(targetX, targetY);
 }
 
 void SirenBoss::takeDamage(int damage)

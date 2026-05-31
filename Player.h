@@ -22,10 +22,11 @@ public:
 
     // 坐标和碰撞
     QPointF worldPos() const { return m_worldPos; }
-    QRectF collider() const { return { m_worldPos.x(), m_worldPos.y(), 50, 30 }; }
+    QRectF collider() const { return { m_worldPos.x() - 25, m_worldPos.y() - 15, 50, 30 }; }
 
     // 速度状态
     qreal currentSpeed() const { return m_currentSpeed; }
+    qreal baseSpeed() const { return m_baseSpeed; }
 
     // 耐久和体力（只读接口）
     int durability() const { return m_durability; }
@@ -100,6 +101,14 @@ public:
     int maxStamina = 100;
 
     void reset();
+    void restoreSavedProgress(
+        int savedDistance,
+        int savedDurability,
+        int savedStamina,
+        int savedMaxDurability,
+        int savedMaxStamina,
+        qreal savedBaseSpeed
+    );
 
 signals:
     void stateChanged();

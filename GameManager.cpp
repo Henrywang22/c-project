@@ -6,6 +6,8 @@
 
 GameManager::GameManager()
 {
+    WaveSystem::instance().reset();
+    WeatherSystem::instance().reset();
     ObstacleManager::instance().generateLevel(stage);
     for (int i = 0; i < 5; i++) spawnFish();
     m_attackCooldown.start();
@@ -13,11 +15,7 @@ GameManager::GameManager()
 
 GameManager::~GameManager()
 {
-    if (boss) delete boss;
-    for (auto f : fish)        delete f;
-    for (auto s : sharks)      delete s;
-    for (auto s : swordfishes) delete s;
-    for (auto o : octopuses)   delete o;
+    clearStageEntities();
     ObstacleManager::instance().clear();
 }
 
@@ -42,6 +40,18 @@ void GameManager::update()
             if (f->caught || f->escaped) { delete f; return true; }
             return false;
         }), fish.end());
+
+    auto eraseDead = [](auto& enemies) {
+        enemies.erase(std::remove_if(enemies.begin(), enemies.end(),
+            [](auto* enemy) {
+                if (!enemy->alive) { delete enemy; return true; }
+                return false;
+            }), enemies.end());
+    };
+
+    eraseDead(sharks);
+    eraseDead(swordfishes);
+    eraseDead(octopuses);
 
     int px = playerX();
     int py = playerY();
@@ -69,7 +79,7 @@ void GameManager::update()
     if (spawnTimer % 500 == 0) spawnSwordfish();
     if (spawnTimer % 800 == 0 && (int)octopuses.size() < 3) spawnOctopus();
 
-    if (px > stage * 2000 && !bossSpawned) {
+    if (px >= stage * 2000 && !bossSpawned) {
         spawnBoss(stage);
         bossSpawned = true;
     }
@@ -83,6 +93,7 @@ void GameManager::spawnFish()
 {
     int px = playerX();
     int x = px + 300 + rand() % 600;
+    x = std::min(x, Config::GameConfig::RIGHT_BORDER - 50);
     int y = 80 + rand() % 580;
     int r = rand() % 10;
     Fish* f;
@@ -97,6 +108,39 @@ void GameManager::spawnObstacles()
 {
     ObstacleManager::instance().clear();
     ObstacleManager::instance().generateLevel(stage);
+}
+
+void GameManager::clearStageEntities()
+{
+    if (boss) {
+        delete boss;
+        boss = nullptr;
+    }
+
+    for (auto f : fish)        delete f;
+    for (auto s : sharks)      delete s;
+    for (auto s : swordfishes) delete s;
+    for (auto o : octopuses)   delete o;
+
+    fish.clear();
+    sharks.clear();
+    swordfishes.clear();
+    octopuses.clear();
+}
+
+void GameManager::resetStageRuntime()
+{
+    clearStageEntities();
+    spawnTimer = 0;
+    bossSpawned = false;
+    stageClear = false;
+    gameOver = false;
+    victory = false;
+
+    spawnObstacles();
+    for (int i = 0; i < 5; ++i) {
+        spawnFish();
+    }
 }
 
 void GameManager::spawnShark()
@@ -177,14 +221,19 @@ void GameManager::checkCollisions()
     }
 
     // 墨鱼接触
+    bool visionBlockedByOctopus = false;
     for (auto o : octopuses) {
         if (!o->alive || o->isInvisible) continue;
         if (o->collidesWithPlayer(px, py)) {
             o->contactTimer++;
             if (o->contactTimer >= 30)
-                p.visionReduced = true;
+                visionBlockedByOctopus = true;
+        }
+        else {
+            o->contactTimer = 0;
         }
     }
+    p.visionReduced = visionBlockedByOctopus;
 
     // Boss 逻辑
     if (boss && boss->alive) {
@@ -233,9 +282,7 @@ bool GameManager::attackAt(int targetX, int targetY, Weapon* weapon)
 
     // 1. 优先判定 Boss
     if (boss && boss->alive) {
-        if (std::abs(boss->x - targetX) < 100 &&
-            std::abs(boss->y - targetY) < 100) {
-
+        if (boss->canBeHitAt(targetX, targetY)) {
             boss->takeDamage(damage);
             isHit = true;
         }
@@ -330,6 +377,7 @@ void GameManager::saveAndQuit()
     data.isDead = false;
     data.maxDurability = p.maxDurability;
     data.maxStamina = p.maxStamina;
+    data.baseSpeed = static_cast<float>(p.baseSpeed());
     fileManager.saveGame(data);
 }
 
@@ -337,13 +385,34 @@ void GameManager::loadSave()
 {
     SaveData data;
     if (fileManager.loadGame(data) && !data.isDead) {
+        clearStageEntities();
+
         stage = data.stage;
         Player& p = Player::instance();
+        p.restoreSavedProgress(
+            data.distance,
+            data.durability,
+            data.stamina,
+            data.maxDurability,
+            data.maxStamina,
+            data.baseSpeed
+        );
         p.coins = data.coins;
         p.fishCaught = data.fishCaught;
         p.fishTotalValue = data.fishTotalValue;
         p.gameSeconds = data.gameSeconds;
+
+        spawnTimer = 0;
+        bossSpawned = false;
+        stageClear = false;
+        gameOver = false;
+        victory = false;
+        cameraX = std::max(0, playerX() - 640);
+
         ObstacleManager::instance().generateLevel(stage);
+        for (int i = 0; i < 5; ++i) {
+            spawnFish();
+        }
     }
 }
 
@@ -354,6 +423,10 @@ bool GameManager::isBossDefeated()
 
 void GameManager::triggerShockWave() {
     Player& p = Player::instance();
+    if (!p.isShockActive()) {
+        return;
+    }
+
     QRectF area = p.shockArea();
 
     // 对小怪造成范围伤害

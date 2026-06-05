@@ -19,10 +19,19 @@ public:
     void update(qreal deltaTime);
     void keyPress(QKeyEvent* e);
     void keyRelease(QKeyEvent* e);
+    void clearInputState();
 
     // 坐标和碰撞
     QPointF worldPos() const { return m_worldPos; }
-    QRectF collider() const { return { m_worldPos.x() - 25, m_worldPos.y() - 15, 50, 30 }; }
+    void setWorldPos(const QPointF& pos);
+    QRectF collider() const {
+        return {
+            m_worldPos.x() - Config::GameConfig::PLAYER_COLLIDER_WIDTH / 2.0,
+            m_worldPos.y() - Config::GameConfig::PLAYER_COLLIDER_HEIGHT / 2.0,
+            Config::GameConfig::PLAYER_COLLIDER_WIDTH,
+            Config::GameConfig::PLAYER_COLLIDER_HEIGHT
+        };
+    }
 
     // 速度状态
     qreal currentSpeed() const { return m_currentSpeed; }
@@ -78,6 +87,8 @@ public:
 
     bool isMoving() const;
     bool isSpaceHeld() const;
+    bool isBoosting() const;
+    int facingDirection() const;
 
     // Item.cpp 原有接口
     void restoreStamina(int amount);
@@ -137,9 +148,12 @@ private:
     qreal m_speedReduction;
     bool m_reboundActive;
     QPointF m_reboundDir;
+    int m_reboundDurationMs;
+    QElapsedTimer m_reboundTimer;
 
     // 按键追踪
     bool m_keyW, m_keyA, m_keyS, m_keyD, m_keyShift, m_keySpace;
+    int m_facingDirection;
 
     // --- Dash 属性 ---
     bool m_isDashing;

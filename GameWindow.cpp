@@ -1,11 +1,350 @@
 #include "GameWindow.h"
 #include "Shopdialog.h"
+#include "BackpackDialog.h"
+#include "EncyclopediaDialog.h"
+#include "GameUiDialog.h"
 #include "Obstacle.h"
 #include "InventorySystem.h"
 #include <QPainter>
 #include <QFont>
 #include <QKeyEvent>
+#include <QDateTime>
+#include <QLineF>
+#include <QVector2D>
+#include <QPolygon>
+#include <QLinearGradient>
+#include <QStringList>
 #include <algorithm>
+#include <cmath>
+
+namespace {
+constexpr int kTestModeCoinFloor = 5000;
+
+QString bossDisplayName(BossKind kind)
+{
+    switch (kind) {
+    case BossKind::FiveHeadShark:
+        return QStringLiteral("\u593a\u547d\u4e94\u5934\u9ca8");
+    case BossKind::TaliMonster:
+        return QStringLiteral("\u5854\u91cc\u6d77\u602a");
+    case BossKind::Siren:
+        return QStringLiteral("\u585e\u58ec\u5973\u5996");
+    }
+    return QStringLiteral("Boss");
+}
+
+QString stageName(int stage)
+{
+    return QString::fromUtf8(Config::GameConfig::stageText(stage).name);
+}
+
+QString stageBrief(int stage)
+{
+    return QString::fromUtf8(Config::GameConfig::stageText(stage).brief);
+}
+
+QString stageClearSummary(int stage)
+{
+    return QString::fromUtf8(Config::GameConfig::stageText(stage).clearSummary);
+}
+
+int stageLengthMeters(int stage)
+{
+    const int start = Config::GameConfig::stageStartDistance(stage);
+    const int end = Config::GameConfig::stageConfig(stage).targetDistance;
+    return qMax(1, end - start);
+}
+
+QString weatherLabel(const Config::GameConfig::StageConfig& cfg)
+{
+    if (cfg.stormWeight > 0 && cfg.stormWeight >= cfg.sunnyWeight && cfg.stormWeight >= cfg.fogWeight) {
+        return QStringLiteral("暴风雨高发");
+    }
+    if (cfg.fogWeight > 0 && cfg.stormWeight > 0) {
+        return QStringLiteral("天气多变");
+    }
+    if (cfg.fogWeight > 0) {
+        return QStringLiteral("薄雾海面");
+    }
+    if (cfg.stormWeight > 0) {
+        return QStringLiteral("偶有雷雨");
+    }
+    return QStringLiteral("晴朗海面");
+}
+
+QString waveLabel(const Config::GameConfig::StageConfig& cfg)
+{
+    if (cfg.waveChancePerFrame >= 2000) {
+        return cfg.waveLeftWeight > cfg.waveRightWeight
+            ? QStringLiteral("轻微逆浪")
+            : QStringLiteral("顺向小浪");
+    }
+    if (cfg.waveLeftWeight > cfg.waveRightWeight) {
+        return QStringLiteral("逆浪较多");
+    }
+    if (cfg.waveRightWeight > cfg.waveLeftWeight) {
+        return QStringLiteral("顺浪频繁");
+    }
+    return QStringLiteral("浪流交替");
+}
+
+QString stageStartObjective(int stage)
+{
+    const auto& cfg = Config::GameConfig::stageConfig(stage);
+    const QString goal = QStringLiteral("目标：航行 %1m").arg(stageLengthMeters(stage));
+    return cfg.hasBoss ? goal + QStringLiteral(" 并击败 Boss") : goal;
+}
+
+QString stageStartSeaLine(int stage)
+{
+    const auto& cfg = Config::GameConfig::stageConfig(stage);
+    return QStringLiteral("%1  ·  %2  ·  %3")
+        .arg(weatherLabel(cfg),
+             waveLabel(cfg),
+             cfg.hasBoss ? QStringLiteral("Boss 出没") : QStringLiteral("无 Boss"));
+}
+
+QString nextStageLine(int stage)
+{
+    if (stage >= Config::GameConfig::STAGE_COUNT) {
+        return QStringLiteral("最终海域已清理，准备进入通关结算。");
+    }
+
+    const int nextStage = stage + 1;
+    const auto& cfg = Config::GameConfig::stageConfig(nextStage);
+    QStringList notes;
+    if (cfg.swordfishCap > 0) notes << QStringLiteral("剑鱼");
+    if (cfg.octopusCap > 0) notes << QStringLiteral("章鱼");
+    if (cfg.hasBoss) notes << QStringLiteral("Boss");
+    if (cfg.whirlpoolCount > 0) notes << QStringLiteral("漩涡");
+    if (cfg.stormWeight > 0 || cfg.fogWeight > 0) notes << QStringLiteral("复杂天气");
+
+    const QString danger = notes.isEmpty()
+        ? QStringLiteral("海况仍较平稳")
+        : QStringLiteral("将出现%1").arg(notes.join(QStringLiteral("、")));
+    return QStringLiteral("下一关：%1。%2，建议补给后再出航。")
+        .arg(stageName(nextStage), danger);
+}
+
+QString fishDisplayName(Fish::Type type)
+{
+    switch (type) {
+    case Fish::SARDINE:        return QStringLiteral("\u6c99\u4e01\u9c7c");
+    case Fish::TUNA:           return QStringLiteral("\u91d1\u67aa\u9c7c");
+    case Fish::DEEPSEAEEL:     return QStringLiteral("\u6df1\u6d77\u9cd7");
+    case Fish::SWORDFISH_FISH: return QStringLiteral("\u91d1\u9c7c");
+    case Fish::ANCHOVY:        return QStringLiteral("\u94f6\u9cca\u9c7c");
+    case Fish::CLOWNFISH:      return QStringLiteral("\u5c0f\u4e11\u9c7c");
+    case Fish::MACKEREL:       return QStringLiteral("\u84dd\u9cb5");
+    case Fish::SEA_BREAM:      return QStringLiteral("\u771f\u9cb7");
+    case Fish::LANTERNFISH:    return QStringLiteral("\u706f\u7b3c\u9c7c");
+    case Fish::GROUPER:        return QStringLiteral("\u77f3\u6591\u9c7c");
+    case Fish::KOI:            return QStringLiteral("\u9526\u9ca4");
+    case Fish::CRYSTAL_FISH:   return QStringLiteral("\u6676\u9cde\u9c7c");
+    }
+    return QStringLiteral("\u672a\u77e5\u9c7c");
+}
+
+const char* fishDiscoveryName(Fish::Type type)
+{
+    switch (type) {
+    case Fish::SARDINE:        return u8"\u6c99\u4e01\u9c7c";
+    case Fish::TUNA:           return u8"\u91d1\u67aa\u9c7c";
+    case Fish::DEEPSEAEEL:     return u8"\u6df1\u6d77\u9cd7";
+    case Fish::SWORDFISH_FISH: return u8"\u91d1\u9c7c";
+    case Fish::ANCHOVY:        return u8"\u94f6\u9cca\u9c7c";
+    case Fish::CLOWNFISH:      return u8"\u5c0f\u4e11\u9c7c";
+    case Fish::MACKEREL:       return u8"\u84dd\u9cb5";
+    case Fish::SEA_BREAM:      return u8"\u771f\u9cb7";
+    case Fish::LANTERNFISH:    return u8"\u706f\u7b3c\u9c7c";
+    case Fish::GROUPER:        return u8"\u77f3\u6591\u9c7c";
+    case Fish::KOI:            return u8"\u9526\u9ca4";
+    case Fish::CRYSTAL_FISH:   return u8"\u6676\u9cde\u9c7c";
+    }
+    return "Unknown Fish";
+}
+
+int fishDiscoveryId(Fish::Type type)
+{
+    switch (type) {
+    case Fish::SARDINE:        return 0;
+    case Fish::TUNA:           return 1;
+    case Fish::DEEPSEAEEL:     return 2;
+    case Fish::SWORDFISH_FISH: return 3;
+    case Fish::ANCHOVY:        return 4;
+    case Fish::CLOWNFISH:      return 5;
+    case Fish::MACKEREL:       return 6;
+    case Fish::SEA_BREAM:      return 7;
+    case Fish::LANTERNFISH:    return 8;
+    case Fish::GROUPER:        return 9;
+    case Fish::KOI:            return 10;
+    case Fish::CRYSTAL_FISH:   return 11;
+    }
+    return 0;
+}
+
+QColor fishAccentColor(Fish::Type type)
+{
+    switch (type) {
+    case Fish::SARDINE:
+    case Fish::ANCHOVY:
+        return QColor(255, 220, 68);
+    case Fish::TUNA:
+    case Fish::MACKEREL:
+        return QColor(72, 190, 255);
+    case Fish::CLOWNFISH:
+    case Fish::SEA_BREAM:
+        return QColor(255, 158, 82);
+    case Fish::DEEPSEAEEL:
+    case Fish::LANTERNFISH:
+        return QColor(188, 86, 255);
+    case Fish::GROUPER:
+        return QColor(176, 122, 58);
+    case Fish::SWORDFISH_FISH:
+    case Fish::KOI:
+        return QColor(255, 176, 42);
+    case Fish::CRYSTAL_FISH:
+        return QColor(80, 240, 255);
+    }
+    return QColor(255, 220, 68);
+}
+
+QSizeF fishDrawSize(Fish::Type type)
+{
+    switch (type) {
+    case Fish::SARDINE:        return QSizeF(68, 36);
+    case Fish::TUNA:           return QSizeF(78, 40);
+    case Fish::DEEPSEAEEL:     return QSizeF(78, 34);
+    case Fish::SWORDFISH_FISH: return QSizeF(72, 38);
+    case Fish::ANCHOVY:        return QSizeF(76, 34);
+    case Fish::CLOWNFISH:      return QSizeF(64, 42);
+    case Fish::MACKEREL:       return QSizeF(88, 42);
+    case Fish::SEA_BREAM:      return QSizeF(72, 44);
+    case Fish::LANTERNFISH:    return QSizeF(68, 40);
+    case Fish::GROUPER:        return QSizeF(86, 48);
+    case Fish::KOI:            return QSizeF(84, 44);
+    case Fish::CRYSTAL_FISH:   return QSizeF(90, 46);
+    }
+    return QSizeF(68, 36);
+}
+
+QFont promptFont(int pixelSize, bool bold)
+{
+    QFont font(QStringLiteral("Microsoft YaHei"));
+    font.setPixelSize(pixelSize);
+    font.setWeight(bold ? QFont::Bold : QFont::Normal);
+    return font;
+}
+
+void drawPromptText(QPainter& p, const QRect& rect, const QString& text, int pixelSize,
+                    const QColor& color, bool bold = false,
+                    Qt::Alignment flags = Qt::AlignCenter,
+                    const QColor& shadow = QColor(45, 22, 10, 140))
+{
+    QFont font = promptFont(pixelSize, bold);
+    while (pixelSize > 16) {
+        QFontMetrics metrics(font);
+        if (metrics.horizontalAdvance(text) <= rect.width() && metrics.height() <= rect.height()) {
+            break;
+        }
+        font.setPixelSize(--pixelSize);
+    }
+
+    p.setFont(font);
+    p.setPen(shadow);
+    p.drawText(rect.translated(2, 2), flags, text);
+    p.setPen(color);
+    p.drawText(rect, flags, text);
+}
+
+void drawPromptBackground(QPainter& p, const QPixmap& pixmap)
+{
+    if (!pixmap.isNull()) {
+        p.drawPixmap(QRect(0, 0, 1280, 720), pixmap, pixmap.rect());
+        return;
+    }
+    p.fillRect(0, 0, 1280, 720, QColor(18, 85, 145));
+}
+
+QRect promptPopupRect()
+{
+    return QRect(150, 38, 980, 655);
+}
+
+QPointF clampedProjectileEnd(const QPointF& origin, const QPointF& target, qreal range)
+{
+    const qreal dx = target.x() - origin.x();
+    const qreal dy = target.y() - origin.y();
+    const qreal length = std::sqrt(dx * dx + dy * dy);
+    if (length <= 0.001) {
+        return QPointF(origin.x() + range, origin.y());
+    }
+    if (length <= range) {
+        return target;
+    }
+
+    return QPointF(origin.x() + dx / length * range,
+                   origin.y() + dy / length * range);
+}
+
+QPointF firstLineRectIntersection(const QLineF& line, const QRectF& rect, bool& hit)
+{
+    hit = false;
+    if (rect.isEmpty()) {
+        return line.p2();
+    }
+    if (rect.contains(line.p1())) {
+        hit = true;
+        return line.p1();
+    }
+    if (rect.contains(line.p2())) {
+        hit = true;
+        return line.p2();
+    }
+
+    const QLineF edges[] = {
+        QLineF(rect.topLeft(), rect.topRight()),
+        QLineF(rect.topRight(), rect.bottomRight()),
+        QLineF(rect.bottomRight(), rect.bottomLeft()),
+        QLineF(rect.bottomLeft(), rect.topLeft())
+    };
+
+    QPointF best = line.p2();
+    qreal bestDistance = 1e18;
+    QPointF intersection;
+    for (const auto& edge : edges) {
+        if (line.intersects(edge, &intersection) == QLineF::BoundedIntersection) {
+            const qreal dx = intersection.x() - line.p1().x();
+            const qreal dy = intersection.y() - line.p1().y();
+            const qreal distance = dx * dx + dy * dy;
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = intersection;
+                hit = true;
+            }
+        }
+    }
+
+    return best;
+}
+
+void drawPixmapCentered(QPainter& p, const QPixmap& pixmap, const QPointF& center,
+                        const QSizeF& size, qreal opacity = 1.0, qreal rotation = 0.0)
+{
+    if (pixmap.isNull() || size.isEmpty()) return;
+
+    p.save();
+    p.setOpacity(qBound<qreal>(0.0, opacity, 1.0));
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    p.translate(center);
+    if (std::abs(rotation) > 0.001) {
+        p.rotate(rotation);
+    }
+    const QRectF target(-size.width() / 2.0, -size.height() / 2.0, size.width(), size.height());
+    p.drawPixmap(target, pixmap, QRectF(pixmap.rect()));
+    p.restore();
+}
+}
 
 // ============================================================
 // 构造/析构
@@ -15,18 +354,93 @@ GameWindow::GameWindow(QWidget* parent) : QWidget(parent)
 {
     setWindowTitle("渔途");
     setFixedSize(1280, 720);
+    setMouseTracking(true);
 
     gm = new GameManager();
 
     // 加载图片
-    imgSardine.load("sardine.png");
-    imgTuna.load("tuna.png");
-    imgEel.load("eel.png");
-    imgGolden.load("golden.png");
-    imgShark.load("shark.png");
-    imgSwordfish.load("swordfish.png");
-    imgOctopus.load("octopus.png");
-    imgBoat.load("boat.png");
+    imgSeaBackground.load(":/FishingVoyage/backgrounds/sea.png");
+    imgSardine.load(":/FishingVoyage/fish/sardine_swim.png");
+    imgTuna.load(":/FishingVoyage/fish/tuna_swim.png");
+    imgEel.load(":/FishingVoyage/fish/eel_swim.png");
+    imgGolden.load(":/FishingVoyage/fish/golden_swim.png");
+    imgAnchovy.load(":/FishingVoyage/fish/anchovy_swim.png");
+    imgClownfish.load(":/FishingVoyage/fish/clownfish_swim.png");
+    imgMackerel.load(":/FishingVoyage/fish/mackerel_swim.png");
+    imgSeaBream.load(":/FishingVoyage/fish/sea_bream_swim.png");
+    imgLanternfish.load(":/FishingVoyage/fish/lanternfish_swim.png");
+    imgGrouper.load(":/FishingVoyage/fish/grouper_swim.png");
+    imgKoi.load(":/FishingVoyage/fish/koi_swim.png");
+    imgCrystalFish.load(":/FishingVoyage/fish/crystal_fish_swim.png");
+    imgShark.load(":/FishingVoyage/enemies/shark.png");
+    imgSwordfish.load(":/FishingVoyage/enemies/swordfish.png");
+    imgOctopus.load(":/FishingVoyage/enemies/octopus.png");
+    imgBoat.load(":/FishingVoyage/player/rod_right.png");
+    imgObstacleReef.load(":/FishingVoyage/obstacles/reef.png");
+    imgWaveOverlay.load(":/FishingVoyage/water/wave_current_overlay.png");
+    imgObstacleWhirlpool.load(":/FishingVoyage/obstacles/whirlpool_sheet.png");
+    imgStormLightning.load(":/FishingVoyage/weather/storm_lightning_sheet.png");
+    imgHarpoonProjectile.load(":/FishingVoyage/projectiles/harpoon.png");
+    imgWoodNoticeBoard.load(":/FishingVoyage/ui/common/wood_notice_board.png");
+    imgWoodNoticeButton.load(":/FishingVoyage/ui/common/wood_notice_button.png");
+    imgNoticeIconInfo.load(":/FishingVoyage/ui/common/notice_icon_info.png");
+    imgRainCluster.load(":/FishingVoyage/effects/rain_cluster.png");
+    imgLightningWarningRing.load(":/FishingVoyage/effects/lightning_warning_ring.png");
+    imgBossWarningRing.load(":/FishingVoyage/effects/boss_warning_ring.png");
+    imgBossWarningRect.load(":/FishingVoyage/effects/boss_warning_rect.png");
+    imgShockwaveRing.load(":/FishingVoyage/effects/shockwave_ring.png");
+    imgWeaponRangeRing.load(":/FishingVoyage/effects/weapon_range_ring.png");
+    imgHitSpark.load(":/FishingVoyage/effects/hit_spark.png");
+    imgMuzzleFlash.load(":/FishingVoyage/effects/muzzle_flash.png");
+    imgStageDecor[0].load(":/FishingVoyage/decor/stage1_islet.png");
+    imgStageDecor[1].load(":/FishingVoyage/decor/stage2_lighthouse.png");
+    imgStageDecor[2].load(":/FishingVoyage/decor/stage3_coral.png");
+    imgStageDecor[3].load(":/FishingVoyage/decor/stage4_shipwreck.png");
+    imgStageDecor[4].load(":/FishingVoyage/decor/stage5_ruins.png");
+    imgStageDecor[5].load(":/FishingVoyage/decor/stage6_shoal.png");
+    const char* weaponKeys[5] = { "rod", "net", "harpoon", "pistol", "shotgun" };
+    const char* dirKeys[4] = { "up", "down", "left", "right" };
+    for (int wi = 0; wi < 5; ++wi) {
+        for (int di = 0; di < 4; ++di) {
+            imgPlayerMove[wi][di].load(QString(":/FishingVoyage/player/%1_%2.png").arg(weaponKeys[wi], dirKeys[di]));
+            imgPlayerBoost[wi][di].load(QString(":/FishingVoyage/player/%1_%2_boost.png").arg(weaponKeys[wi], dirKeys[di]));
+        }
+    }
+    imgMenuBackground.load(":/FishingVoyage/ui/menu/background.png");
+    imgMenuPanel.load(":/FishingVoyage/ui/menu/panel.png");
+    imgMenuTitlePlaque.load(":/FishingVoyage/ui/menu/title_plaque.png");
+    imgMenuRecordPanel.load(":/FishingVoyage/ui/menu/record_panel.png");
+    imgMenuButtonNormal.load(":/FishingVoyage/ui/menu/button_normal.png");
+    imgMenuButtonHover.load(":/FishingVoyage/ui/menu/button_hover.png");
+    imgMenuButtonDisabled.load(":/FishingVoyage/ui/menu/button_disabled.png");
+    imgStageStartPrompt.load(":/FishingVoyage/ui/prompts/stage_start.png");
+    imgStageClearPrompt.load(":/FishingVoyage/ui/prompts/stage_clear.png");
+    imgHudTopStatusBar.load(":/FishingVoyage/ui/hud/top_status_bar.png");
+    imgHudHealthFill.load(":/FishingVoyage/ui/hud/bar_health_fill.png");
+    imgHudStaminaFill.load(":/FishingVoyage/ui/hud/bar_stamina_fill.png");
+    imgHudEquipmentPanel.load(":/FishingVoyage/ui/hud/panel_equipment.png");
+    imgHudHotbar.load(":/FishingVoyage/ui/hud/hotbar.png");
+    imgHudMinimapPanel.load(":/FishingVoyage/ui/hud/panel_minimap.png");
+    imgHudLogPanel.load(":/FishingVoyage/ui/hud/panel_log.png");
+    imgHudSlotNormal.load(":/FishingVoyage/ui/hud/slot_normal.png");
+    imgHudSlotSelected.load(":/FishingVoyage/ui/hud/slot_selected.png");
+    imgHudIconHeart.load(":/FishingVoyage/ui/hud/icon_heart.png");
+    imgHudIconLightning.load(":/FishingVoyage/ui/hud/icon_lightning.png");
+    imgHudIconCoin.load(":/FishingVoyage/ui/hud/icon_coin.png");
+    imgHudIconFish.load(":/FishingVoyage/ui/hud/icon_fish.png");
+    imgHudIconSun.load(":/FishingVoyage/ui/hud/icon_sun.png");
+    imgHudIconCompass.load(":/FishingVoyage/ui/hud/icon_compass.png");
+    imgFishingQtePanel.load(":/FishingVoyage/ui/fishing/qte_panel.png");
+    imgIconWeaponRod.load(":/FishingVoyage/ui/icons/weapon_rod.png");
+    imgIconWeaponNet.load(":/FishingVoyage/ui/icons/weapon_net.png");
+    imgIconWeaponHarpoon.load(":/FishingVoyage/ui/icons/weapon_harpoon.png");
+    imgIconWeaponPistol.load(":/FishingVoyage/ui/icons/weapon_pistol.png");
+    imgIconWeaponShotgun.load(":/FishingVoyage/ui/icons/weapon_shotgun.png");
+    imgIconItemFood.load(":/FishingVoyage/ui/icons/item_food.png");
+    imgIconItemRepairT1.load(":/FishingVoyage/ui/icons/item_repair_t1.png");
+    imgIconItemRepairT2.load(":/FishingVoyage/ui/icons/item_repair_t2.png");
+    imgIconItemRepairT3.load(":/FishingVoyage/ui/icons/item_repair_t3.png");
+    imgIconItemEmergencyRepair.load(":/FishingVoyage/ui/icons/item_emergency_repair.png");
 
     timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &GameWindow::gameLoop);
@@ -48,6 +462,8 @@ void GameWindow::paintEvent(QPaintEvent*)
     switch (state) {
     case STATE_INTRO:   drawIntro(p);   break;
     case STATE_MENU:    drawMenu(p);    break;
+    case STATE_STAGE_START: drawStageStartPrompt(p); break;
+    case STATE_STAGE_CLEAR: drawStageClearPrompt(p); break;
     case STATE_PLAYING:
     case STATE_PAUSED:  drawGame(p);    break;
     case STATE_DEFEAT:  drawDefeat(p);  break;
@@ -64,39 +480,34 @@ void GameWindow::gameLoop()
 {
     switch (state) {
     case STATE_PLAYING: {
+        updateAttackProjectiles();
+        updateHitFeedbacks();
+        updateFloatingNotice();
+        applyTestModeBenefits();
+
         if (gm->gameOver) { state = STATE_DEFEAT;  update(); return; }
-        if (gm->victory) { state = STATE_VICTORY; update(); return; }
+        if (gm->victory) {
+            saveVictoryHighScore();
+            state = STATE_VICTORY;
+            update();
+            return;
+        }
 
         // 关卡通关
         if (gm->stageClear) {
-            timer->stop();
+            resetFishingState(true);
 
-            isFishing = false;
-            targetFish = nullptr;
-            fishClickCount = 0;
-            fishTimer = 0;
-
-            if (gm->stage >= 5) {
-                gm->stageClear = false;
-                gm->clearStageEntities();
-                gm->victory = true;
-                state = STATE_VICTORY;
-                timer->start(16);
-                update();
-                return;
-            }
-
-            gm->stage++;
-            openShop();
-            gm->resetStageRuntime();
-            gm->saveAndQuit();
-
-            timer->start(16);
+            Player::instance().clearInputState();
+            promptButtonHover = false;
+            setCursor(Qt::ArrowCursor);
+            state = STATE_STAGE_CLEAR;
+            update();
             return;
         }
 
         updateFishing();
         gm->update();
+        applyTestModeBenefits();
         break;
     }
     default: break;
@@ -110,16 +521,118 @@ void GameWindow::gameLoop()
 
 void GameWindow::drawSea(QPainter& p)
 {
-    p.fillRect(0, 0, 1280, 720, QColor(30, 100, 180));
-    p.setPen(QPen(QColor(50, 130, 210), 1));
-    for (int y = 80; y < 720; y += 60)
-        for (int x = 0; x < 1280; x += 80)
-            p.drawLine(x, y, x + 40, y);
+    if (!imgSeaBackground.isNull()) {
+        const int tileW = qMax(1, imgSeaBackground.width());
+        const int offset = -static_cast<int>(gm->cameraX * 0.35) % tileW;
+        int startX = offset > 0 ? offset - tileW : offset;
+        for (int x = startX; x < 1280; x += tileW) {
+            p.drawPixmap(QRect(x, 0, tileW, 720), imgSeaBackground);
+        }
+    }
+    else {
+        p.fillRect(0, 0, 1280, 720, QColor(30, 100, 180));
+    }
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, false);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const int sparkleOffset = (gm->cameraX / 6 + static_cast<int>(now / 95)) % 160;
+    for (int y = 78; y < 690; y += 62) {
+        for (int x = -160 + ((y / 62) % 3) * 36 - sparkleOffset; x < 1380; x += 160) {
+            const int pulse = static_cast<int>((now / 180 + x / 40 + y / 31) % 4);
+            const QColor shine(230, 252, 255, 28 + pulse * 7);
+            p.fillRect(x, y, 2, 2, shine);
+            p.fillRect(x + 3, y + 1, 1, 1, shine.lighter(115));
+        }
+    }
+    p.restore();
 }
 
 // ============================================================
 // 开场说明
 // ============================================================
+
+void GameWindow::drawStageDecorations(QPainter& p)
+{
+    struct DecorSpec {
+        int stage;
+        int imageIndex;
+        qreal stageRatio;
+        int y;
+        qreal scale;
+        bool mirror;
+    };
+
+    static const DecorSpec decors[] = {
+        {1, 0, 0.18, 118, 0.82, false},
+        {1, 0, 0.78, 636, 0.70, true},
+
+        {2, 1, 0.18, 132, 0.90, false},
+        {2, 0, 0.64, 628, 0.62, true},
+
+        {3, 2, 0.20, 612, 0.88, false},
+        {3, 2, 0.68, 126, 0.70, true},
+
+        {4, 3, 0.20, 620, 0.88, false},
+        {4, 2, 0.60, 118, 0.68, true},
+
+        {5, 4, 0.18, 128, 0.86, false},
+        {5, 3, 0.58, 628, 0.72, true},
+        {5, 4, 0.82, 610, 0.64, true},
+
+        {6, 5, 0.16, 130, 0.78, false},
+        {6, 0, 0.42, 618, 0.72, true},
+        {6, 2, 0.68, 132, 0.68, false},
+        {6, 5, 0.86, 604, 0.70, true},
+    };
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+    for (const DecorSpec& decor : decors) {
+        if (decor.stage != gm->stage) continue;
+
+        const QPixmap& pixmap = imgStageDecor[qBound(0, decor.imageIndex, 5)];
+        if (pixmap.isNull()) continue;
+
+        const int stageStart = Config::GameConfig::stageStartDistance(decor.stage);
+        const int stageEnd = Config::GameConfig::stageConfig(decor.stage).targetDistance;
+        const int stageLength = qMax(1, stageEnd - stageStart);
+        const int worldX = stageStart + qRound(stageLength * decor.stageRatio);
+        const int screenX = worldX - gm->cameraX;
+
+        const int targetW = qMax(48, qRound(pixmap.width() * decor.scale));
+        const int targetH = qMax(32, qRound(pixmap.height() * decor.scale));
+        QRect target(screenX - targetW / 2, decor.y - targetH / 2, targetW, targetH);
+
+        if (target.right() < -80 || target.left() > 1360) continue;
+
+        QRect shadow(
+            target.left() + target.width() / 9,
+            target.bottom() - target.height() / 4,
+            target.width() * 7 / 9,
+            qMax(10, target.height() / 5)
+        );
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0, 46, 86, 58));
+        p.drawEllipse(shadow);
+
+        if (decor.mirror) {
+            p.save();
+            p.translate(target.center().x(), 0);
+            p.scale(-1, 1);
+            QRect mirrored(-target.width() / 2, target.top(), target.width(), target.height());
+            p.drawPixmap(mirrored, pixmap, pixmap.rect());
+            p.restore();
+        }
+        else {
+            p.drawPixmap(target, pixmap, pixmap.rect());
+        }
+    }
+
+    p.restore();
+}
 
 void GameWindow::drawIntro(QPainter& p)
 {
@@ -141,7 +654,7 @@ void GameWindow::drawIntro(QPainter& p)
     p.drawLine(200, 195, 1080, 195);
 
     QStringList lines = {
-        "【目标】  驾船向右航行，闯过 5 个关卡，击败每关的 Boss",
+        QStringLiteral("【目标】  驾船向右航行，闯过 %1 个关卡，在关键海域击败 Boss").arg(Config::GameConfig::STAGE_COUNT),
         "",
         "【移动】  WASD 移动    Shift 加速（消耗体力）    空格键 闪避冲刺（短暂无敌）",
         "",
@@ -156,7 +669,8 @@ void GameWindow::drawIntro(QPainter& p)
         "",
         "【障碍】  暗礁：碰撞损失耐久并反弹      漩涡：减少体力并降速",
         "",
-        "【商店】  按 B / P 打开商店背包      ESC 暂停",
+        "【背包/商店】  按 B 打开船舱背包      H 打开航海图鉴      ESC 暂停",
+        "             每关 Boss 击败后会自动进入码头商店整备",
         "",
         "【存档】  按 Q 保存并退出，下次可继续上一关",
     };
@@ -188,6 +702,93 @@ void GameWindow::drawIntro(QPainter& p)
 
 void GameWindow::drawMenu(QPainter& p)
 {
+    if (!imgMenuBackground.isNull()) {
+        p.drawPixmap(rect(), imgMenuBackground);
+
+        p.save();
+
+        QRect panelRect(360, 100, 560, 390);
+        QRect titleRect(330, 16, 620, 180);
+        QRect recordRect(405, 500, 470, 150);
+
+        if (!imgMenuPanel.isNull()) {
+            p.drawPixmap(panelRect, imgMenuPanel);
+        }
+        if (!imgMenuTitlePlaque.isNull()) {
+            p.drawPixmap(titleRect, imgMenuTitlePlaque);
+        }
+        if (!imgMenuRecordPanel.isNull()) {
+            p.drawPixmap(recordRect, imgMenuRecordPanel);
+        }
+
+        p.setRenderHint(QPainter::TextAntialiasing, true);
+        p.setPen(QColor(83, 43, 14));
+        p.setFont(QFont("Microsoft YaHei", 48, QFont::Bold));
+        p.drawText(titleRect.adjusted(4, 16, 4, -44), Qt::AlignCenter, "渔 途");
+        p.setPen(QColor(255, 190, 58));
+        p.drawText(titleRect.adjusted(0, 12, 0, -48), Qt::AlignCenter, "渔 途");
+        p.setPen(QColor(245, 217, 150));
+        p.setFont(QFont("Microsoft YaHei", 19, QFont::Bold));
+        p.drawText(titleRect.adjusted(0, 100, 0, -16), Qt::AlignCenter, "FISHING VOYAGE");
+
+        const QString labels[6] = {
+            "开始航程", "继续游戏", "航海图鉴", "操作说明", "游戏设置", "退出游戏"
+        };
+        const bool hasSave = gm->fileManager.hasSave();
+        for (int i = 0; i < 6; ++i) {
+            const bool disabled = (i == 1 && !hasSave);
+            const bool hovered = (i == menuHoverIndex && !disabled);
+            const QPixmap& buttonImage = disabled
+                ? imgMenuButtonDisabled
+                : (hovered ? imgMenuButtonHover : imgMenuButtonNormal);
+
+            if (!buttonImage.isNull()) {
+                p.drawPixmap(menuButtonRect(i), buttonImage);
+            }
+
+            QRect textRect = menuButtonRect(i);
+
+            p.setFont(QFont("Microsoft YaHei", 18, QFont::Bold));
+            p.setPen(disabled ? QColor(70, 62, 54) : QColor(82, 43, 16));
+            p.drawText(textRect.translated(2, 2), Qt::AlignCenter, labels[i]);
+            p.setPen(disabled ? QColor(114, 104, 91) : QColor(35, 20, 10));
+            p.drawText(textRect, Qt::AlignCenter, labels[i]);
+
+            if (i == 0) {
+                QRect anchorRect = menuButtonRect(i).adjusted(38, 9, -318, -9);
+                p.setRenderHint(QPainter::Antialiasing, true);
+                p.setPen(QPen(QColor(122, 67, 20), 4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+                QPoint center = anchorRect.center();
+                p.drawEllipse(QRect(center.x() - 6, anchorRect.top(), 12, 12));
+                p.drawLine(center.x(), anchorRect.top() + 12, center.x(), anchorRect.bottom() - 8);
+                p.drawLine(anchorRect.left() + 7, anchorRect.top() + 20, anchorRect.right() - 7, anchorRect.top() + 20);
+                p.drawArc(anchorRect.adjusted(4, 12, -4, -2), 200 * 16, 140 * 16);
+                p.drawLine(anchorRect.left() + 5, anchorRect.bottom() - 12, anchorRect.left() + 13, anchorRect.bottom() - 17);
+                p.drawLine(anchorRect.right() - 5, anchorRect.bottom() - 12, anchorRect.right() - 13, anchorRect.bottom() - 17);
+                p.setRenderHint(QPainter::Antialiasing, false);
+            }
+        }
+
+        p.setPen(QColor(79, 43, 18));
+        p.setFont(QFont("Microsoft YaHei", 17, QFont::Bold));
+        p.drawText(recordRect.adjusted(0, 8, 0, -70), Qt::AlignCenter, "当前航海记录");
+        p.setFont(QFont("Microsoft YaHei", 13, QFont::Bold));
+        p.drawText(recordRect.adjusted(24, 42, -24, -40), Qt::AlignCenter,
+            QString("第 %1 关  |  金币 %2  |  鱼获 %3")
+            .arg(gm->stage)
+            .arg(Player::instance().coins)
+            .arg(Player::instance().fishCaught));
+        Weapon* currentWeapon = InventorySystem::instance().currentWeapon();
+        QString weaponName = currentWeapon
+            ? QString::fromStdString(currentWeapon->getName())
+            : QString("无");
+        p.drawText(recordRect.adjusted(24, 70, -24, -12), Qt::AlignCenter,
+            QString("当前装备：%1").arg(weaponName));
+
+        p.restore();
+        return;
+    }
+
     p.fillRect(0, 0, 1280, 720, QColor(20, 70, 140));
     p.setPen(QPen(QColor(50, 130, 210), 1));
     for (int y = 80; y < 720; y += 60)
@@ -212,18 +813,86 @@ void GameWindow::drawMenu(QPainter& p)
 // 游戏画面总入口
 // ============================================================
 
+void GameWindow::drawStageStartPrompt(QPainter& p)
+{
+    drawGame(p);
+    p.fillRect(0, 0, 1280, 720, QColor(0, 10, 24, 135));
+    const QRect popup = promptPopupRect();
+    p.drawPixmap(popup, imgStageStartPrompt, imgStageStartPrompt.rect());
+    p.setRenderHint(QPainter::TextAntialiasing, true);
+
+    const int stage = gm ? qBound(1, gm->stage, Config::GameConfig::STAGE_COUNT) : 1;
+    const QColor gold(255, 224, 126);
+    const QColor brown(68, 36, 17);
+    const QColor dark(42, 22, 10);
+    const QColor teal(224, 252, 231);
+
+    drawPromptText(p, QRect(432, 82, 416, 64), QStringLiteral("第 %1 关").arg(stage),
+                   31, gold, true, Qt::AlignCenter, QColor(54, 25, 7, 210));
+    drawPromptText(p, QRect(260, 178, 760, 76), stageName(stage),
+                   46, brown, true, Qt::AlignCenter, QColor(247, 218, 150, 135));
+    drawPromptText(p, QRect(285, 255, 710, 38), stageBrief(stage),
+                   22, dark, false, Qt::AlignCenter, QColor(246, 219, 154, 85));
+    drawPromptText(p, QRect(300, 352, 680, 58), stageStartObjective(stage),
+                   34, brown, true, Qt::AlignCenter, QColor(247, 219, 150, 125));
+    drawPromptText(p, QRect(325, 448, 630, 36), stageStartSeaLine(stage),
+                   22, dark, true, Qt::AlignCenter, QColor(246, 219, 154, 70));
+
+    drawPromptText(p, stagePromptButtonRect(), QStringLiteral("开始航行"),
+                   29, teal, true, Qt::AlignCenter, QColor(18, 67, 68, 230));
+}
+
+void GameWindow::drawStageClearPrompt(QPainter& p)
+{
+    drawGame(p);
+    p.fillRect(0, 0, 1280, 720, QColor(0, 10, 24, 135));
+    const QRect popup = promptPopupRect();
+    p.drawPixmap(popup, imgStageClearPrompt, imgStageClearPrompt.rect());
+    p.setRenderHint(QPainter::TextAntialiasing, true);
+
+    const int stage = gm ? qBound(1, gm->stage, Config::GameConfig::STAGE_COUNT) : 1;
+    const QColor gold(255, 224, 126);
+    const QColor cream(255, 243, 210);
+    const QColor brown(68, 36, 17);
+    const QColor dark(42, 22, 10);
+    const QColor teal(224, 252, 231);
+
+    drawPromptText(p, QRect(432, 82, 416, 64), QStringLiteral("第 %1 关完成").arg(stage),
+                   29, gold, true, Qt::AlignCenter, QColor(55, 25, 7, 220));
+    drawPromptText(p, QRect(260, 178, 760, 70), QStringLiteral("%1  已通过").arg(stageName(stage)),
+                   39, brown, true, Qt::AlignCenter, QColor(247, 218, 150, 130));
+    drawPromptText(p, QRect(280, 252, 720, 38),
+                   QStringLiteral("已完成 %1m 航程，%2").arg(stageLengthMeters(stage)).arg(stageClearSummary(stage)),
+                   21, dark, false, Qt::AlignCenter, QColor(246, 219, 154, 75));
+
+    drawPromptText(p, QRect(295, 360, 210, 38),
+                   QStringLiteral("累计鱼获 %1条").arg(Player::instance().fishCaught),
+                   22, cream, true, Qt::AlignCenter, QColor(42, 17, 8, 230));
+    drawPromptText(p, QRect(535, 360, 210, 38),
+                   QStringLiteral("航程 %1m").arg(stageLengthMeters(stage)),
+                   22, cream, true, Qt::AlignCenter, QColor(42, 17, 8, 230));
+    drawPromptText(p, QRect(775, 360, 210, 38), QStringLiteral("回港补给"),
+                   22, cream, true, Qt::AlignCenter, QColor(42, 17, 8, 230));
+
+    drawPromptText(p, QRect(280, 470, 720, 44), nextStageLine(stage),
+                   20, dark, false, Qt::AlignCenter, QColor(246, 219, 154, 70));
+
+    drawPromptText(p, stagePromptButtonRect(), QStringLiteral("回到港口"),
+                   29, teal, true, Qt::AlignCenter, QColor(18, 67, 68, 230));
+}
+
 void GameWindow::drawGame(QPainter& p)
 {
     drawSea(p);
+    drawStageDecorations(p);
     drawObstacles(p);
     drawWaves(p);
     drawFish(p);
     drawBossHazards(p);
     drawSharks(p);
     drawPlayer(p);
-    drawHUD(p);
-    drawFishingHUD(p);
-
+    drawAttackProjectiles(p);
+    drawHitFeedbacks(p);
     // 天气叠加效果
     QColor overlay = WeatherSystem::instance().overlayColor();
     if (overlay.alpha() > 0)
@@ -232,6 +901,12 @@ void GameWindow::drawGame(QPainter& p)
     if (Player::instance().visionReduced) {
         p.fillRect(0, 44, 1280, 676, QColor(0, 0, 0, 125));
     }
+
+    drawWeatherEffects(p);
+    drawHUD(p);
+    drawFishingHUD(p);
+    drawTestModeOverlay(p);
+    drawFloatingNotice(p);
 
     if (state == STATE_PAUSED) drawPaused(p);
 }
@@ -247,16 +922,51 @@ void GameWindow::drawFish(QPainter& p)
         int screenX = f->x - gm->cameraX;
         if (screenX < -20 || screenX > 1300) continue;
 
+        const bool locked = isFishing && f == targetFish;
+        if (locked) {
+            const int pulse = 4 + static_cast<int>((QDateTime::currentMSecsSinceEpoch() / 120) % 4);
+            drawPixmapCentered(p, imgWeaponRangeRing, QPointF(screenX, f->y),
+                               QSizeF(110 + pulse * 2, 70 + pulse * 2), 0.62);
+        }
+
         QPixmap* img = nullptr;
         switch (f->type) {
         case Fish::SARDINE:        img = &imgSardine; break;
         case Fish::TUNA:           img = &imgTuna;    break;
         case Fish::DEEPSEAEEL:     img = &imgEel;     break;
         case Fish::SWORDFISH_FISH: img = &imgGolden;  break;
+        case Fish::ANCHOVY:        img = &imgAnchovy; break;
+        case Fish::CLOWNFISH:      img = &imgClownfish; break;
+        case Fish::MACKEREL:       img = &imgMackerel; break;
+        case Fish::SEA_BREAM:      img = &imgSeaBream; break;
+        case Fish::LANTERNFISH:    img = &imgLanternfish; break;
+        case Fish::GROUPER:        img = &imgGrouper; break;
+        case Fish::KOI:            img = &imgKoi; break;
+        case Fish::CRYSTAL_FISH:   img = &imgCrystalFish; break;
         }
 
         if (img && !img->isNull()) {
-            p.drawPixmap(screenX - 24, f->y - 12, 48, 24, *img);
+            const int frameCount = 4;
+            const int frameSize = img->width() / frameCount;
+            const int frame = static_cast<int>((QDateTime::currentMSecsSinceEpoch() / 140) % frameCount);
+            const QRect source(frame * frameSize, 0, frameSize, img->height());
+            const QSizeF drawSize = fishDrawSize(f->type);
+            const QRect target(
+                qRound(screenX - drawSize.width() / 2.0),
+                qRound(f->y - drawSize.height() / 2.0),
+                qRound(drawSize.width()),
+                qRound(drawSize.height())
+            );
+            if (f->vx < 0) {
+                p.save();
+                p.translate(target.left() + target.width(), target.top());
+                p.scale(-1, 1);
+                p.drawPixmap(QRect(0, 0, target.width(), target.height()), *img, source);
+                p.restore();
+            }
+            else {
+                p.drawPixmap(target, *img, source);
+            }
         }
         else {
             p.setBrush(QColor(255, 220, 50));
@@ -284,17 +994,36 @@ void GameWindow::drawObstacles(QPainter& p)
         if (screenX < -size || screenX > 1280 + size) continue;
 
         if (o->type() == ObstacleType::REEF) {
-            p.setBrush(QColor(120, 80, 40));
-            p.setPen(QPen(QColor(80, 50, 20), 2));
-            p.drawRect(screenX - size, screenY - size, size * 2, size * 2);
+            if (!imgObstacleReef.isNull()) {
+                const int targetW = qMax(104, size * 5);
+                const int targetH = qMax(78, size * 4);
+                QRect target(screenX - targetW / 2, screenY - targetH / 2 - size / 3, targetW, targetH);
+                p.drawPixmap(target, imgObstacleReef, imgObstacleReef.rect());
+            }
+            else {
+                p.setBrush(QColor(120, 80, 40));
+                p.setPen(QPen(QColor(80, 50, 20), 2));
+                p.drawRect(screenX - size, screenY - size, size * 2, size * 2);
+            }
         }
         else {
-            p.setBrush(QColor(80, 180, 200, 160));
-            p.setPen(QPen(QColor(100, 200, 220), 2));
-            p.drawEllipse(screenX - size, screenY - size, size * 2, size * 2);
-            p.setPen(QColor(200, 240, 255));
-            p.setFont(QFont("Microsoft YaHei", 10));
-            p.drawText(screenX - 8, screenY + 5, "〜");
+            if (!imgObstacleWhirlpool.isNull()) {
+                const int frameCount = 8;
+                const int frameWidth = imgObstacleWhirlpool.width() / frameCount;
+                const int frame = static_cast<int>(((QDateTime::currentMSecsSinceEpoch() / 85) + screenX / 19) % frameCount);
+                const int targetSize = qMax(92, size * 4);
+                QRect target(screenX - targetSize / 2, screenY - targetSize / 2, targetSize, targetSize);
+                QRect source(frame * frameWidth, 0, frameWidth, imgObstacleWhirlpool.height());
+                p.drawPixmap(target, imgObstacleWhirlpool, source);
+            }
+            else {
+                p.setBrush(QColor(80, 180, 200, 160));
+                p.setPen(QPen(QColor(100, 200, 220), 2));
+                p.drawEllipse(screenX - size, screenY - size, size * 2, size * 2);
+                p.setPen(QColor(200, 240, 255));
+                p.setFont(QFont("Microsoft YaHei", 10));
+                p.drawText(screenX - 8, screenY + 5, "〜");
+            }
         }
     }
 }
@@ -305,17 +1034,283 @@ void GameWindow::drawObstacles(QPainter& p)
 
 void GameWindow::drawWaves(QPainter& p)
 {
-    if (WaveSystem::instance().isWarningActive()) {
-        static int blink = 0; blink++;
-        if ((blink / 15) % 2 == 0) {
-            p.fillRect(0, 680, 1280, 40, QColor(255, 150, 0, 180));
-            p.setPen(Qt::white);
-            p.setFont(QFont("Microsoft YaHei", 14, QFont::Bold));
-            QString dir = WaveSystem::instance().currentDirection() == WaveDirection::RIGHT
-                ? "→ 顺风海浪来了！" : "← 逆风海浪来了！";
-            p.drawText(0, 680, 1280, 40, Qt::AlignCenter, dir);
+    WaveSystem& wave = WaveSystem::instance();
+    if (!wave.isWarningActive() && !wave.isWaveActive()) return;
+
+    const bool warning = wave.isWarningActive();
+    const bool rightward = wave.currentDirection() == WaveDirection::RIGHT;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qreal progress = warning ? wave.warningProgress() : wave.activeProgress();
+
+    {
+        QColor deep = rightward ? QColor(14, 112, 132, 118) : QColor(17, 74, 132, 126);
+        QColor mid = rightward ? QColor(44, 184, 190, 74) : QColor(54, 122, 184, 82);
+        QColor foam = rightward ? QColor(218, 255, 245, 190) : QColor(210, 232, 255, 180);
+        QColor accent = rightward ? QColor(87, 226, 210, 214) : QColor(248, 186, 92, 220);
+        if (WeatherSystem::instance().currentWeather() == WeatherType::STORM) {
+            deep = deep.darker(135);
+            mid = mid.darker(125);
+            foam = foam.darker(108);
+        }
+
+        p.save();
+        p.setRenderHint(QPainter::Antialiasing, false);
+        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+        const QRect waterRect(0, 52, 1280, 640);
+        const int revealW = warning
+            ? qBound(140, static_cast<int>(waterRect.width() * (0.18 + progress * 0.48)), waterRect.width())
+            : waterRect.width();
+        const QRect clipRect(
+            rightward ? waterRect.left() : waterRect.right() - revealW + 1,
+            waterRect.top(),
+            revealW,
+            waterRect.height()
+        );
+
+        const int edgeW = qMin(revealW, warning ? 320 : 420);
+        const QRect edgeRect(
+            rightward ? waterRect.left() : waterRect.right() - edgeW + 1,
+            waterRect.top(),
+            edgeW,
+            waterRect.height()
+        );
+        QLinearGradient edgeGradient(
+            rightward ? edgeRect.left() : edgeRect.right(), 0,
+            rightward ? edgeRect.right() : edgeRect.left(), 0
+        );
+        edgeGradient.setColorAt(0.0, deep);
+        edgeGradient.setColorAt(0.58, mid);
+        edgeGradient.setColorAt(1.0, QColor(0, 0, 0, 0));
+        p.fillRect(edgeRect, edgeGradient);
+
+        if (!imgWaveOverlay.isNull()) {
+            p.save();
+            p.setClipRect(clipRect);
+            const qreal baseOpacity = warning
+                ? (0.22 + progress * 0.24)
+                : (0.48 + (1.0 - progress) * 0.08);
+            p.setOpacity(baseOpacity);
+
+            if (!rightward) {
+                p.translate(1280, 0);
+                p.scale(-1, 1);
+            }
+
+            const int drift = static_cast<int>((now / (warning ? 78 : 42)) % 1280);
+            const int startX = -1280 + drift;
+            for (int x = startX; x < 2560; x += 1280) {
+                p.drawPixmap(QRect(x, 0, 1280, 720), imgWaveOverlay);
+            }
+
+            if (wave.isWaveActive()) {
+                p.setOpacity(baseOpacity * 0.42);
+                const int slowDrift = static_cast<int>((now / 95) % 1280);
+                for (int x = -1280 + slowDrift; x < 2560; x += 1280) {
+                    p.drawPixmap(QRect(x + 220, -70, 1280, 720), imgWaveOverlay);
+                }
+            }
+            p.restore();
+        }
+
+        const int frontX = rightward ? clipRect.right() : clipRect.left();
+        const int foamPhase = static_cast<int>((now / 72) % 36);
+        p.setPen(Qt::NoPen);
+        for (int y = waterRect.top() + 14; y < waterRect.bottom(); y += 30) {
+            const int jitter = (foamPhase + y / 5) % 42;
+            const int x = frontX + (rightward ? -jitter : jitter);
+            p.fillRect(x - 12, y, 18, 3, QColor(foam.red(), foam.green(), foam.blue(), warning ? 92 : 118));
+            p.fillRect(x + (rightward ? -34 : 16), y + 7, 24, 2, QColor(foam.red(), foam.green(), foam.blue(), warning ? 58 : 76));
+        }
+
+        const QRect panel(rightward ? 28 : 1020, 84, 232, 66);
+        if (!imgWoodNoticeButton.isNull()) {
+            p.drawPixmap(panel.adjusted(-16, -16, 16, 14), imgWoodNoticeButton, imgWoodNoticeButton.rect());
+        } else {
+            p.fillRect(panel, QColor(76, 40, 18, warning ? 230 : 205));
+        }
+
+        const QString title = warning
+            ? QStringLiteral("\u6d77\u6d6a\u9884\u8b66")
+            : (rightward ? QStringLiteral("\u987a\u6d6a\u4e2d") : QStringLiteral("\u9006\u6d6a\u4e2d"));
+        const QString detail = warning
+            ? QStringLiteral("%1  %2s").arg(rightward ? QStringLiteral("\u987a\u6d6a") : QStringLiteral("\u9006\u6d6a"))
+                  .arg(QString::number(wave.warningRemainingMs() / 1000.0, 'f', 1))
+            : (rightward ? QStringLiteral("\u822a\u901f\u63d0\u5347") : QStringLiteral("\u822a\u901f\u964d\u4f4e"));
+
+        p.setFont(QFont("Microsoft YaHei", 12, QFont::Bold));
+        p.setPen(QColor(255, 237, 184));
+        p.drawText(panel.adjusted(14, 7, -14, -36), Qt::AlignLeft | Qt::AlignVCenter, title);
+        p.setFont(QFont("Microsoft YaHei", 10, QFont::Bold));
+        p.setPen(QColor(215, 238, 232));
+        p.drawText(panel.adjusted(14, 30, -14, -14), Qt::AlignLeft | Qt::AlignVCenter, detail);
+
+        const QRect bar(panel.left() + 14, panel.bottom() - 12, panel.width() - 28, 5);
+        p.fillRect(bar, QColor(8, 20, 28, 190));
+        const qreal remaining = warning ? (1.0 - progress) : (1.0 - wave.activeProgress());
+        const int fillW = qBound(0, static_cast<int>(bar.width() * remaining), bar.width());
+        p.fillRect(QRect(bar.left(), bar.top(), fillW, bar.height()), accent);
+        p.fillRect(bar.left(), bar.top(), bar.width(), 1, QColor(255, 255, 230, 60));
+
+        p.restore();
+        return;
+    }
+
+    QColor deep = rightward ? QColor(24, 116, 138, 118) : QColor(20, 64, 114, 126);
+    QColor mid = rightward ? QColor(58, 178, 190, 96) : QColor(42, 103, 160, 102);
+    QColor foam = rightward ? QColor(214, 252, 240, 185) : QColor(205, 228, 255, 176);
+    QColor accent = rightward ? QColor(86, 220, 210, 210) : QColor(238, 166, 72, 220);
+    if (WeatherSystem::instance().currentWeather() == WeatherType::STORM) {
+        deep = deep.darker(135);
+        mid = mid.darker(125);
+        foam = foam.darker(108);
+    }
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, false);
+
+    const int edgeW = warning ? 64 : 48;
+    const QRect edgeRect(rightward ? 0 : 1280 - edgeW, 58, edgeW, 628);
+    QLinearGradient edgeGradient(
+        rightward ? edgeRect.left() : edgeRect.right(), 0,
+        rightward ? edgeRect.right() : edgeRect.left(), 0
+    );
+    edgeGradient.setColorAt(0.0, deep);
+    edgeGradient.setColorAt(0.55, mid);
+    edgeGradient.setColorAt(1.0, QColor(0, 0, 0, 0));
+    p.fillRect(edgeRect, edgeGradient);
+
+    const int foamShift = static_cast<int>((now / 70) % 24);
+    for (int y = edgeRect.top() + 10; y < edgeRect.bottom(); y += 22) {
+        const int row = ((y / 22) % 3) * 5;
+        if (rightward) {
+            const int x = edgeRect.left() + 5 + (foamShift + row) % 18;
+            p.fillRect(x, y, 30, 3, foam);
+            p.fillRect(x + 12, y + 4, 24, 3, foam.lighter(106));
+            p.fillRect(x + 30, y + 8, 18, 3, foam.darker(108));
+        }
+        else {
+            const int x = edgeRect.right() - 35 - (foamShift + row) % 18;
+            p.fillRect(x, y, 30, 3, foam);
+            p.fillRect(x - 6, y + 4, 24, 3, foam.lighter(106));
+            p.fillRect(x - 18, y + 8, 18, 3, foam.darker(108));
         }
     }
+
+    auto drawPixelArrow = [&](int cx, int cy, bool pointsRight, const QColor& color) {
+        p.setBrush(color);
+        p.setPen(Qt::NoPen);
+        const int dir = pointsRight ? 1 : -1;
+        p.fillRect(cx - dir * 12, cy - 8, 14, 4, color);
+        p.fillRect(cx - dir * 6, cy - 4, 14, 4, color);
+        p.fillRect(cx, cy, 14, 4, color);
+        p.fillRect(cx - dir * 6, cy + 4, 14, 4, color);
+        p.fillRect(cx - dir * 12, cy + 8, 14, 4, color);
+    };
+
+    const int arrowPhase = static_cast<int>((now / 120) % 42);
+    for (int i = 0; i < 7; ++i) {
+        const int y = 128 + i * 70 + ((i % 2) * 10);
+        const int cx = rightward
+            ? edgeRect.left() + 18 + (arrowPhase + i * 5) % 36
+            : edgeRect.right() - 18 - (arrowPhase + i * 5) % 36;
+        drawPixelArrow(cx, y, rightward, accent);
+    }
+
+    if (wave.isWaveActive()) {
+        const int streamOffset = static_cast<int>((now / 38) % 140);
+        p.setPen(Qt::NoPen);
+        for (int y = 92; y < 670; y += 34) {
+            const int rowOffset = (y / 34) % 2 ? 70 : 0;
+            for (int x = -160; x < 1440; x += 140) {
+                const int sx = rightward
+                    ? x + streamOffset + rowOffset
+                    : 1280 - (x + streamOffset + rowOffset);
+                p.fillRect(sx, y, 48, 2, QColor(foam.red(), foam.green(), foam.blue(), 64));
+                p.fillRect(sx + (rightward ? 34 : -34), y + 5, 28, 2, QColor(foam.red(), foam.green(), foam.blue(), 42));
+            }
+        }
+    }
+
+    const QRect panel(rightward ? 28 : 1020, 84, 232, 66);
+    if (!imgWoodNoticeButton.isNull()) {
+        p.drawPixmap(panel.adjusted(-16, -16, 16, 14), imgWoodNoticeButton, imgWoodNoticeButton.rect());
+    } else {
+        p.fillRect(panel, QColor(76, 40, 18, warning ? 230 : 205));
+    }
+
+    const QString title = warning
+        ? QStringLiteral("海浪预警")
+        : (rightward ? QStringLiteral("顺浪中") : QStringLiteral("逆浪中"));
+    const QString detail = warning
+        ? QStringLiteral("%1  %2s").arg(rightward ? QStringLiteral("顺浪") : QStringLiteral("逆浪"))
+              .arg(QString::number(wave.warningRemainingMs() / 1000.0, 'f', 1))
+        : (rightward ? QStringLiteral("航速提升") : QStringLiteral("航速降低"));
+
+    p.setFont(QFont("Microsoft YaHei", 12, QFont::Bold));
+    p.setPen(QColor(255, 237, 184));
+    p.drawText(panel.adjusted(14, 7, -14, -36), Qt::AlignLeft | Qt::AlignVCenter, title);
+    p.setFont(QFont("Microsoft YaHei", 10, QFont::Bold));
+    p.setPen(QColor(215, 238, 232));
+    p.drawText(panel.adjusted(14, 30, -14, -14), Qt::AlignLeft | Qt::AlignVCenter, detail);
+
+    const QRect bar(panel.left() + 14, panel.bottom() - 12, panel.width() - 28, 5);
+    p.fillRect(bar, QColor(8, 20, 28, 190));
+    const qreal remaining = warning ? (1.0 - progress) : (1.0 - wave.activeProgress());
+    const int fillW = qBound(0, static_cast<int>(bar.width() * remaining), bar.width());
+    p.fillRect(QRect(bar.left(), bar.top(), fillW, bar.height()), accent);
+    p.fillRect(bar.left(), bar.top(), bar.width(), 1, QColor(255, 255, 230, 60));
+
+    p.restore();
+}
+
+void GameWindow::drawWeatherEffects(QPainter& p)
+{
+    if (WeatherSystem::instance().currentWeather() != WeatherType::STORM) {
+        return;
+    }
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+    p.save();
+    p.setClipRect(0, 0, 1280, 720);
+
+    const int rainOffset = static_cast<int>((now / 24) % 260);
+    if (!imgRainCluster.isNull()) {
+        p.setOpacity(0.44);
+        for (int x = -240; x < 1500; x += 315) {
+            const int stagger = qAbs((x * 31) % 260);
+            for (int y = -360 + rainOffset - stagger; y < 820; y += 275) {
+                p.drawPixmap(QRect(x, y, 300, 245), imgRainCluster, imgRainCluster.rect());
+            }
+        }
+        p.setOpacity(1.0);
+    }
+
+    if (gm && (gm->lightningWarningActive || gm->lightningStrikeActive)) {
+        const int sx = static_cast<int>(gm->lightningTarget.x()) - gm->cameraX;
+        const int sy = static_cast<int>(gm->lightningTarget.y());
+        const int radius = gm->lightningStrikeActive ? 90 : 82;
+        if (gm->lightningWarningActive) {
+            const int pulse = 8 + static_cast<int>((now / 80) % 10);
+            const qreal size = (radius + pulse) * 2.45;
+            drawPixmapCentered(p, imgLightningWarningRing, QPointF(sx, sy), QSizeF(size, size), 0.78);
+        }
+        else {
+            const qreal size = radius * 2.55;
+            drawPixmapCentered(p, imgLightningWarningRing, QPointF(sx, sy), QSizeF(size, size), 0.9);
+        }
+    }
+
+    const int lightningPulse = static_cast<int>((now / 120) % 34);
+    if (!imgStormLightning.isNull() && (lightningPulse < 4 || WeatherSystem::instance().shouldTriggerLightning())) {
+        const int frameCount = 4;
+        const int frameWidth = imgStormLightning.width() / frameCount;
+        const int frame = qBound(0, lightningPulse, frameCount - 1);
+        p.drawPixmap(QRect(0, 0, 1280, 720), imgStormLightning, QRect(frame * frameWidth, 0, frameWidth, imgStormLightning.height()));
+    }
+
+    p.restore();
 }
 
 // ============================================================
@@ -329,73 +1324,77 @@ void GameWindow::drawBossHazards(QPainter& p)
     for (const auto& h : gm->boss->getHazards()) {
         if (!h.active) continue;
 
-        QColor fill(255, 80, 80, 80);
-        QColor stroke(255, 100, 100, 180);
-
-        switch (h.type) {
-        case BossHazardType::BombWarning:
-        case BossHazardType::ElegyWarning:
-        case BossHazardType::CloneExplosionWarning:
-            fill = QColor(255, 220, 60, 70);
-            stroke = QColor(255, 220, 60, 190);
-            break;
-        case BossHazardType::BombHitbox:
-        case BossHazardType::MeleeHitbox:
-        case BossHazardType::MouthStrike:
-        case BossHazardType::ReefHitbox:
-            fill = QColor(255, 70, 70, 95);
-            stroke = QColor(255, 70, 70, 210);
-            break;
-        case BossHazardType::EyeSector:
-            fill = QColor(120, 170, 255, 55);
-            stroke = QColor(120, 170, 255, 160);
-            break;
-        case BossHazardType::SoulSong:
-            fill = QColor(190, 90, 255, 75);
-            stroke = QColor(210, 140, 255, 200);
-            break;
-        case BossHazardType::SeaweedZone:
-            fill = QColor(40, 180, 100, 70);
-            stroke = QColor(40, 220, 130, 180);
-            break;
-        }
-
-        p.setBrush(fill);
-        p.setPen(QPen(stroke, 2));
+        const bool warningType =
+            h.type == BossHazardType::BombWarning ||
+            h.type == BossHazardType::ElegyWarning ||
+            h.type == BossHazardType::CloneExplosionWarning;
+        const bool calmType =
+            h.type == BossHazardType::EyeSector ||
+            h.type == BossHazardType::SeaweedZone;
+        const QPixmap& ring = warningType
+            ? imgLightningWarningRing
+            : (calmType && !imgShockwaveRing.isNull() ? imgShockwaveRing : imgBossWarningRing);
+        const qreal opacity = warningType ? 0.72 : 0.82;
 
         if (h.radius > 0.0) {
             int sx = int(h.position.x()) - gm->cameraX;
             int sy = int(h.position.y());
             int r = int(h.radius);
-            p.drawEllipse(sx - r, sy - r, r * 2, r * 2);
+            const qreal size = qMax(34, r * 2 + (warningType ? 30 : 18));
+            drawPixmapCentered(p, ring, QPointF(sx, sy), QSizeF(size, size), opacity);
         }
         else {
             QRectF rect = h.rect;
             rect.translate(-gm->cameraX, 0);
-            p.drawRect(rect);
+            if (!imgBossWarningRect.isNull()) {
+                p.save();
+                p.setOpacity(0.82);
+                p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+                p.drawPixmap(rect.adjusted(-8, -8, 8, 8), imgBossWarningRect, QRectF(imgBossWarningRect.rect()));
+                p.restore();
+            }
         }
     }
 }
 
 void GameWindow::drawSharks(QPainter& p)
 {
+    auto drawAnimatedEnemy = [&](const QPixmap& pixmap, const QRect& target, int frameOffset = 0, bool mirror = false) {
+        if (pixmap.isNull()) return false;
+
+        const int frameCount = 4;
+        const int frameWidth = pixmap.width() / frameCount;
+        const int frame = static_cast<int>(((QDateTime::currentMSecsSinceEpoch() / 140) + frameOffset) % frameCount);
+        const QRect source(frame * frameWidth, 0, frameWidth, pixmap.height());
+        if (mirror) {
+            p.save();
+            p.translate(target.right() + 1, target.top());
+            p.scale(-1, 1);
+            p.drawPixmap(QRect(0, 0, target.width(), target.height()), pixmap, source);
+            p.restore();
+        }
+        else {
+            p.drawPixmap(target, pixmap, source);
+        }
+        return true;
+    };
+
     // 普通鲨鱼
     for (auto s : gm->sharks) {
         if (!s->alive) continue;
         int screenX = s->x - gm->cameraX;
         if (screenX < -50 || screenX > 1330) continue;
 
-        if (!imgShark.isNull()) {
-            p.drawPixmap(screenX - 24, s->y - 12, 48, 24, imgShark);
-        }
-        else {
+        const int sharkW = Config::GameConfig::SHARK_VISUAL_WIDTH;
+        const int sharkH = Config::GameConfig::SHARK_VISUAL_HEIGHT;
+        if (!drawAnimatedEnemy(imgShark, QRect(screenX - sharkW / 2, s->y - sharkH / 2, sharkW, sharkH), s->x / 23, s->facingX > 0.0f)) {
             p.setBrush(QColor(80, 80, 200));
             p.setPen(Qt::NoPen);
-            p.drawEllipse(screenX - 20, s->y - 12, 40, 24);
+            p.drawEllipse(screenX - sharkW / 2, s->y - sharkH / 2, sharkW, sharkH);
         }
-        p.fillRect(screenX - 20, s->y - 22, 40, 6, QColor(60, 60, 60));
+        p.fillRect(screenX - 20, s->y - sharkH / 2 - 12, 40, 6, QColor(60, 60, 60));
         int bw = (int)(40.0f * s->hp / s->maxHp);
-        p.fillRect(screenX - 20, s->y - 22, bw, 6, QColor(220, 50, 50));
+        p.fillRect(screenX - 20, s->y - sharkH / 2 - 12, bw, 6, QColor(220, 50, 50));
     }
 
     // 剑鱼
@@ -404,22 +1403,21 @@ void GameWindow::drawSharks(QPainter& p)
         int screenX = s->x - gm->cameraX;
         if (screenX < -50 || screenX > 1330) continue;
 
-        if (!imgSwordfish.isNull()) {
-            p.drawPixmap(screenX - 28, s->y - 10, 56, 20, imgSwordfish);
-        }
-        else {
+        const int swordfishW = Config::GameConfig::SWORDFISH_VISUAL_WIDTH;
+        const int swordfishH = Config::GameConfig::SWORDFISH_VISUAL_HEIGHT;
+        if (!drawAnimatedEnemy(imgSwordfish, QRect(screenX - swordfishW / 2, s->y - swordfishH / 2, swordfishW, swordfishH), s->x / 23, s->facingX > 0.0f)) {
             p.setBrush(QColor(50, 200, 200));
             p.setPen(Qt::NoPen);
-            p.drawEllipse(screenX - 20, s->y - 10, 40, 20);
+            p.drawEllipse(screenX - swordfishW / 2, s->y - swordfishH / 2, swordfishW, swordfishH);
         }
         if (s->state == Swordfish::WINDUP) {
             p.setPen(QColor(255, 200, 0));
             p.setFont(QFont("Microsoft YaHei", 10));
             p.drawText(screenX - 15, s->y - 18, "蓄力!");
         }
-        p.fillRect(screenX - 20, s->y - 20, 40, 5, QColor(60, 60, 60));
+        p.fillRect(screenX - 20, s->y - swordfishH / 2 - 10, 40, 5, QColor(60, 60, 60));
         int bw2 = (int)(40.0f * s->hp / s->maxHp);
-        p.fillRect(screenX - 20, s->y - 20, bw2, 5, QColor(220, 50, 50));
+        p.fillRect(screenX - 20, s->y - swordfishH / 2 - 10, bw2, 5, QColor(220, 50, 50));
     }
 
     // 墨鱼
@@ -428,17 +1426,16 @@ void GameWindow::drawSharks(QPainter& p)
         int screenX = o->x - gm->cameraX;
         if (screenX < -50 || screenX > 1330) continue;
 
-        if (!imgOctopus.isNull()) {
-            p.drawPixmap(screenX - 20, o->y - 20, 40, 40, imgOctopus);
-        }
-        else {
+        const int octopusW = Config::GameConfig::OCTOPUS_VISUAL_WIDTH;
+        const int octopusH = Config::GameConfig::OCTOPUS_VISUAL_HEIGHT;
+        if (!drawAnimatedEnemy(imgOctopus, QRect(screenX - octopusW / 2, o->y - octopusH / 2, octopusW, octopusH), o->x / 23, o->facingX > 0.0f)) {
             p.setBrush(QColor(150, 0, 150));
             p.setPen(Qt::NoPen);
-            p.drawEllipse(screenX - 18, o->y - 18, 36, 36);
+            p.drawEllipse(screenX - octopusW / 2, o->y - octopusH / 2, octopusW, octopusH);
         }
-        p.fillRect(screenX - 18, o->y - 26, 36, 5, QColor(60, 60, 60));
+        p.fillRect(screenX - 18, o->y - octopusH / 2 - 10, 36, 5, QColor(60, 60, 60));
         int bw3 = (int)(36.0f * o->hp / o->maxHp);
-        p.fillRect(screenX - 18, o->y - 26, bw3, 5, QColor(220, 50, 50));
+        p.fillRect(screenX - 18, o->y - octopusH / 2 - 10, bw3, 5, QColor(220, 50, 50));
     }
 
     // Boss
@@ -452,12 +1449,14 @@ void GameWindow::drawSharks(QPainter& p)
             if (cloneX >= -60 && cloneX <= 1340) {
                 p.setBrush(QColor(120, 40, 180));
                 p.setPen(QPen(QColor(230, 180, 255), 2));
-                p.drawEllipse(cloneX - 28, cloneY - 22, 56, 44);
-                p.fillRect(cloneX - 28, cloneY - 34, 56, 6, QColor(60, 60, 60));
+                const int cloneW = Config::GameConfig::TALI_CLONE_COLLIDER_WIDTH;
+                const int cloneH = Config::GameConfig::TALI_CLONE_COLLIDER_HEIGHT;
+                p.drawEllipse(cloneX - cloneW / 2, cloneY - cloneH / 2, cloneW, cloneH);
+                p.fillRect(cloneX - cloneW / 2, cloneY - cloneH / 2 - 12, cloneW, 6, QColor(60, 60, 60));
                 int cloneBar = secondaryMaxHp > 0
-                    ? (int)(56.0f * secondaryHp / secondaryMaxHp)
+                    ? (int)(cloneW * secondaryHp / secondaryMaxHp)
                     : 0;
-                p.fillRect(cloneX - 28, cloneY - 34, cloneBar, 6, QColor(220, 50, 50));
+                p.fillRect(cloneX - cloneW / 2, cloneY - cloneH / 2 - 12, cloneBar, 6, QColor(220, 50, 50));
             }
         }
 
@@ -465,19 +1464,28 @@ void GameWindow::drawSharks(QPainter& p)
         int screenY = (int)gm->boss->y;
         if (screenX >= -50 && screenX <= 1330) {
             bool isPhase2 = (gm->boss->state == Boss::PHASE2);
-            if (!imgShark.isNull()) {
-                p.drawPixmap(screenX - 40, screenY - 20, 80, 40, imgShark);
+            const int bossW = Config::GameConfig::BOSS_COLLIDER_WIDTH;
+            const int bossH = Config::GameConfig::BOSS_COLLIDER_HEIGHT;
+            if (drawAnimatedEnemy(imgShark, QRect(screenX - bossW / 2, screenY - bossH / 2, bossW, bossH), screenX / 23)) {
                 if (isPhase2)
-                    p.fillRect(screenX - 40, screenY - 20, 80, 40, QColor(255, 0, 0, 80));
+                    p.fillRect(screenX - bossW / 2, screenY - bossH / 2, bossW, bossH, QColor(255, 0, 0, 80));
             }
             else {
                 p.setBrush(isPhase2 ? QColor(220, 0, 0) : QColor(160, 0, 0));
                 p.setPen(Qt::NoPen);
-                p.drawEllipse(screenX - 35, screenY - 20, 70, 40);
+                p.drawEllipse(screenX - bossW / 2, screenY - bossH / 2, bossW, bossH);
             }
             p.fillRect(screenX - 35, screenY - 32, 70, 8, QColor(60, 60, 60));
             int bw4 = (int)(70.0f * gm->boss->hp / gm->boss->maxHp);
             p.fillRect(screenX - 35, screenY - 32, bw4, 8, QColor(220, 50, 50));
+            const QString phaseText = gm->boss->state == Boss::PHASE2
+                ? QStringLiteral("\u4e8c\u9636\u6bb5")
+                : QStringLiteral("\u4e00\u9636\u6bb5");
+            p.setPen(QColor(255, 236, 180));
+            p.setFont(QFont("Microsoft YaHei", 9, QFont::Bold));
+            p.drawText(QRect(screenX - 72, screenY - 55, 144, 18),
+                       Qt::AlignCenter,
+                       QStringLiteral("%1  %2").arg(bossDisplayName(gm->boss->kind), phaseText));
             if (isPhase2) {
                 p.setPen(QColor(255, 100, 100));
                 p.setFont(QFont("Microsoft YaHei", 10));
@@ -495,8 +1503,44 @@ void GameWindow::drawPlayer(QPainter& p)
 {
     int screenX = gm->playerX() - gm->cameraX;
     int screenY = gm->playerY();
+    Player& player = Player::instance();
 
-    if (!imgBoat.isNull()) {
+    Weapon* currentWeapon = InventorySystem::instance().currentWeapon();
+    if (currentWeapon && !currentWeapon->isBroken()) {
+        int displayRange = currentWeapon->getRange();
+        if (currentWeapon->canFish() && !currentWeapon->canAttack()) {
+            displayRange += Config::GameConfig::FISH_INTERACTION_RADIUS;
+        }
+        drawPixmapCentered(p, imgWeaponRangeRing, QPointF(screenX, screenY),
+                           QSizeF(displayRange * 2.0, displayRange * 2.0), 0.34);
+    }
+
+    int weaponIndex = 0;
+    if (currentWeapon) {
+        const std::string type = currentWeapon->getTypeCode();
+        if (type == "Net") weaponIndex = 1;
+        else if (type == "Harpoon") weaponIndex = 2;
+        else if (type == "Pistol") weaponIndex = 3;
+        else if (type == "Shotgun") weaponIndex = 4;
+    }
+    const int dirIndex = qBound(0, player.facingDirection(), 3);
+    const bool useBoostSprite = player.isDashing() || player.isBoosting();
+    const QPixmap& sprite = useBoostSprite && !imgPlayerBoost[weaponIndex][dirIndex].isNull()
+        ? imgPlayerBoost[weaponIndex][dirIndex]
+        : imgPlayerMove[weaponIndex][dirIndex];
+
+    if (!sprite.isNull()) {
+        const QRect source(0, 0, sprite.width(), sprite.height());
+        QSize maxSize = (dirIndex == 0 || dirIndex == 1) ? QSize(72, 96) : QSize(100, 82);
+        QSize targetSize = source.size();
+        targetSize.scale(maxSize, Qt::KeepAspectRatio);
+        const QRect target(screenX - targetSize.width() / 2,
+                           screenY - targetSize.height() / 2,
+                           targetSize.width(),
+                           targetSize.height());
+        p.drawPixmap(target, sprite, source);
+    }
+    else if (!imgBoat.isNull()) {
         p.drawPixmap(screenX - 30, screenY - 15, 60, 30, imgBoat);
     }
     else {
@@ -507,19 +1551,320 @@ void GameWindow::drawPlayer(QPainter& p)
 
     // 绘制Dash残影/特效
     if (Player::instance().isDashing()) {
-        p.setBrush(Qt::NoBrush);
-        p.setPen(QPen(QColor(100, 200, 255, 150), 3));
-        p.drawRect(screenX - 25, screenY - 12, 50, 24);
+        drawPixmapCentered(p, imgShockwaveRing, QPointF(screenX, screenY + 4),
+                           QSizeF(120, 58), 0.46);
     }
 
     // 绘制Shock爆发范围提示
     if (Player::instance().isShockActive()) {
         QRectF area = Player::instance().shockArea();
         area.translate(-gm->cameraX, 0);
-        p.setBrush(QColor(100, 200, 255, 50));
-        p.setPen(QPen(QColor(100, 200, 255, 150), 2));
-        p.drawEllipse(area);
+        drawPixmapCentered(p, imgShockwaveRing, area.center(), QSizeF(area.width(), area.height()), 0.72);
     }
+}
+
+void GameWindow::drawAttackProjectiles(QPainter& p)
+{
+    if (attackProjectiles.isEmpty()) return;
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    for (const auto& shot : attackProjectiles) {
+        const int travelMs = qMax(1, shot.travelMs);
+        const qreal progress = qBound(0.0, static_cast<qreal>(shot.ageMs) / travelMs, 1.0);
+        const qreal trailProgress = qMax<qreal>(0.0, progress - 0.22);
+
+        const QPointF currentWorld(
+            shot.startWorld.x() + (shot.endWorld.x() - shot.startWorld.x()) * progress,
+            shot.startWorld.y() + (shot.endWorld.y() - shot.startWorld.y()) * progress
+        );
+        const QPointF trailWorld(
+            shot.startWorld.x() + (shot.endWorld.x() - shot.startWorld.x()) * trailProgress,
+            shot.startWorld.y() + (shot.endWorld.y() - shot.startWorld.y()) * trailProgress
+        );
+
+        const QPointF currentScreen(currentWorld.x() - gm->cameraX, currentWorld.y());
+        const QPointF trailScreen(trailWorld.x() - gm->cameraX, trailWorld.y());
+        const QPointF muzzleScreen(shot.startWorld.x() - gm->cameraX, shot.startWorld.y());
+
+        if (shot.kind == AttackProjectileKind::Harpoon) {
+            const qreal dx = shot.endWorld.x() - shot.startWorld.x();
+            const qreal dy = shot.endWorld.y() - shot.startWorld.y();
+            const qreal angle = std::atan2(dy, dx) * 180.0 / 3.14159265358979323846;
+            const qreal fade = shot.ageMs <= travelMs
+                ? 1.0
+                : qBound(0.0, 1.0 - static_cast<qreal>(shot.ageMs - travelMs) /
+                    qMax(1, shot.lifetimeMs - travelMs), 1.0);
+
+            if (!imgHarpoonProjectile.isNull()) {
+                p.save();
+                p.setOpacity(fade);
+                p.setRenderHint(QPainter::SmoothPixmapTransform, false);
+                p.translate(currentScreen);
+                p.rotate(angle);
+
+                const qreal targetW = 108.0;
+                const qreal targetH = targetW * imgHarpoonProjectile.height() /
+                    qMax(1, imgHarpoonProjectile.width());
+                const QRectF target(-targetW, -targetH / 2.0, targetW, targetH);
+                p.drawPixmap(target, imgHarpoonProjectile, QRectF(imgHarpoonProjectile.rect()));
+                p.restore();
+            }
+            continue;
+        }
+
+        const qreal dx = shot.endWorld.x() - shot.startWorld.x();
+        const qreal dy = shot.endWorld.y() - shot.startWorld.y();
+        const qreal angle = std::atan2(dy, dx) * 180.0 / 3.14159265358979323846;
+        const qreal fade = qBound(0.0, 1.0 - static_cast<qreal>(shot.ageMs) / shot.lifetimeMs, 1.0);
+        const QSizeF bulletSize(42 + shot.radius * 4, 18 + shot.radius * 2);
+        drawPixmapCentered(p, imgMuzzleFlash, currentScreen, bulletSize, 0.54 + fade * 0.34, angle);
+
+        if (shot.ageMs < 55) {
+            const qreal flashFade = qBound(0.0, 1.0 - static_cast<qreal>(shot.ageMs) / 55.0, 1.0);
+            drawPixmapCentered(p, imgMuzzleFlash, muzzleScreen,
+                               QSizeF(62 + shot.radius * 5, 28 + shot.radius * 3),
+                               0.72 * flashFade, angle);
+        }
+    }
+
+    p.restore();
+}
+
+void GameWindow::updateAttackProjectiles()
+{
+    for (auto& shot : attackProjectiles) {
+        shot.ageMs += 16;
+    }
+
+    attackProjectiles.erase(
+        std::remove_if(
+            attackProjectiles.begin(),
+            attackProjectiles.end(),
+            [](const AttackProjectileEffect& shot) {
+                return shot.ageMs >= shot.lifetimeMs;
+            }
+        ),
+        attackProjectiles.end()
+    );
+}
+
+void GameWindow::drawHitFeedbacks(QPainter& p)
+{
+    if (hitFeedbacks.isEmpty()) return;
+
+    p.save();
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    for (const auto& hit : hitFeedbacks) {
+        const qreal t = qBound(0.0, static_cast<qreal>(hit.ageMs) / qMax(1, hit.lifetimeMs), 1.0);
+        const qreal size = 54.0 + t * 26.0;
+        const QPointF screen(hit.worldPos.x() - gm->cameraX, hit.worldPos.y());
+        drawPixmapCentered(p, imgHitSpark, screen, QSizeF(size, size * 0.82), 1.0 - t * 0.75);
+    }
+    p.restore();
+}
+
+void GameWindow::updateHitFeedbacks()
+{
+    for (auto& hit : hitFeedbacks) {
+        hit.ageMs += 16;
+    }
+
+    hitFeedbacks.erase(
+        std::remove_if(
+            hitFeedbacks.begin(),
+            hitFeedbacks.end(),
+            [](const HitFeedbackEffect& hit) {
+                return hit.ageMs >= hit.lifetimeMs;
+            }
+        ),
+        hitFeedbacks.end()
+    );
+}
+
+void GameWindow::spawnHitFeedback(const QPointF& worldPos)
+{
+    HitFeedbackEffect effect;
+    effect.worldPos = worldPos;
+    hitFeedbacks.append(effect);
+}
+
+void GameWindow::showFloatingNotice(const QString& title, const QString& body)
+{
+    floatingNotice.title = title;
+    floatingNotice.body = body;
+    floatingNotice.ageMs = 0;
+    floatingNotice.lifetimeMs = 2400;
+    floatingNotice.active = true;
+}
+
+void GameWindow::updateFloatingNotice()
+{
+    if (!floatingNotice.active) return;
+    floatingNotice.ageMs += 16;
+    if (floatingNotice.ageMs >= floatingNotice.lifetimeMs) {
+        floatingNotice.active = false;
+    }
+}
+
+void GameWindow::notifyWeaponBrokenIfNeeded(const Weapon* weapon, bool wasBroken)
+{
+    if (!weapon || wasBroken || !weapon->isBroken()) return;
+
+    showFloatingNotice(QStringLiteral("\u88c5\u5907\u635f\u574f"),
+                       QStringLiteral("%1 \u8010\u4e45\u5df2\u7528\u5c3d\uff0c\u56de\u6e2f\u6216\u4f7f\u7528\u4fee\u7406\u5de5\u5177\u540e\u518d\u51fa\u624b\u3002")
+                       .arg(QString::fromStdString(weapon->getName())));
+}
+
+bool GameWindow::isGunWeapon(const Weapon* weapon) const
+{
+    if (!weapon) return false;
+    const std::string type = weapon->getTypeCode();
+    return type == "Pistol" || type == "Shotgun";
+}
+
+bool GameWindow::isHarpoonWeapon(const Weapon* weapon) const
+{
+    return weapon && weapon->getTypeCode() == "Harpoon";
+}
+
+void GameWindow::spawnGunProjectiles(const QPointF& targetWorld, const Weapon* weapon)
+{
+    if (!isGunWeapon(weapon)) return;
+
+    const QPointF startWorld = Player::instance().worldPos();
+    QVector2D dir(targetWorld - startWorld);
+    if (dir.isNull()) {
+        dir = QVector2D(1.0f, 0.0f);
+    }
+    dir.normalize();
+
+    const QPointF dirPoint = dir.toPointF();
+    const qreal dx = targetWorld.x() - startWorld.x();
+    const qreal dy = targetWorld.y() - startWorld.y();
+    const qreal requestedDistance = std::sqrt(dx * dx + dy * dy);
+    const qreal travelDistance = qMin<qreal>(requestedDistance, weapon->getRange());
+    const QPointF baseEnd(
+        startWorld.x() + dirPoint.x() * travelDistance,
+        startWorld.y() + dirPoint.y() * travelDistance
+    );
+
+    const std::string type = weapon->getTypeCode();
+    if (type == "Shotgun") {
+        const QVector2D side(-dir.y(), dir.x());
+        const QPointF sidePoint = side.toPointF();
+        const int offsets[] = { -34, -17, 0, 17, 34 };
+        for (int offset : offsets) {
+            AttackProjectileEffect pellet;
+            pellet.startWorld = startWorld;
+            pellet.endWorld = QPointF(baseEnd.x() + sidePoint.x() * offset,
+                                      baseEnd.y() + sidePoint.y() * offset);
+            pellet.lifetimeMs = 115;
+            pellet.travelMs = pellet.lifetimeMs;
+            pellet.radius = 3;
+            pellet.color = QColor(255, 190, 85);
+            attackProjectiles.append(pellet);
+        }
+        return;
+    }
+
+    AttackProjectileEffect bullet;
+    bullet.startWorld = startWorld;
+    bullet.endWorld = baseEnd;
+    bullet.lifetimeMs = 150;
+    bullet.travelMs = bullet.lifetimeMs;
+    bullet.radius = 4;
+    bullet.color = QColor(255, 235, 130);
+    attackProjectiles.append(bullet);
+}
+
+void GameWindow::spawnHarpoonProjectile(const QPointF& targetWorld, const Weapon* weapon)
+{
+    if (!isHarpoonWeapon(weapon)) return;
+
+    const QPointF startWorld = Player::instance().worldPos();
+    const QPointF clampedEnd = clampedProjectileEnd(startWorld, targetWorld, weapon->getRange());
+    const QLineF throwLine(startWorld, clampedEnd);
+
+    QPointF impact = clampedEnd;
+    bool foundImpact = false;
+
+    auto tryHitbox = [&](const QRectF& rawHitbox) {
+        if (rawHitbox.isEmpty()) return;
+        bool hit = false;
+        const qreal pad = Config::HARPOON_PROJECTILE_HIT_PADDING;
+        const QRectF visualHitbox = rawHitbox.adjusted(-pad, -pad, pad, pad);
+        const QPointF candidate = firstLineRectIntersection(throwLine, visualHitbox, hit);
+        if (!hit) return;
+
+        if (!foundImpact ||
+            QLineF(startWorld, candidate).length() < QLineF(startWorld, impact).length()) {
+            impact = candidate;
+            foundImpact = true;
+        }
+    };
+
+    if (gm && gm->boss) {
+        QRectF hitbox;
+        QPointF secondaryPos;
+        int secondaryHp = 0;
+        int secondaryMaxHp = 0;
+        if (gm->boss->getSecondaryTarget(secondaryPos, secondaryHp, secondaryMaxHp)) {
+            hitbox = QRectF(
+                secondaryPos.x() - Config::GameConfig::TALI_CLONE_COLLIDER_WIDTH / 2.0,
+                secondaryPos.y() - Config::GameConfig::TALI_CLONE_COLLIDER_HEIGHT / 2.0,
+                Config::GameConfig::TALI_CLONE_COLLIDER_WIDTH,
+                Config::GameConfig::TALI_CLONE_COLLIDER_HEIGHT
+            );
+        }
+        else if (!gm->boss->isInvulnerable()) {
+            hitbox = gm->boss->collider();
+        }
+        tryHitbox(hitbox);
+    }
+
+    if (gm) {
+        for (auto* enemy : gm->sharks) {
+            if (enemy) tryHitbox(enemy->collider());
+        }
+        for (auto* enemy : gm->swordfishes) {
+            if (enemy) tryHitbox(enemy->collider());
+        }
+        for (auto* enemy : gm->octopuses) {
+            if (enemy) tryHitbox(enemy->collider());
+        }
+    }
+
+    AttackProjectileEffect harpoon;
+    harpoon.kind = AttackProjectileKind::Harpoon;
+    harpoon.startWorld = startWorld;
+    harpoon.endWorld = impact;
+    harpoon.lifetimeMs = 280;
+    harpoon.travelMs = 125;
+    harpoon.radius = 5;
+    harpoon.color = QColor(218, 220, 205);
+    attackProjectiles.append(harpoon);
+}
+
+void GameWindow::saveVictoryHighScore()
+{
+    if (victoryScoreSaved || !gm) return;
+
+    Player& pl = Player::instance();
+    gm->fileManager.saveHighScoreByStats(
+        "Captain",
+        pl.distance,
+        gm->killCount,
+        pl.fishCaught,
+        pl.fishTotalValue,
+        pl.gameSeconds,
+        qMin(gm->stage, Config::GameConfig::STAGE_COUNT),
+        pl.coins,
+        pl.durability(),
+        pl.stamina()
+    );
+    victoryScoreSaved = true;
 }
 
 // ============================================================
@@ -529,6 +1874,230 @@ void GameWindow::drawPlayer(QPainter& p)
 void GameWindow::drawHUD(QPainter& p)
 {
     Player& pl = Player::instance();
+    if (!imgHudTopStatusBar.isNull()) {
+        p.save();
+        p.scale(width() / 1280.0, height() / 720.0);
+
+        InventorySystem& inv = InventorySystem::instance();
+        Weapon* currentWeapon = inv.currentWeapon();
+
+        auto ratio = [](int value, int maxValue) {
+            if (maxValue <= 0) return 0.0;
+            return std::clamp(static_cast<double>(value) / maxValue, 0.0, 1.0);
+        };
+        auto drawPixmapFit = [&](const QPixmap& pixmap, const QRect& rect) {
+            if (pixmap.isNull()) return;
+            QSize size = pixmap.size();
+            size.scale(rect.size(), Qt::KeepAspectRatio);
+            QRect target(QPoint(rect.x() + (rect.width() - size.width()) / 2,
+                                rect.y() + (rect.height() - size.height()) / 2), size);
+            p.drawPixmap(target, pixmap);
+        };
+        auto drawText = [&](const QRect& rect, const QString& text, int pixelSize,
+                            const QColor& color, int flags = Qt::AlignCenter) {
+            QFont font("Microsoft YaHei");
+            font.setPixelSize(pixelSize);
+            font.setWeight(QFont::Bold);
+            p.setFont(font);
+            p.setPen(QColor(40, 20, 8, 180));
+            p.drawText(rect.translated(2, 2), flags, text);
+            p.setPen(color);
+            p.drawText(rect, flags, text);
+        };
+        auto weaponIcon = [&](const Weapon* weapon) -> const QPixmap& {
+            static QPixmap empty;
+            if (!weapon) return imgIconWeaponRod;
+            const std::string type = weapon->getTypeCode();
+            if (type == "Net") return imgIconWeaponNet;
+            if (type == "Harpoon") return imgIconWeaponHarpoon;
+            if (type == "Pistol") return imgIconWeaponPistol;
+            if (type == "Shotgun") return imgIconWeaponShotgun;
+            if (type == "Rod") return imgIconWeaponRod;
+            return empty;
+        };
+        auto weatherName = []() {
+            switch (WeatherSystem::instance().currentWeather()) {
+            case WeatherType::SUNNY: return QString("晴朗");
+            case WeatherType::FOG: return QString("大雾");
+            case WeatherType::STORM: return QString("暴风雨");
+            }
+            return QString("未知");
+        };
+
+        QRect topBar(150, 8, 980, 64);
+        p.drawPixmap(topBar, imgHudTopStatusBar);
+        drawText(QRect(250, 14, 108, 28), "渔 途", 20, QColor(255, 205, 85));
+        drawText(QRect(254, 42, 100, 18), QString("第 %1 关").arg(gm->stage), 13, QColor(245, 220, 150));
+
+        auto drawStatusBar = [&](const QRect& rect, const QPixmap& fill, int value, int maxValue) {
+            p.setPen(QPen(QColor(52, 28, 10), 2));
+            p.setBrush(QColor(25, 18, 12, 190));
+            p.drawRoundedRect(rect, 4, 4);
+            QRect fillRect = rect.adjusted(3, 3, -3, -3);
+            const int fillWidth = qRound(fillRect.width() * ratio(value, maxValue));
+            if (fillWidth > 0 && !fill.isNull()) {
+                QRect target(fillRect.x(), fillRect.y(), fillWidth, fillRect.height());
+                QRect source(0, 0, qRound(fill.width() * ratio(value, maxValue)), fill.height());
+                p.drawPixmap(target, fill, source);
+            }
+        };
+
+        drawPixmapFit(imgHudIconHeart, QRect(470, 20, 30, 30));
+        drawText(QRect(506, 17, 44, 20), "耐久", 13, QColor(245, 225, 170), Qt::AlignLeft | Qt::AlignVCenter);
+        drawText(QRect(552, 17, 64, 20), QString("%1/%2").arg(pl.durability()).arg(pl.maxDurability), 12, QColor(255, 244, 210), Qt::AlignCenter);
+        drawStatusBar(QRect(506, 43, 112, 12), imgHudHealthFill, pl.durability(), pl.maxDurability);
+
+        drawPixmapFit(imgHudIconLightning, QRect(660, 20, 30, 30));
+        drawText(QRect(694, 17, 32, 20), "体力", 12, QColor(245, 225, 170), Qt::AlignLeft | Qt::AlignVCenter);
+        drawText(QRect(722, 17, 42, 20), QString("%1/%2").arg(pl.stamina()).arg(pl.maxStamina), 9, QColor(255, 244, 210), Qt::AlignCenter);
+        drawStatusBar(QRect(690, 43, 74, 12), imgHudStaminaFill, pl.stamina(), pl.maxStamina);
+
+        drawPixmapFit(imgHudIconCoin, QRect(796, 20, 28, 28));
+        drawText(QRect(824, 17, 46, 18), "金币", 12, QColor(245, 225, 170));
+        drawText(QRect(824, 39, 46, 18), QString::number(pl.coins), 12, QColor(255, 244, 210));
+
+        drawPixmapFit(imgHudIconFish, QRect(900, 20, 28, 28));
+        drawText(QRect(932, 17, 50, 18), "鱼获", 12, QColor(245, 225, 170));
+        drawText(QRect(932, 39, 50, 18), QString::number(pl.fishCaught), 12, QColor(255, 244, 210));
+
+        const QPixmap& weatherIcon = WeatherSystem::instance().currentWeather() == WeatherType::SUNNY
+            ? imgHudIconSun
+            : (WeatherSystem::instance().currentWeather() == WeatherType::STORM ? imgHudIconLightning : imgHudIconCompass);
+        drawPixmapFit(weatherIcon, QRect(1018, 20, 30, 30));
+        drawText(QRect(1050, 17, 46, 20), "天气", 13, QColor(245, 225, 170));
+        drawText(QRect(1050, 40, 46, 20), weatherName(), 12, QColor(255, 244, 210));
+
+        QRect equipmentPanel(18, 548, 145, 150);
+        p.drawPixmap(equipmentPanel, imgHudEquipmentPanel);
+        drawText(QRect(50, 558, 82, 20), "当前装备", 13, QColor(255, 225, 150));
+        drawPixmapFit(weaponIcon(currentWeapon), QRect(48, 595, 84, 72));
+        const QString weaponName = currentWeapon ? QString::fromStdString(currentWeapon->getName()) : QString("无");
+        drawText(QRect(33, 665, 114, 22), weaponName, 13, QColor(70, 35, 12));
+
+        QRect minimapPanel(1072, 105, 185, 168);
+        p.drawPixmap(minimapPanel, imgHudMinimapPanel);
+        drawText(QRect(1122, 112, 86, 20), "航海图", 13, QColor(255, 225, 150));
+        QRect mapArea(1098, 140, 134, 96);
+        p.setPen(QPen(QColor(98, 160, 170, 120), 1));
+        for (int gx = mapArea.left() + 33; gx < mapArea.right(); gx += 33) p.drawLine(gx, mapArea.top(), gx, mapArea.bottom());
+        for (int gy = mapArea.top() + 24; gy < mapArea.bottom(); gy += 24) p.drawLine(mapArea.left(), gy, mapArea.right(), gy);
+        drawText(QRect(1154, 140, 20, 18), "N", 13, QColor(255, 226, 135));
+        drawText(QRect(1154, 216, 20, 18), "S", 13, QColor(255, 226, 135));
+        drawText(QRect(1101, 178, 20, 18), "W", 13, QColor(255, 226, 135));
+        drawText(QRect(1210, 178, 20, 18), "E", 13, QColor(255, 226, 135));
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(255, 205, 65));
+        const auto& stageCfg = Config::GameConfig::stageConfig(gm->stage);
+        const int mapStageStart = Config::GameConfig::stageStartDistance(gm->stage);
+        const int mapStageEnd = stageCfg.targetDistance;
+        const int mapStageSpan = qMax(1, mapStageEnd - mapStageStart);
+        const int mapStageDistance = qBound(0, pl.distance - mapStageStart, mapStageSpan);
+        const int shipX = mapArea.left() + qBound(16, mapStageDistance * mapArea.width() / mapStageSpan, mapArea.width() - 16);
+        QPoint shipPoints[3] = { QPoint(shipX, 174), QPoint(shipX - 8, 193), QPoint(shipX + 8, 193) };
+        p.drawPolygon(shipPoints, 3);
+        p.setBrush(QColor(245, 70, 55));
+        p.drawEllipse(mapArea.left() + 92, mapArea.top() + 36, 6, 6);
+        p.setBrush(QColor(70, 210, 230));
+        p.drawEllipse(mapArea.left() + 44, mapArea.top() + 58, 5, 5);
+
+        QRect logPanel(1072, 286, 185, 172);
+        p.drawPixmap(logPanel, imgHudLogPanel);
+        drawText(QRect(1122, 294, 86, 20), "航海日志", 13, QColor(255, 225, 150));
+        QFont logFont("Microsoft YaHei");
+        logFont.setPixelSize(10);
+        logFont.setWeight(QFont::Bold);
+        p.setFont(logFont);
+        p.setPen(QColor(78, 40, 16));
+        const int sec = pl.gameSeconds;
+        const QString timeText = QString("%1:%2").arg(sec / 60, 2, 10, QChar('0')).arg(sec % 60, 2, 10, QChar('0'));
+        p.drawText(QRect(1094, 326, 140, 18), Qt::AlignLeft | Qt::AlignVCenter, QString("[%1] 第 %2 关海域").arg(timeText).arg(gm->stage));
+        p.drawText(QRect(1094, 352, 140, 18), Qt::AlignLeft | Qt::AlignVCenter, QString("距离 %1m").arg(pl.distance));
+        p.drawText(QRect(1094, 378, 140, 18), Qt::AlignLeft | Qt::AlignVCenter, QString("鱼获 %1  击败 %2").arg(pl.fishCaught).arg(gm->killCount));
+        p.setPen(QColor(170, 50, 34));
+        QString objectiveText;
+        if (gm->boss && gm->boss->alive) {
+            switch (gm->boss->kind) {
+            case BossKind::FiveHeadShark:
+                objectiveText = QStringLiteral("躲轰炸，反击五头鲨");
+                break;
+            case BossKind::TaliMonster: {
+                QPointF pos;
+                int hp = 0;
+                int maxHp = 0;
+                objectiveText = gm->boss->getSecondaryTarget(pos, hp, maxHp)
+                    ? QStringLiteral("本体免疫，先打分身")
+                    : QStringLiteral("避开连刺，攻击本体");
+                break;
+            }
+            case BossKind::Siren:
+                objectiveText = gm->boss->state == Boss::PHASE2
+                    ? QStringLiteral("生存至歌声衰弱")
+                    : QStringLiteral("攻击塞壬，躲幻影");
+                break;
+            }
+        }
+        else {
+            const int remainingDistance = qMax(0, stageCfg.targetDistance - pl.distance);
+            objectiveText = stageCfg.hasBoss
+                ? QStringLiteral("距 Boss %1m").arg(remainingDistance)
+                : QStringLiteral("距终点 %1m").arg(remainingDistance);
+        }
+        p.drawText(QRect(1094, 404, 150, 18), Qt::AlignLeft | Qt::AlignVCenter, objectiveText);
+
+        QRect hotbar(390, 626, 500, 78);
+        p.drawPixmap(hotbar, imgHudHotbar);
+        struct HotbarEntry {
+            const QPixmap* icon = nullptr;
+            int count = 0;
+            bool selected = false;
+            bool disabled = false;
+        };
+        HotbarEntry entries[6] = {};
+        const auto& weapons = inv.weapons();
+        for (int i = 0; i < 3 && i < static_cast<int>(weapons.size()); ++i) {
+            if (!weapons[i]) continue;
+            const QPixmap& icon = weaponIcon(weapons[i]);
+            entries[i] = { &icon, -1, i == inv.currentWeaponIndex(), weapons[i]->isBroken() };
+        }
+
+        int nextItemSlot = 3;
+        auto addItemSlot = [&](InventoryItemType type, const QPixmap& icon) {
+            if (nextItemSlot >= 6) return;
+            const int count = inv.getItemCount(type);
+            if (count <= 0) return;
+            entries[nextItemSlot++] = { &icon, count, false, false };
+        };
+        addItemSlot(InventoryItemType::Food, imgIconItemFood);
+        addItemSlot(InventoryItemType::ShipRepairT1, imgIconItemRepairT1);
+        addItemSlot(InventoryItemType::ShipRepairT2, imgIconItemRepairT2);
+        addItemSlot(InventoryItemType::ShipRepairT3, imgIconItemRepairT3);
+        addItemSlot(InventoryItemType::EmergencyWeaponRepair, imgIconItemEmergencyRepair);
+        const int slotLefts[6] = { 418, 499, 581, 664, 746, 817 };
+        for (int i = 0; i < 6; ++i) {
+            QRect slot(slotLefts[i], 640, 58, 50);
+            if (!entries[i].selected && !imgHudSlotNormal.isNull()) {
+                p.drawPixmap(slot.adjusted(-5, -5, 5, 5), imgHudSlotNormal);
+            }
+            if (entries[i].selected && !imgHudSlotSelected.isNull()) {
+                p.drawPixmap(slot.adjusted(-8, -9, 8, 9), imgHudSlotSelected);
+            }
+            if (entries[i].icon && !entries[i].icon->isNull()) {
+                drawPixmapFit(*entries[i].icon, slot.adjusted(8, 2, -8, -2));
+            }
+            if (entries[i].disabled) {
+                p.fillRect(slot.adjusted(5, 3, -5, -3), QColor(30, 30, 30, 130));
+                p.setPen(QPen(QColor(210, 70, 60, 190), 3));
+                p.drawLine(slot.left() + 10, slot.bottom() - 8, slot.right() - 10, slot.top() + 8);
+            }
+            drawText(QRect(slot.left() + 2, slot.top() - 12, 20, 18), QString::number(i + 1), 12, QColor(255, 234, 160));
+            if (entries[i].count > 0) {
+                drawText(QRect(slot.right() - 26, slot.bottom() - 16, 26, 16), QString::number(entries[i].count), 12, QColor(255, 234, 160));
+            }
+        }
+
+        p.restore();
+        return;
+    }
     p.fillRect(0, 0, 1280, 44, QColor(0, 0, 0, 170));
 
     p.setFont(QFont("Microsoft YaHei", 10));
@@ -581,16 +2150,82 @@ void GameWindow::drawHUD(QPainter& p)
 
     // 关卡进度条
     p.setPen(Qt::white);
-    p.drawText(1000, 18, QString("关卡%1/5").arg(gm->stage));
+    p.drawText(1000, 18, QString("关卡%1/%2").arg(gm->stage).arg(Config::GameConfig::STAGE_COUNT));
     p.fillRect(1000, 24, 120, 8, QColor(60, 60, 60));
-    int prog = std::min(120, (int)(pl.distance * 120 / (gm->stage * 2000)));
+    const int stageStart = Config::GameConfig::stageStartDistance(gm->stage);
+    const int stageEnd = Config::GameConfig::stageConfig(gm->stage).targetDistance;
+    const int stageSpan = qMax(1, stageEnd - stageStart);
+    const int stageDistance = qBound(0, pl.distance - stageStart, stageSpan);
+    int prog = std::min(120, (int)(stageDistance * 120 / stageSpan));
     p.fillRect(1000, 24, prog, 8, QColor(100, 200, 100));
     p.setPen(QPen(Qt::white, 1));
     p.drawRect(1000, 24, 120, 8);
 
     p.setPen(QColor(180, 180, 180));
     p.setFont(QFont("Microsoft YaHei", 8));
-    p.drawText(1140, 28, "左键射击/捕 空格闪避 P/B商店");
+    p.drawText(1110, 28, "左键射击/捕 空格闪避 B背包 4-6补给");
+}
+
+void GameWindow::drawTestModeOverlay(QPainter& p)
+{
+    if (!testModeEnabled) return;
+
+    p.save();
+    p.scale(width() / 1280.0, height() / 720.0);
+    const QRect badge(14, 498, 210, 42);
+    if (!imgWoodNoticeButton.isNull()) {
+        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        p.drawPixmap(badge, imgWoodNoticeButton, imgWoodNoticeButton.rect());
+    } else {
+        p.fillRect(badge, QColor(78, 42, 19, 210));
+    }
+
+    QFont font("Microsoft YaHei");
+    font.setPixelSize(13);
+    font.setWeight(QFont::Bold);
+    p.setFont(font);
+    p.setPen(QColor(255, 232, 151));
+    p.drawText(badge, Qt::AlignCenter, QStringLiteral("测试模式  O / P商店"));
+    p.restore();
+}
+
+void GameWindow::drawFloatingNotice(QPainter& p)
+{
+    if (!floatingNotice.active) return;
+
+    p.save();
+    p.scale(width() / 1280.0, height() / 720.0);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+    const qreal fadeIn = qBound(0.0, static_cast<qreal>(floatingNotice.ageMs) / 180.0, 1.0);
+    const qreal fadeOut = qBound(0.0, static_cast<qreal>(floatingNotice.lifetimeMs - floatingNotice.ageMs) / 300.0, 1.0);
+    p.setOpacity(qMin(fadeIn, fadeOut));
+
+    const QRect panel(392, 82 + static_cast<int>((1.0 - fadeIn) * -18), 496, 220);
+    if (!imgWoodNoticeBoard.isNull()) {
+        p.drawPixmap(panel, imgWoodNoticeBoard, imgWoodNoticeBoard.rect());
+    } else {
+        p.fillRect(panel, QColor(70, 38, 17, 230));
+    }
+
+    if (!imgNoticeIconInfo.isNull()) {
+        p.drawPixmap(QRect(panel.left() + 64, panel.top() + 80, 52, 52), imgNoticeIconInfo, imgNoticeIconInfo.rect());
+    }
+
+    auto drawText = [&](const QRect& rect, const QString& text, int size, const QColor& color, bool bold) {
+        QFont font("Microsoft YaHei");
+        font.setPixelSize(size);
+        font.setWeight(bold ? QFont::Bold : QFont::Normal);
+        p.setFont(font);
+        p.setPen(color);
+        p.drawText(rect, Qt::AlignLeft | Qt::AlignVCenter | Qt::TextWordWrap, text);
+    };
+
+    drawText(QRect(panel.left() + 132, panel.top() + 68, panel.width() - 220, 40),
+             floatingNotice.title, 20, QColor(88, 42, 12), true);
+    drawText(QRect(panel.left() + 132, panel.top() + 112, panel.width() - 220, 58),
+             floatingNotice.body, 13, QColor(78, 48, 18), true);
+    p.restore();
 }
 
 // ============================================================
@@ -601,34 +2236,544 @@ void GameWindow::drawFishingHUD(QPainter& p)
 {
     if (!isFishing || !targetFish) return;
 
-    int barX = 490, barY = 55, barW = 300, barH = 22;
-    p.fillRect(barX - 5, barY - 22, barW + 10, barH + 28, QColor(0, 0, 0, 180));
+    QString fishName = fishDisplayName(targetFish->type);
 
-    p.setPen(Qt::white);
-    p.setFont(QFont("Microsoft YaHei", 11));
-    QString fishName;
-    switch (targetFish->type) {
-    case Fish::SARDINE:        fishName = "沙丁鱼"; break;
-    case Fish::TUNA:           fishName = "金枪鱼"; break;
-    case Fish::DEEPSEAEEL:     fishName = "深海鳗"; break;
-    case Fish::SWORDFISH_FISH: fishName = "金鱼";   break;
-    }
-    p.drawText(barX, barY - 4, QString("捕捉 %1 — 点击鼠标: %2/%3")
-        .arg(fishName).arg(fishClickCount).arg(targetFish->catchRequired));
+    Weapon* weapon = InventorySystem::instance().currentWeapon();
+    const Config::FishingMode mode = weapon ? weapon->getFishingMode() : Config::FishingMode::QTE;
 
-    p.fillRect(barX, barY, barW, barH, QColor(50, 50, 50));
-    float ratio = 1.0f - (float)fishTimer / targetFish->catchTimeLimit;
-    int fillW = (int)(barW * ratio);
-    QColor barColor;
+    QColor fishColor = fishAccentColor(targetFish->type);
+    QPixmap* fishSprite = nullptr;
     switch (targetFish->type) {
-    case Fish::SARDINE:        barColor = QColor(255, 220, 50);  break;
-    case Fish::TUNA:           barColor = QColor(50, 180, 255);  break;
-    case Fish::DEEPSEAEEL:     barColor = QColor(180, 50, 255);  break;
-    case Fish::SWORDFISH_FISH: barColor = QColor(255, 180, 0);   break;
+    case Fish::SARDINE:
+        fishSprite = &imgSardine;
+        break;
+    case Fish::TUNA:
+        fishSprite = &imgTuna;
+        break;
+    case Fish::DEEPSEAEEL:
+        fishSprite = &imgEel;
+        break;
+    case Fish::SWORDFISH_FISH:
+        fishSprite = &imgGolden;
+        break;
+    case Fish::ANCHOVY:
+        fishSprite = &imgAnchovy;
+        break;
+    case Fish::CLOWNFISH:
+        fishSprite = &imgClownfish;
+        break;
+    case Fish::MACKEREL:
+        fishSprite = &imgMackerel;
+        break;
+    case Fish::SEA_BREAM:
+        fishSprite = &imgSeaBream;
+        break;
+    case Fish::LANTERNFISH:
+        fishSprite = &imgLanternfish;
+        break;
+    case Fish::GROUPER:
+        fishSprite = &imgGrouper;
+        break;
+    case Fish::KOI:
+        fishSprite = &imgKoi;
+        break;
+    case Fish::CRYSTAL_FISH:
+        fishSprite = &imgCrystalFish;
+        break;
     }
-    p.fillRect(barX, barY, fillW, barH, barColor);
-    p.setPen(QPen(Qt::white, 1));
-    p.drawRect(barX, barY, barW, barH);
+
+    {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        const qreal timeRatio = qBound(
+            0.0,
+            1.0 - static_cast<qreal>(fishTimer) / qMax(1, targetFish->catchTimeLimit),
+            1.0
+        );
+        const QColor timeColor = timeRatio < 0.25 ? QColor(235, 78, 55)
+            : (timeRatio < 0.5 ? QColor(238, 177, 58) : QColor(74, 210, 176));
+
+        const QRect panel(448, 72, 384, 112);
+        const QRect content = panel.adjusted(42, 24, -42, -18);
+
+        auto drawSmallText = [&](const QRect& rect, const QString& text, int size,
+                                 const QColor& color, int flags = Qt::AlignCenter) {
+            QFont font("Microsoft YaHei", size, QFont::Bold);
+            font.setHintingPreference(QFont::PreferFullHinting);
+            p.setFont(font);
+            p.setPen(QColor(12, 7, 4, 210));
+            p.drawText(rect.translated(1, 1), flags, text);
+            p.setPen(color);
+            p.drawText(rect, flags, text);
+        };
+
+        auto drawMiniMouse = [&](int x, int y) {
+            p.fillRect(x + 5, y, 14, 20, QColor(222, 222, 215));
+            p.fillRect(x + 2, y + 5, 20, 18, QColor(188, 194, 194));
+            p.fillRect(x + 10, y + 2, 3, 9, QColor(72, 78, 80));
+            p.fillRect(x + 5, y + 7, 8, 5, QColor(219, 66, 54));
+            p.fillRect(x + 13, y + 7, 7, 5, QColor(239, 238, 224));
+            p.fillRect(x + 4, y + 21, 16, 3, QColor(54, 58, 60));
+        };
+
+        p.save();
+        p.setRenderHint(QPainter::Antialiasing, false);
+        p.setRenderHint(QPainter::TextAntialiasing, true);
+        p.fillRect(panel.adjusted(5, 7, 5, 8), QColor(0, 0, 0, 86));
+        if (!imgFishingQtePanel.isNull()) {
+            p.drawPixmap(panel, imgFishingQtePanel);
+        }
+        else {
+            p.fillRect(panel, QColor(42, 23, 12));
+            p.fillRect(panel.adjusted(34, 20, -34, -18), QColor(9, 26, 36));
+        }
+
+        const QRect timeBar(panel.left() + 62, panel.bottom() - 18, panel.width() - 124, 6);
+        p.fillRect(timeBar.adjusted(-1, -1, 1, 1), QColor(16, 10, 6, 220));
+        p.fillRect(timeBar, QColor(8, 18, 24, 230));
+        p.fillRect(timeBar.left(), timeBar.top(), static_cast<int>(timeBar.width() * timeRatio), timeBar.height(), timeColor);
+
+        if (mode == Config::FishingMode::Calibration) {
+            drawSmallText(QRect(content.left(), content.top() - 2, content.width(), 22),
+                          QStringLiteral("\u6821\u51c6\u65f6\u673a"), 14, QColor(255, 229, 176));
+            drawSmallText(QRect(content.left(), content.top() + 18, content.width(), 18),
+                          QStringLiteral("\u7eff\u8272\u533a\u57df\u70b9\u51fb\u5de6\u952e"), 10, QColor(246, 184, 88));
+
+            const QRect ruler(content.left() + 24, content.top() + 42, content.width() - 48, 18);
+            p.fillRect(ruler.adjusted(-5, -4, 5, 4), QColor(45, 24, 12));
+            p.fillRect(ruler, QColor(135, 76, 34));
+            p.fillRect(ruler.adjusted(4, 4, -4, -4), QColor(174, 112, 49));
+            const int normalHalf = static_cast<int>(ruler.width() * calibrationWindowSize(false));
+            const int perfectHalf = static_cast<int>(ruler.width() * calibrationWindowSize(true));
+            const int centerX = ruler.left() + ruler.width() / 2;
+            p.fillRect(centerX - normalHalf, ruler.top() + 3, normalHalf * 2, ruler.height() - 6, QColor(224, 180, 62));
+            p.fillRect(centerX - perfectHalf, ruler.top() + 3, perfectHalf * 2, ruler.height() - 6, QColor(75, 197, 78));
+            for (int x = ruler.left() + 12; x < ruler.right(); x += 18) {
+                p.fillRect(x, ruler.bottom() - 8, 2, 7, QColor(45, 25, 13));
+            }
+
+            const int markerX = ruler.left() + static_cast<int>(ruler.width() * calibrationMarkerRatio());
+            p.fillRect(markerX - 2, ruler.top() - 13, 4, 32, QColor(239, 244, 226));
+            p.fillRect(markerX - 10, ruler.top() - 12, 20, 12, QColor(212, 54, 45));
+            p.fillRect(markerX - 8, ruler.top() - 9, 16, 5, QColor(255, 226, 177));
+            p.fillRect(markerX - 10, ruler.top(), 20, 4, QColor(52, 53, 55));
+        }
+        else {
+            const QRect fishTarget(content.left() + 4, content.top() + 16, 58, 34);
+            if (fishSprite && !fishSprite->isNull()) {
+                const int frameCount = 4;
+                const int frameW = fishSprite->width() / frameCount;
+                const int frame = static_cast<int>((now / 140) % frameCount);
+                p.drawPixmap(fishTarget, *fishSprite, QRect(frame * frameW, 0, frameW, fishSprite->height()));
+            }
+            else {
+                p.fillRect(fishTarget.adjusted(7, 9, -10, -9), fishColor);
+                p.fillRect(fishTarget.right() - 17, fishTarget.center().y() - 8, 13, 16, fishColor.darker(112));
+                p.fillRect(fishTarget.left() + 18, fishTarget.top() + 14, 4, 4, QColor(24, 25, 32));
+            }
+            for (int i = 0; i < 6; ++i) {
+                p.fillRect(fishTarget.left() - 8 + i * 11, fishTarget.bottom() - 4 + (i % 2) * 3,
+                           6, 3, QColor(116, 218, 255, 145));
+            }
+
+            drawSmallText(QRect(content.left() + 76, content.top() + 6, content.width() - 80, 22),
+                          QStringLiteral("%1 \u4e0a\u94a9\u4e2d").arg(fishName), 14, QColor(255, 233, 190), Qt::AlignLeft | Qt::AlignVCenter);
+            drawMiniMouse(content.left() + 78, content.top() + 36);
+            drawSmallText(QRect(content.left() + 108, content.top() + 36, 180, 22),
+                          QStringLiteral("\u8fde\u70b9\u6536\u7ebf"), 11, QColor(244, 190, 82), Qt::AlignLeft | Qt::AlignVCenter);
+
+            const int required = qMax(1, targetFish->catchRequired);
+            const int pipCount = qBound(3, qMin(required, 8), 8);
+            const int litPips = qBound(0, fishClickCount * pipCount / required, pipCount);
+            const int startX = content.left() + 222;
+            for (int i = 0; i < pipCount; ++i) {
+                const QRect pip(startX + i * 9, content.top() + 42, 6, 13);
+                p.fillRect(pip, i < litPips ? QColor(255, 211, 70) : QColor(64, 68, 68));
+                p.fillRect(pip.left() + 1, pip.top() + 1, 2, 2,
+                           i < litPips ? QColor(255, 245, 164) : QColor(103, 108, 108));
+            }
+            drawSmallText(QRect(content.left() + 246, content.top() + 18, 54, 16),
+                          QString("%1/%2").arg(fishClickCount).arg(required), 9, QColor(235, 224, 196));
+        }
+
+        p.restore();
+        return;
+    }
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qreal timeRatio = qBound(
+        0.0,
+        1.0 - static_cast<qreal>(fishTimer) / qMax(1, targetFish->catchTimeLimit),
+        1.0
+    );
+    const QColor timeColor = timeRatio < 0.25 ? QColor(238, 84, 54)
+        : (timeRatio < 0.5 ? QColor(238, 184, 64) : QColor(76, 216, 184));
+
+    const QRect panel(226, 92, 828, 294);
+    const QRect inner(panel.left() + 92, panel.top() + 98, panel.width() - 184, 154);
+    const QRect titlePlaque(panel.center().x() - 176, panel.top() + 44, 352, 44);
+
+    auto drawPixelText = [&](const QRect& rect, const QString& text, int size,
+                             const QColor& color, int flags = Qt::AlignCenter) {
+        QFont font("Microsoft YaHei", size, QFont::Bold);
+        font.setStyleStrategy(QFont::PreferAntialias);
+        font.setHintingPreference(QFont::PreferFullHinting);
+        p.setFont(font);
+        p.setPen(QColor(27, 14, 5, 220));
+        p.drawText(rect.translated(3, 3), flags, text);
+        p.setPen(QColor(119, 75, 31, 150));
+        p.drawText(rect.translated(1, 1), flags, text);
+        p.setPen(color);
+        p.drawText(rect, flags, text);
+    };
+
+    auto drawRivet = [&](int cx, int cy, int size) {
+        p.fillRect(cx - size / 2 - 1, cy - size / 2 + 1, size + 2, size + 2, QColor(47, 22, 10));
+        p.fillRect(cx - size / 2, cy - size / 2, size, size, QColor(205, 137, 50));
+        p.fillRect(cx - size / 2 + 3, cy - size / 2 + 3, qMax(2, size / 3), qMax(2, size / 3), QColor(255, 221, 115));
+        p.fillRect(cx + size / 5, cy + size / 5, qMax(2, size / 4), qMax(2, size / 4), QColor(88, 44, 17));
+    };
+
+    auto drawAnchor = [&](int cx, int cy, int scale, const QColor& color) {
+        QPen shadow(color.darker(175), qMax(3, scale / 5), Qt::SolidLine, Qt::SquareCap, Qt::MiterJoin);
+        p.setPen(shadow);
+        p.setBrush(Qt::NoBrush);
+        p.drawEllipse(cx - scale / 4 + 2, cy - scale + 2, scale / 2, scale / 2);
+        p.drawLine(cx + 2, cy - scale / 2 + 2, cx + 2, cy + scale + 2);
+        p.drawLine(cx - scale / 2 + 2, cy - scale / 8 + 2, cx + scale / 2 + 2, cy - scale / 8 + 2);
+        p.drawArc(QRect(cx - scale + 2, cy + scale / 4 + 2, scale * 2, scale * 2), 205 * 16, 130 * 16);
+        p.drawLine(cx - scale + 2, cy + scale + 2, cx - scale / 2 + 2, cy + scale / 2 + 2);
+        p.drawLine(cx + scale + 2, cy + scale + 2, cx + scale / 2 + 2, cy + scale / 2 + 2);
+
+        shadow.setColor(color);
+        p.setPen(shadow);
+        p.drawEllipse(cx - scale / 4, cy - scale, scale / 2, scale / 2);
+        p.drawLine(cx, cy - scale / 2, cx, cy + scale);
+        p.drawLine(cx - scale / 2, cy - scale / 8, cx + scale / 2, cy - scale / 8);
+        p.drawArc(QRect(cx - scale, cy + scale / 4, scale * 2, scale * 2), 205 * 16, 130 * 16);
+        p.drawLine(cx - scale, cy + scale, cx - scale / 2, cy + scale / 2);
+        p.drawLine(cx + scale, cy + scale, cx + scale / 2, cy + scale / 2);
+    };
+
+    auto drawRope = [&](int x, int y0, int y1) {
+        for (int y = y0; y < y1; y += 10) {
+            p.fillRect(x, y, 8, 8, QColor(82, 55, 28));
+            p.fillRect(x + 7, y + 4, 8, 8, QColor(157, 104, 49));
+            p.fillRect(x + 3, y + 1, 3, 10, QColor(214, 158, 82));
+        }
+        p.fillRect(x - 6, y1 - 2, 27, 8, QColor(55, 34, 18));
+    };
+
+    auto drawCornerPlate = [&](const QRect& c) {
+        p.fillRect(c, QColor(54, 28, 14));
+        p.fillRect(c.adjusted(4, 4, -4, -4), QColor(169, 104, 39));
+        p.fillRect(c.adjusted(10, 10, -10, -10), QColor(239, 176, 74));
+        p.fillRect(c.left() + 10, c.top() + 10, c.width() - 20, 5, QColor(255, 219, 111, 150));
+        p.fillRect(c.left() + 10, c.bottom() - 16, c.width() - 20, 5, QColor(80, 42, 19, 150));
+        drawRivet(c.left() + 19, c.top() + 18, 12);
+        drawRivet(c.right() - 19, c.top() + 18, 12);
+        drawRivet(c.left() + 23, c.bottom() - 20, 11);
+        drawRivet(c.right() - 23, c.bottom() - 20, 11);
+    };
+
+    auto drawWoodFrame = [&](const QRect& r) {
+        p.fillRect(r.adjusted(12, 14, 12, 16), QColor(0, 0, 0, 116));
+        p.fillRect(r, QColor(39, 18, 8));
+        p.fillRect(r.adjusted(7, 7, -7, -7), QColor(112, 52, 22));
+
+        const QRect top(r.left() + 24, r.top() + 17, r.width() - 48, 38);
+        const QRect bottom(r.left() + 24, r.bottom() - 55, r.width() - 48, 38);
+        const QRect left(r.left() + 16, r.top() + 50, 42, r.height() - 100);
+        const QRect right(r.right() - 58, r.top() + 50, 42, r.height() - 100);
+        p.fillRect(top, QColor(137, 68, 30));
+        p.fillRect(top.adjusted(0, 4, 0, -24), QColor(201, 113, 45));
+        p.fillRect(bottom, QColor(90, 43, 20));
+        p.fillRect(bottom.adjusted(0, 6, 0, -26), QColor(151, 76, 32));
+        p.fillRect(left, QColor(84, 39, 18));
+        p.fillRect(left.adjusted(6, 0, -22, 0), QColor(139, 70, 32));
+        p.fillRect(right, QColor(84, 39, 18));
+        p.fillRect(right.adjusted(22, 0, -6, 0), QColor(139, 70, 32));
+
+        for (int x = top.left() + 18; x < top.right() - 22; x += 92) {
+            p.fillRect(x, top.top() + 8, 58, 4, QColor(230, 146, 59, 130));
+            p.fillRect(x + 28, top.bottom() - 9, 72, 4, QColor(47, 22, 10, 150));
+        }
+        for (int x = bottom.left() + 36; x < bottom.right() - 28; x += 108) {
+            p.fillRect(x, bottom.top() + 11, 74, 4, QColor(36, 18, 9, 130));
+            p.fillRect(x + 10, bottom.bottom() - 10, 45, 3, QColor(190, 105, 43, 110));
+        }
+        for (int x = top.left() + 118; x < top.right() - 60; x += 154) {
+            p.fillRect(x, top.top() - 4, 6, 50, QColor(47, 24, 13));
+            p.fillRect(x + 6, top.top(), 3, 42, QColor(213, 128, 51));
+        }
+
+        drawCornerPlate(QRect(r.left() + 10, r.top() + 8, 76, 70));
+        drawCornerPlate(QRect(r.right() - 86, r.top() + 8, 76, 70));
+        drawCornerPlate(QRect(r.left() + 10, r.bottom() - 78, 76, 70));
+        drawCornerPlate(QRect(r.right() - 86, r.bottom() - 78, 76, 70));
+    };
+
+    auto drawTitlePlaque = [&](const QRect& r) {
+        p.fillRect(r.adjusted(6, 8, 6, 10), QColor(0, 0, 0, 110));
+        p.fillRect(r, QColor(42, 19, 8));
+        p.fillRect(r.adjusted(7, 7, -7, -7), QColor(112, 52, 22));
+        p.fillRect(r.adjusted(22, 16, -22, -16), QColor(73, 37, 17));
+        p.fillRect(r.left() + 36, r.top() + 24, r.width() - 72, 7, QColor(177, 95, 38));
+        drawCornerPlate(QRect(r.left() + 8, r.top() + 8, 46, 42));
+        drawCornerPlate(QRect(r.right() - 54, r.top() + 8, 46, 42));
+        drawRivet(r.left() + 76, r.top() + 20, 9);
+        drawRivet(r.right() - 76, r.top() + 20, 9);
+        drawAnchor(r.left() + 104, r.center().y() + 3, 22, QColor(255, 221, 136));
+        drawPixelText(r.adjusted(150, 4, -44, -4), QStringLiteral("\u4e0a\u94a9\u6311\u6218"), 28, QColor(255, 228, 148));
+    };
+
+    auto drawHookIcon = [&](int cx, int cy, bool lit, int scale) {
+        QColor glow = lit ? QColor(255, 213, 72) : QColor(48, 52, 52);
+        QColor metal = lit ? QColor(255, 238, 151) : QColor(79, 86, 84);
+        if (lit) {
+            p.fillRect(cx - scale / 2 - 10, cy - scale / 2 - 10, scale + 20, scale + 20, QColor(255, 191, 38, 34));
+            p.fillRect(cx - scale / 3, cy + scale / 2 + 10, scale / 2, 4, QColor(255, 236, 128, 170));
+            p.fillRect(cx - scale / 2 - 2, cy + scale / 2 + 17, scale + 4, 3, QColor(255, 202, 59, 120));
+        }
+        p.setPen(QPen(glow.darker(150), qMax(3, scale / 8), Qt::SolidLine, Qt::RoundCap));
+        p.drawLine(cx, cy - scale / 2, cx, cy + scale / 4);
+        p.drawArc(QRect(cx - scale / 2, cy - scale / 10, scale, scale), 200 * 16, 245 * 16);
+        p.drawLine(cx + scale / 2 - 2, cy + scale / 3, cx + scale / 2 + scale / 5, cy + scale / 12);
+        p.setPen(QPen(metal, qMax(2, scale / 10), Qt::SolidLine, Qt::RoundCap));
+        p.drawLine(cx, cy - scale / 2, cx, cy + scale / 4);
+        p.drawArc(QRect(cx - scale / 2, cy - scale / 10, scale, scale), 200 * 16, 245 * 16);
+        p.drawLine(cx + scale / 2 - 2, cy + scale / 3, cx + scale / 2 + scale / 5, cy + scale / 12);
+    };
+
+    auto drawBanner = [&](const QRect& r, const QString& text) {
+        QPolygon banner;
+        banner << QPoint(r.left(), r.center().y())
+               << QPoint(r.left() + 24, r.top())
+               << QPoint(r.right() - 24, r.top())
+               << QPoint(r.right(), r.center().y())
+               << QPoint(r.right() - 24, r.bottom())
+               << QPoint(r.left() + 24, r.bottom());
+        p.setBrush(QColor(82, 43, 18));
+        p.setPen(QPen(QColor(190, 124, 48), 3));
+        p.drawPolygon(banner);
+        p.fillRect(r.adjusted(28, 7, -28, -7), QColor(42, 25, 15));
+        drawRivet(r.left() + 24, r.center().y(), 8);
+        drawRivet(r.right() - 24, r.center().y(), 8);
+        drawPixelText(r, text, 18, QColor(248, 213, 147));
+    };
+
+    auto drawSeaPattern = [&](const QRect& area) {
+        for (int i = 0; i < 34; ++i) {
+            const int x = area.left() + 24 + (i * 71 + static_cast<int>(now / 90)) % qMax(1, area.width() - 62);
+            const int y = area.top() + 22 + (i * 37) % qMax(1, area.height() - 48);
+            const QColor c(97, 170, 190, 38 + (i % 3) * 12);
+            p.fillRect(x, y, 18, 4, c);
+            p.fillRect(x + 11, y + 6, 15, 4, c);
+            p.fillRect(x + 27, y + 2, 10, 4, c);
+        }
+        for (int y = area.top() + 40; y < area.bottom() - 20; y += 58) {
+            p.fillRect(area.left() + 18, y, 6, 6, QColor(189, 144, 73, 65));
+            p.fillRect(area.right() - 24, y + 18, 6, 6, QColor(189, 144, 73, 65));
+        }
+    };
+
+    auto drawInputMouse = [&](const QRect& box, const QString& text) {
+        p.fillRect(box.adjusted(5, 5, 5, 5), QColor(0, 0, 0, 90));
+        QLinearGradient trimGrad(box.topLeft(), box.bottomLeft());
+        trimGrad.setColorAt(0.0, QColor(111, 59, 25));
+        trimGrad.setColorAt(0.45, QColor(55, 28, 13));
+        trimGrad.setColorAt(1.0, QColor(24, 12, 6));
+        p.fillRect(box, trimGrad);
+        QLinearGradient boxGrad(box.topLeft(), box.bottomLeft());
+        boxGrad.setColorAt(0.0, QColor(42, 66, 70));
+        boxGrad.setColorAt(0.5, QColor(15, 34, 44));
+        boxGrad.setColorAt(1.0, QColor(5, 18, 29));
+        p.fillRect(box.adjusted(4, 4, -4, -4), boxGrad);
+        p.fillRect(box.left() + 8, box.top() + 7, box.width() - 16, 2, QColor(133, 196, 189, 58));
+
+        const QRect mouse(box.left() + 30, box.center().y() - 17, 34, 34);
+        p.fillRect(mouse.adjusted(7, 1, -7, -1), QColor(226, 226, 220));
+        p.fillRect(mouse.adjusted(3, 6, -3, -2), QColor(198, 203, 202));
+        p.fillRect(mouse.left() + 15, mouse.top() + 3, 4, 13, QColor(85, 91, 92));
+        p.fillRect(mouse.left() + 6, mouse.top() + 8, 11, 7, QColor(224, 70, 59));
+        p.fillRect(mouse.left() + 17, mouse.top() + 8, 11, 7, QColor(246, 245, 230));
+        p.fillRect(mouse.left() + 5, mouse.bottom() - 2, 24, 4, QColor(61, 65, 66));
+
+        drawPixelText(box.adjusted(74, 0, -16, 0), text, 16, QColor(245, 227, 194), Qt::AlignVCenter | Qt::AlignLeft);
+    };
+
+    auto drawBigFish = [&](const QRect& fishTarget) {
+        for (int i = 0; i < 30; ++i) {
+            const int sx = fishTarget.left() - 50 + (i * 19) % (fishTarget.width() + 110);
+            const int sy = fishTarget.bottom() - 28 + (i % 5) * 10 - static_cast<int>((now / 95) % 7);
+            p.fillRect(sx, sy, 7, 7, QColor(110, 218, 255, 155));
+            p.fillRect(sx + 8, sy + 5, 12, 4, QColor(204, 248, 255, 120));
+            if (i % 4 == 0) {
+                p.fillRect(sx - 4, sy - 10, 4, 8, QColor(84, 194, 235, 115));
+            }
+        }
+        if (fishSprite && !fishSprite->isNull()) {
+            const int frameCount = 4;
+            const int frameW = fishSprite->width() / frameCount;
+            const int frame = static_cast<int>((now / 140) % frameCount);
+            QRect source(frame * frameW, 0, frameW, fishSprite->height());
+            p.drawPixmap(fishTarget, *fishSprite, source);
+        }
+        else {
+            p.fillRect(fishTarget.adjusted(20, 26, -42, -34), fishColor);
+            p.fillRect(fishTarget.right() - 58, fishTarget.center().y() - 26, 46, 52, fishColor.darker(116));
+            p.fillRect(fishTarget.left() + 52, fishTarget.top() + 44, 9, 9, QColor(24, 25, 32));
+            p.fillRect(fishTarget.left() + 18, fishTarget.center().y() - 8, 28, 16, fishColor.lighter(132));
+        }
+        p.fillRect(fishTarget.left() + 10, fishTarget.bottom() - 10, fishTarget.width() - 22, 5, QColor(0, 8, 20, 70));
+    };
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, false);
+    p.setRenderHint(QPainter::TextAntialiasing, true);
+
+    p.fillRect(panel.adjusted(18, 22, 18, 24), QColor(0, 0, 0, 92));
+    if (!imgMenuTitlePlaque.isNull()) {
+        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        p.drawPixmap(panel, imgMenuTitlePlaque);
+        p.setRenderHint(QPainter::SmoothPixmapTransform, false);
+    }
+    else {
+        drawRope(panel.left() + 96, -18, panel.top() + 54);
+        drawRope(panel.right() - 112, -18, panel.top() + 54);
+        drawWoodFrame(panel);
+    }
+
+    QLinearGradient seaGrad(inner.topLeft(), inner.bottomLeft());
+    seaGrad.setColorAt(0.0, QColor(9, 37, 58, 230));
+    seaGrad.setColorAt(0.45, QColor(4, 24, 40, 238));
+    seaGrad.setColorAt(1.0, QColor(2, 14, 27, 242));
+    p.fillRect(inner.adjusted(5, 6, 5, 7), QColor(0, 0, 0, 76));
+    p.fillRect(inner, QColor(38, 20, 9, 180));
+    p.fillRect(inner.adjusted(3, 3, -3, -3), seaGrad);
+    p.fillRect(inner.left() + 8, inner.top() + 8, inner.width() - 16, 3, QColor(119, 189, 204, 62));
+    p.fillRect(inner.left() + 8, inner.bottom() - 12, inner.width() - 16, 4, QColor(0, 7, 17, 130));
+    drawSeaPattern(inner.adjusted(12, 10, -12, -10));
+    drawAnchor(titlePlaque.left() + 48, titlePlaque.center().y() + 2, 15, QColor(255, 221, 136));
+    drawPixelText(titlePlaque.adjusted(88, 0, -16, 0), QStringLiteral("\u4e0a\u94a9\u6311\u6218"), 24, QColor(255, 228, 148));
+
+    if (mode == Config::FishingMode::Calibration) {
+        drawBanner(QRect(inner.center().x() - 166, inner.top() + 8, 332, 38),
+                   QStringLiteral("\u6e14\u7f51 / \u9c7c\u53c9\u6821\u51c6 QTE"));
+        drawPixelText(QRect(inner.left() + 226, inner.top() + 42, 314, 34),
+                      QStringLiteral("\u6821\u51c6\u65f6\u673a"), 24, QColor(255, 240, 203));
+        drawPixelText(QRect(inner.left() + 154, inner.top() + 72, 458, 24),
+                      QStringLiteral("\u6d6e\u6807\u8fdb\u5165\u7eff\u8272\u533a\u65f6\u70b9\u51fb\u5de6\u952e\uff01"), 14, QColor(248, 187, 88));
+
+        const QRect ruler(inner.left() + 118, inner.top() + 94, 408, 44);
+        p.fillRect(ruler.adjusted(-13, -12, 13, 12), QColor(44, 21, 10));
+        p.fillRect(ruler.adjusted(-9, -8, 9, 8), QColor(150, 86, 36));
+        p.fillRect(ruler.adjusted(-3, -4, 3, 4), QColor(94, 47, 22));
+        p.fillRect(ruler, QColor(146, 82, 37));
+        p.fillRect(ruler.adjusted(8, 7, -8, -7), QColor(174, 106, 48));
+
+        const int normalHalf = static_cast<int>(ruler.width() * calibrationWindowSize(false));
+        const int perfectHalf = static_cast<int>(ruler.width() * calibrationWindowSize(true));
+        const int centerX = ruler.left() + ruler.width() / 2;
+        p.fillRect(centerX - normalHalf, ruler.top() + 8, normalHalf * 2, ruler.height() - 16, QColor(232, 189, 69));
+        p.fillRect(centerX - perfectHalf, ruler.top() + 8, perfectHalf * 2, ruler.height() - 16, QColor(78, 203, 82));
+        p.fillRect(centerX - perfectHalf, ruler.top() + 8, perfectHalf * 2, 5, QColor(202, 255, 156, 120));
+        p.setPen(QPen(QColor(255, 252, 216, 190), 2, Qt::DashLine));
+        p.drawLine(centerX - perfectHalf, ruler.top() + 3, centerX - perfectHalf, ruler.bottom() + 10);
+        p.drawLine(centerX + perfectHalf, ruler.top() + 3, centerX + perfectHalf, ruler.bottom() + 10);
+        p.setPen(Qt::NoPen);
+        for (int x = ruler.left() + 14; x < ruler.right(); x += 22) {
+            const int h = (x - ruler.left()) % 66 == 0 ? 18 : 11;
+            p.fillRect(x, ruler.bottom() - h - 7, 2, h, QColor(52, 30, 15));
+        }
+        p.fillRect(ruler.left() - 10, ruler.top() - 10, 20, ruler.height() + 20, QColor(88, 48, 23));
+        p.fillRect(ruler.right() - 10, ruler.top() - 10, 20, ruler.height() + 20, QColor(88, 48, 23));
+        drawRivet(ruler.left() - 1, ruler.top() - 2, 10);
+        drawRivet(ruler.right() + 1, ruler.top() - 2, 10);
+        drawRivet(ruler.left() - 1, ruler.bottom() + 2, 10);
+        drawRivet(ruler.right() + 1, ruler.bottom() + 2, 10);
+
+        const int markerX = ruler.left() + static_cast<int>(ruler.width() * calibrationMarkerRatio());
+        p.setPen(QPen(QColor(221, 244, 255, 180), 2, Qt::DashLine));
+        p.drawLine(markerX - 54, ruler.top() - 30, markerX + 24, ruler.top() - 6);
+        p.drawLine(markerX + 38, ruler.top() - 27, markerX + 3, ruler.top() - 6);
+        p.setPen(Qt::NoPen);
+        p.fillRect(markerX - 3, ruler.top() - 23, 6, 72, QColor(239, 244, 226));
+        p.fillRect(markerX - 16, ruler.top() - 22, 32, 21, QColor(216, 54, 46));
+        p.fillRect(markerX - 12, ruler.top() - 18, 24, 8, QColor(255, 226, 177));
+        p.fillRect(markerX - 16, ruler.top() - 1, 32, 7, QColor(55, 55, 58));
+        p.fillRect(markerX - 6, ruler.top() - 35, 12, 13, QColor(239, 244, 226));
+        for (int i = 0; i < 9; ++i) {
+            const int sx = markerX - 62 + i * 15;
+            const int sy = ruler.top() - 14 + (i % 3) * 6;
+            p.fillRect(sx, sy, 5, 5, QColor(198, 238, 246, 130));
+        }
+
+        drawPixelText(QRect(ruler.left() - 24, ruler.bottom() + 8, 76, 22),
+                      QStringLiteral("\u504f\u65e9"), 12, QColor(241, 111, 86));
+        drawPixelText(QRect(centerX - normalHalf - 34, ruler.bottom() + 8, 86, 22),
+                      QStringLiteral("\u6b63\u5e38"), 12, QColor(255, 226, 82));
+        drawPixelText(QRect(centerX - 48, ruler.bottom() + 8, 96, 22),
+                      QStringLiteral("\u2605 \u5b8c\u7f8e\uff01\u2605"), 12, QColor(126, 244, 117));
+        drawPixelText(QRect(ruler.right() - 48, ruler.bottom() + 8, 76, 22),
+                      QStringLiteral("\u504f\u665a"), 12, QColor(241, 111, 86));
+
+    }
+    else {
+        drawBanner(QRect(inner.left() + 214, inner.top() + 8, 280, 38),
+                   QStringLiteral("\u9c7c\u7aff\u6536\u7ebf QTE"));
+
+        const QRect fishTarget(inner.left() + 28, inner.top() + 50, 150, 86);
+        drawBigFish(fishTarget);
+
+        const int hookX = inner.left() + 78;
+        p.fillRect(hookX - 2, inner.top() + 14, 4, 86, QColor(229, 231, 216));
+        p.fillRect(hookX + 2, inner.top() + 14, 2, 86, QColor(78, 80, 76));
+        drawHookIcon(hookX + 8, inner.top() + 104, true, 40);
+
+        drawPixelText(QRect(inner.left() + 212, inner.top() + 46, 346, 36),
+                      QStringLiteral("%1 \u4e0a\u94a9\u4e2d").arg(fishName), 24, QColor(255, 240, 203));
+        drawPixelText(QRect(inner.left() + 280, inner.top() + 78, 190, 24),
+                      QStringLiteral("\u8fde\u70b9\u6536\u7ebf"), 14, QColor(249, 185, 76));
+        p.fillRect(inner.left() + 206, inner.top() + 72, 20, 4, QColor(61, 184, 228));
+        p.fillRect(inner.left() + 232, inner.top() + 76, 14, 3, QColor(92, 214, 246));
+        p.fillRect(inner.left() + 520, inner.top() + 72, 20, 4, QColor(61, 184, 228));
+        p.fillRect(inner.left() + 498, inner.top() + 76, 14, 3, QColor(92, 214, 246));
+
+        const QRect rope(inner.left() + 214, inner.top() + 102, 304, 24);
+        p.fillRect(rope.adjusted(-16, -5, 16, 5), QColor(44, 25, 13));
+        p.fillRect(rope.adjusted(-10, -2, 10, 2), QColor(142, 84, 38));
+        for (int x = rope.left(); x < rope.right(); x += 16) {
+            p.fillRect(x, rope.top(), 13, rope.height(), QColor(170, 118, 61));
+            p.fillRect(x + 7, rope.top() + 3, 7, rope.height() - 6, QColor(222, 168, 86));
+            p.fillRect(x + 2, rope.top() + rope.height() - 5, 12, 2, QColor(83, 50, 24, 120));
+        }
+        p.fillRect(rope.left() - 12, rope.top() - 5, 12, rope.height() + 10, QColor(111, 60, 26));
+        p.fillRect(rope.right(), rope.top() - 5, 12, rope.height() + 10, QColor(111, 60, 26));
+        p.fillRect(rope.left(), rope.top(), static_cast<int>(rope.width() * timeRatio), 5,
+                   QColor(timeColor.red(), timeColor.green(), timeColor.blue(), 120));
+
+        const int required = qMax(1, targetFish->catchRequired);
+        const int pipCount = qBound(3, qMin(required, 9), 9);
+        const int litPips = qBound(0, fishClickCount * pipCount / required, pipCount);
+        const int gap = 38;
+        const int hooksWidth = (pipCount - 1) * gap;
+        const int startX = inner.center().x() - hooksWidth / 2;
+        for (int i = 0; i < pipCount; ++i) {
+            drawHookIcon(startX + i * gap, inner.top() + 126, i < litPips, 24);
+        }
+
+        drawInputMouse(QRect(panel.left() + 292, panel.bottom() - 46, 294, 34),
+                       QStringLiteral("\u5feb\u901f\u70b9\u51fb\u9f20\u6807\u5de6\u952e\uff01  %1/%2").arg(fishClickCount).arg(required));
+    }
+
+    const QRect timeBar(panel.left() + 170, panel.top() + 92, panel.width() - 340, 7);
+    p.fillRect(timeBar.adjusted(-3, -3, 3, 3), QColor(39, 20, 11));
+    p.fillRect(timeBar, QColor(8, 22, 31));
+    p.fillRect(timeBar.left(), timeBar.top(),
+               static_cast<int>(timeBar.width() * timeRatio), timeBar.height(), timeColor);
+    p.fillRect(timeBar.left(), timeBar.top(), static_cast<int>(timeBar.width() * timeRatio), 3, QColor(230, 255, 239, 90));
+
+    p.restore();
 }
 
 // ============================================================
@@ -639,6 +2784,231 @@ void GameWindow::openShop()
 {
     ShopDialog dlg(this);
     dlg.exec();
+}
+
+void GameWindow::openTestModeShop()
+{
+    if (!testModeEnabled) return;
+
+    resetFishingState(true);
+    Player::instance().clearInputState();
+    timer->stop();
+    openShop();
+    applyTestModeBenefits();
+    timer->start(16);
+    update();
+}
+
+void GameWindow::openBackpack()
+{
+    BackpackDialog dlg(gm ? gm->stage : 1, this);
+    dlg.exec();
+}
+
+void GameWindow::openEncyclopedia()
+{
+    EncyclopediaDialog dlg(this);
+    dlg.exec();
+}
+
+bool GameWindow::useQuickItemSlot(int hotbarIndex)
+{
+    if (hotbarIndex < 3 || hotbarIndex > 5) {
+        return false;
+    }
+
+    InventorySystem& inv = InventorySystem::instance();
+    QVector<InventoryItemType> visibleItems;
+    auto addVisibleItem = [&](InventoryItemType type) {
+        if (inv.getItemCount(type) > 0) {
+            visibleItems.append(type);
+        }
+    };
+
+    addVisibleItem(InventoryItemType::Food);
+    addVisibleItem(InventoryItemType::ShipRepairT1);
+    addVisibleItem(InventoryItemType::ShipRepairT2);
+    addVisibleItem(InventoryItemType::ShipRepairT3);
+    addVisibleItem(InventoryItemType::EmergencyWeaponRepair);
+
+    const int itemIndex = hotbarIndex - 3;
+    if (itemIndex < 0 || itemIndex >= visibleItems.size()) {
+        return false;
+    }
+
+    bool used = false;
+    switch (visibleItems[itemIndex]) {
+    case InventoryItemType::Food:
+        used = inv.useFood(Player::instance());
+        break;
+    case InventoryItemType::ShipRepairT1:
+        used = inv.useShipRepairKit(Player::instance(), 1);
+        break;
+    case InventoryItemType::ShipRepairT2:
+        used = inv.useShipRepairKit(Player::instance(), 2);
+        break;
+    case InventoryItemType::ShipRepairT3:
+        used = inv.useShipRepairKit(Player::instance(), 3);
+        break;
+    case InventoryItemType::EmergencyWeaponRepair:
+        used = inv.useEmergencyWeaponRepair(inv.currentWeaponIndex());
+        break;
+    }
+
+    if (used) {
+        update();
+    }
+    return used;
+}
+
+void GameWindow::toggleTestMode()
+{
+    testModeEnabled = !testModeEnabled;
+    if (testModeEnabled) {
+        applyTestModeBenefits();
+    }
+    update();
+}
+
+void GameWindow::applyTestModeBenefits()
+{
+    if (!testModeEnabled) return;
+
+    Player& pl = Player::instance();
+    if (pl.isDead()) {
+        pl.restoreSavedProgress(
+            pl.distance,
+            pl.maxDurability,
+            pl.maxStamina,
+            pl.maxDurability,
+            pl.maxStamina,
+            pl.baseSpeed()
+        );
+    }
+
+    pl.clearMaxStaminaPenalty();
+    pl.restoreDurability(pl.maxDurability);
+    pl.restoreStamina(pl.maxStamina);
+    if (pl.coins < kTestModeCoinFloor) {
+        pl.coins = kTestModeCoinFloor;
+    }
+    if (gm) {
+        gm->gameOver = false;
+    }
+}
+
+void GameWindow::confirmStagePrompt()
+{
+    promptButtonHover = false;
+    setCursor(Qt::ArrowCursor);
+
+    if (state == STATE_STAGE_START) {
+        state = STATE_PLAYING;
+        update();
+        return;
+    }
+
+    if (state != STATE_STAGE_CLEAR || !gm) {
+        return;
+    }
+
+    resetFishingState(true);
+    Player::instance().clearInputState();
+
+    if (gm->stage >= Config::GameConfig::STAGE_COUNT) {
+        gm->stageClear = false;
+        gm->clearStageEntities();
+        gm->victory = true;
+        saveVictoryHighScore();
+        state = STATE_VICTORY;
+        update();
+        return;
+    }
+
+    gm->stageClear = false;
+    gm->stage++;
+
+    timer->stop();
+    openShop();
+    gm->resetStageRuntime();
+    gm->saveAndQuit();
+    timer->start(16);
+
+    state = STATE_STAGE_START;
+    update();
+}
+
+void GameWindow::startNewGame()
+{
+    gm->fileManager.deleteSave();
+
+    Player::instance().reset();
+
+    InventorySystem::instance().clearAll();
+    InventorySystem::instance().initDefaultWeaponIfNeeded();
+
+    delete gm;
+    gm = new GameManager();
+
+    resetFishingState(false);
+    attackProjectiles.clear();
+    victoryScoreSaved = false;
+    testModeEnabled = false;
+    menuHoverIndex = -1;
+    setCursor(Qt::ArrowCursor);
+
+    promptButtonHover = false;
+    state = STATE_STAGE_START;
+    update();
+}
+
+void GameWindow::continueGame()
+{
+    if (!gm->fileManager.hasSave()) {
+        return;
+    }
+
+    gm->loadSave();
+
+    resetFishingState(false);
+    attackProjectiles.clear();
+    victoryScoreSaved = false;
+    testModeEnabled = false;
+    menuHoverIndex = -1;
+    setCursor(Qt::ArrowCursor);
+
+    const int stageStart = Config::GameConfig::stageStartDistance(gm->stage);
+    promptButtonHover = false;
+    state = Player::instance().distance <= stageStart + 5
+        ? STATE_STAGE_START
+        : STATE_PLAYING;
+    update();
+}
+
+QRect GameWindow::menuButtonRect(int index) const
+{
+    const int x = 445;
+    const int y = 205 + index * 48;
+    return QRect(x, y, 390, 52);
+}
+
+int GameWindow::menuButtonAt(const QPoint& pos) const
+{
+    for (int i = 0; i < 6; ++i) {
+        if (i == 1 && !gm->fileManager.hasSave()) {
+            continue;
+        }
+        if (menuButtonRect(i).contains(pos)) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+QRect GameWindow::stagePromptButtonRect() const
+{
+    return QRect(438, 593, 404, 64);
 }
 
 // ============================================================
@@ -652,7 +3022,7 @@ void GameWindow::drawPaused(QPainter& p)
     p.setFont(QFont("Microsoft YaHei", 36, QFont::Bold));
     p.drawText(0, 280, 1280, 80, Qt::AlignCenter, "游戏暂停");
     p.setFont(QFont("Microsoft YaHei", 18));
-    p.drawText(0, 380, 1280, 40, Qt::AlignCenter, "按 ESC 继续    按 Q 保存退出");
+    p.drawText(0, 380, 1280, 40, Qt::AlignCenter, "按 ESC 继续    按 H 打开航海图鉴    按 Q 保存退出");
 }
 
 void GameWindow::drawDefeat(QPainter& p)
@@ -682,11 +3052,21 @@ void GameWindow::drawVictory(QPainter& p)
     p.setFont(QFont("Microsoft YaHei", 72, QFont::Bold));
     p.drawText(0, 180, 1280, 150, Qt::AlignCenter, "VICTORY");
 
-    int score = Player::instance().distance / 10 + Player::instance().coins + gm->killCount * 50;
+    Player& pl = Player::instance();
+    int score = gm->fileManager.calculateScore(
+        qMin(gm->stage, Config::GameConfig::STAGE_COUNT),
+        pl.fishTotalValue,
+        pl.fishCaught,
+        gm->killCount,
+        pl.coins,
+        pl.durability(),
+        pl.stamina(),
+        pl.gameSeconds
+    );
     QString grade;
-    if (score >= 800) grade = "S";
-    else if (score >= 500) grade = "A";
-    else if (score >= 300) grade = "B";
+    if (score >= 9000) grade = "S";
+    else if (score >= 6500) grade = "A";
+    else if (score >= 4000) grade = "B";
     else                   grade = "C";
 
     p.setPen(Qt::white);
@@ -697,11 +3077,11 @@ void GameWindow::drawVictory(QPainter& p)
     p.setFont(QFont("Microsoft YaHei", 18));
     p.drawText(0, 420, 1280, 40, Qt::AlignCenter,
         QString("航行: %1m   捕鱼: %2条   击杀: %3   用时: %4:%5")
-        .arg(Player::instance().distance)
-        .arg(Player::instance().fishCaught)
+        .arg(pl.distance)
+        .arg(pl.fishCaught)
         .arg(gm->killCount)
-        .arg(Player::instance().gameSeconds / 60, 2, 10, QChar('0'))
-        .arg(Player::instance().gameSeconds % 60, 2, 10, QChar('0')));
+        .arg(pl.gameSeconds / 60, 2, 10, QChar('0'))
+        .arg(pl.gameSeconds % 60, 2, 10, QChar('0')));
 
     p.setPen(QColor(255, 220, 80));
     p.setFont(QFont("Microsoft YaHei", 14));
@@ -712,9 +3092,233 @@ void GameWindow::drawVictory(QPainter& p)
 // 捕鱼逻辑更新
 // ============================================================
 
+Fish* GameWindow::nearestFishInWeaponRange(const Weapon* weapon) const
+{
+    if (!weapon || !weapon->canFish() || weapon->isBroken()) {
+        return nullptr;
+    }
+
+    Fish* nearest = nullptr;
+    qreal nearestDist = 0.0;
+    const QPointF playerPos = Player::instance().worldPos();
+
+    for (auto f : gm->fish) {
+        if (!f || f->caught || f->escaped) continue;
+        if (!f->isNearPlayer(gm->playerX(), gm->playerY(), weapon->getRange())) continue;
+
+        const qreal dx = f->x - playerPos.x();
+        const qreal dy = f->y - playerPos.y();
+        const qreal dist = dx * dx + dy * dy;
+        if (!nearest || dist < nearestDist) {
+            nearest = f;
+            nearestDist = dist;
+        }
+    }
+
+    return nearest;
+}
+
+void GameWindow::resetFishingState(bool releaseTarget)
+{
+    if (releaseTarget && targetFish) {
+        targetFish->lockedForCatch = false;
+    }
+
+    isFishing = false;
+    targetFish = nullptr;
+    fishClickCount = 0;
+    fishTimer = 0;
+}
+
+qreal GameWindow::calibrationMarkerRatio() const
+{
+    if (!targetFish || targetFish->catchTimeLimit <= 0) {
+        return 0.5;
+    }
+
+    const int sweepFrames = qMax(60, targetFish->catchTimeLimit / 2);
+    const qreal phase = static_cast<qreal>(fishTimer % sweepFrames) / sweepFrames;
+    return phase <= 0.5 ? phase * 2.0 : (1.0 - phase) * 2.0;
+}
+
+qreal GameWindow::calibrationWindowSize(bool perfect) const
+{
+    if (!targetFish) {
+        return perfect ? 0.08 : 0.22;
+    }
+
+    qreal normal = 0.24;
+    qreal perfectWindow = 0.085;
+    switch (targetFish->type) {
+    case Fish::SARDINE:
+        normal = 0.28;
+        perfectWindow = 0.10;
+        break;
+    case Fish::TUNA:
+        normal = 0.24;
+        perfectWindow = 0.085;
+        break;
+    case Fish::ANCHOVY:
+        normal = 0.28;
+        perfectWindow = 0.10;
+        break;
+    case Fish::CLOWNFISH:
+        normal = 0.26;
+        perfectWindow = 0.095;
+        break;
+    case Fish::MACKEREL:
+    case Fish::SEA_BREAM:
+        normal = 0.23;
+        perfectWindow = 0.08;
+        break;
+    case Fish::DEEPSEAEEL:
+        normal = 0.20;
+        perfectWindow = 0.07;
+        break;
+    case Fish::LANTERNFISH:
+    case Fish::GROUPER:
+        normal = 0.19;
+        perfectWindow = 0.068;
+        break;
+    case Fish::SWORDFISH_FISH:
+    case Fish::KOI:
+    case Fish::CRYSTAL_FISH:
+        normal = 0.18;
+        perfectWindow = 0.06;
+        break;
+    }
+
+    return perfect ? perfectWindow : normal;
+}
+
+Config::FishingResult GameWindow::calibrationFishingResult() const
+{
+    const qreal distance = qAbs(calibrationMarkerRatio() - 0.5);
+    if (distance <= calibrationWindowSize(true)) {
+        return Config::FishingResult::Perfect;
+    }
+    if (distance <= calibrationWindowSize(false)) {
+        return Config::FishingResult::Normal;
+    }
+    return Config::FishingResult::Fail;
+}
+
+void GameWindow::finishFishing(Config::FishingResult result)
+{
+    if (!targetFish) return;
+
+    Weapon* weapon = InventorySystem::instance().currentWeapon();
+    Player& pl = Player::instance();
+
+    auto consumeFishingStamina = [&]() {
+        int cost = targetFish ? targetFish->staminaCost : 0;
+        if (result == Config::FishingResult::Perfect) {
+            cost = (cost + 1) / 2;
+        }
+        if (cost <= 0) {
+            return;
+        }
+        if (!pl.consumeStamina(cost)) {
+            pl.consumeStamina(pl.stamina());
+        }
+    };
+
+    if (result == Config::FishingResult::Fail) {
+        consumeFishingStamina();
+        if (weapon && weapon->canFish()) {
+            const bool wasBroken = weapon->isBroken();
+            weapon->consumeFishingDurability(Config::FishingResult::Fail);
+            notifyWeaponBrokenIfNeeded(weapon, wasBroken);
+        }
+        targetFish->vx *= 3;
+        targetFish->vy *= 3;
+        targetFish->escaped = true;
+        resetFishingState(true);
+        return;
+    }
+
+    targetFish->caught = true;
+    consumeFishingStamina();
+
+    int fishValue = (int)(targetFish->value * WeatherSystem::instance().currentFishValueBonus());
+    pl.coins += fishValue;
+    pl.fishCaught++;
+    pl.fishTotalValue += fishValue;
+
+    const char* fishNameForLog = "未知鱼";
+    int fishId = 0;
+    switch (targetFish->type) {
+    case Fish::SARDINE:
+        fishNameForLog = "沙丁鱼";
+        fishId = 0;
+        break;
+    case Fish::TUNA:
+        fishNameForLog = "金枪鱼";
+        fishId = 1;
+        break;
+    case Fish::DEEPSEAEEL:
+        fishNameForLog = "深海鳗";
+        fishId = 2;
+        break;
+    case Fish::SWORDFISH_FISH:
+        fishNameForLog = "金鱼";
+        fishId = 3;
+        break;
+    case Fish::ANCHOVY:
+        fishNameForLog = u8"\u94f6\u9cca\u9c7c";
+        fishId = 4;
+        break;
+    case Fish::CLOWNFISH:
+        fishNameForLog = u8"\u5c0f\u4e11\u9c7c";
+        fishId = 5;
+        break;
+    case Fish::MACKEREL:
+        fishNameForLog = u8"\u84dd\u9cb5";
+        fishId = 6;
+        break;
+    case Fish::SEA_BREAM:
+        fishNameForLog = u8"\u771f\u9cb7";
+        fishId = 7;
+        break;
+    case Fish::LANTERNFISH:
+        fishNameForLog = u8"\u706f\u7b3c\u9c7c";
+        fishId = 8;
+        break;
+    case Fish::GROUPER:
+        fishNameForLog = u8"\u77f3\u6591\u9c7c";
+        fishId = 9;
+        break;
+    case Fish::KOI:
+        fishNameForLog = u8"\u9526\u9ca4";
+        fishId = 10;
+        break;
+    case Fish::CRYSTAL_FISH:
+        fishNameForLog = u8"\u6676\u9cde\u9c7c";
+        fishId = 11;
+        break;
+    }
+    gm->fileManager.markFishDiscovered(fishId, fishNameForLog);
+
+    pl.restoreStamina(targetFish->staminaGain);
+
+    if (weapon && weapon->canFish()) {
+        const bool wasBroken = weapon->isBroken();
+        weapon->consumeFishingDurability(result);
+        notifyWeaponBrokenIfNeeded(weapon, wasBroken);
+    }
+
+    resetFishingState(true);
+}
+
 void GameWindow::updateFishing()
 {
     if (!isFishing || !targetFish) return;
+    if (targetFish->caught || targetFish->escaped) {
+        resetFishingState(false);
+        return;
+    }
+
+    targetFish->lockedForCatch = true;
 
     fishTimer++;
 
@@ -722,79 +3326,25 @@ void GameWindow::updateFishing()
 
     // 捕捉超时：鱼逃跑，并按 Fail 结果消耗捕鱼工具耐久
     if (fishTimer >= targetFish->catchTimeLimit) {
-        if (weapon && weapon->canFish()) {
-            weapon->consumeFishingDurability(Config::FishingResult::Fail);
-        }
-
-        targetFish->vx *= 3;
-        targetFish->vy *= 3;
-        targetFish->escaped = true;
-
-        isFishing = false;
-        targetFish = nullptr;
-        fishClickCount = 0;
-        fishTimer = 0;
-
+        finishFishing(Config::FishingResult::Fail);
         return;
     }
 
-    // 达到所需点击次数：捕鱼成功
-    if (fishClickCount >= targetFish->catchRequired) {
-        targetFish->caught = true;
+    const Config::FishingMode mode = weapon ? weapon->getFishingMode() : Config::FishingMode::QTE;
 
-        Player& pl = Player::instance();
-
-        int fishValue = (int)(targetFish->value * WeatherSystem::instance().currentFishValueBonus());
-        pl.coins += fishValue;
-        pl.fishCaught++;
-        pl.fishTotalValue += fishValue;
-
-        const char* fishNameForLog = "未知鱼";
-        int fishId = 0;
-        switch (targetFish->type) {
-        case Fish::SARDINE:
-            fishNameForLog = "沙丁鱼";
-            fishId = 0;
-            break;
-        case Fish::TUNA:
-            fishNameForLog = "金枪鱼";
-            fishId = 1;
-            break;
-        case Fish::DEEPSEAEEL:
-            fishNameForLog = "深海鳗";
-            fishId = 2;
-            break;
-        case Fish::SWORDFISH_FISH:
-            fishNameForLog = "金鱼";
-            fishId = 3;
-            break;
+    if (mode == Config::FishingMode::Calibration) {
+        if (fishClickCount > 0) {
+            finishFishing(calibrationFishingResult());
         }
-        gm->fileManager.markFishDiscovered(fishId, fishNameForLog);
+        return;
+    }
 
-        // 时间剩余超过一半，视为 Perfect；否则 Normal
-        Config::FishingResult result =
+    if (fishClickCount >= targetFish->catchRequired) {
+        const Config::FishingResult result =
             (fishTimer < targetFish->catchTimeLimit / 2)
             ? Config::FishingResult::Perfect
             : Config::FishingResult::Normal;
-
-        // 体力消耗：Perfect 减半，Normal 正常
-        int cost =
-            (result == Config::FishingResult::Perfect)
-            ? targetFish->staminaCost / 2
-            : targetFish->staminaCost;
-
-        pl.consumeStamina(cost);
-        pl.restoreStamina(targetFish->staminaGain);
-
-        // 捕鱼工具耐久消耗：根据 Perfect / Normal 区分
-        if (weapon && weapon->canFish()) {
-            weapon->consumeFishingDurability(result);
-        }
-
-        isFishing = false;
-        targetFish = nullptr;
-        fishClickCount = 0;
-        fishTimer = 0;
+        finishFishing(result);
     }
 }
 
@@ -804,73 +3354,75 @@ void GameWindow::updateFishing()
 
 void GameWindow::keyPressEvent(QKeyEvent* event)
 {
-    Player::instance().keyPress(event);
-
     if (state == STATE_INTRO) {
         state = STATE_MENU; update();
         return;
     }
 
     if (state == STATE_MENU) {
-    if (event->key() == Qt::Key_N) {
-        gm->fileManager.deleteSave();
-
-        Player::instance().reset();
-
-        InventorySystem::instance().clearAll();
-        InventorySystem::instance().initDefaultWeaponIfNeeded();
-
-        delete gm;
-        gm = new GameManager();
-
-        isFishing = false;
-        targetFish = nullptr;
-        fishClickCount = 0;
-        fishTimer = 0;
-
-        state = STATE_PLAYING;
+        if (event->key() == Qt::Key_N) {
+            startNewGame();
+        }
+        else if (event->key() == Qt::Key_C && gm->fileManager.hasSave()) {
+            continueGame();
+        }
+        return;
     }
-    else if (event->key() == Qt::Key_C && gm->fileManager.hasSave()) {
-        gm->loadSave();
 
-        isFishing = false;
-        targetFish = nullptr;
-        fishClickCount = 0;
-        fishTimer = 0;
-
-        state = STATE_PLAYING;
+    if (event->key() == Qt::Key_O && state != STATE_DEFEAT && state != STATE_VICTORY) {
+        toggleTestMode();
+        return;
     }
-    return;
-}
+
+    if (event->key() == Qt::Key_P && testModeEnabled &&
+        state != STATE_MENU && state != STATE_DEFEAT && state != STATE_VICTORY) {
+        openTestModeShop();
+        return;
+    }
+
+    if (state == STATE_STAGE_START || state == STATE_STAGE_CLEAR) {
+        if (event->key() == Qt::Key_Space ||
+            event->key() == Qt::Key_Return ||
+            event->key() == Qt::Key_Enter) {
+            confirmStagePrompt();
+        }
+        return;
+    }
 
     if (state == STATE_DEFEAT || state == STATE_VICTORY) {
-    if (event->key() == Qt::Key_Space || event->key() == Qt::Key_N) {
-        Player::instance().reset();
+        if (event->key() == Qt::Key_Space || event->key() == Qt::Key_N) {
+            Player::instance().reset();
 
-        InventorySystem::instance().clearAll();
-        InventorySystem::instance().initDefaultWeaponIfNeeded();
+            InventorySystem::instance().clearAll();
+            InventorySystem::instance().initDefaultWeaponIfNeeded();
 
-        delete gm;
-        gm = new GameManager();
+            delete gm;
+            gm = new GameManager();
 
-        isFishing = false;
-        targetFish = nullptr;
-        fishClickCount = 0;
-        fishTimer = 0;
+            resetFishingState(false);
+            attackProjectiles.clear();
+            victoryScoreSaved = false;
+            testModeEnabled = false;
 
-        state = STATE_MENU;
-        update();
+            state = STATE_MENU;
+            update();
+        }
+        return;
     }
-    return;
-}
 
     if (state == STATE_PAUSED) {
-        if (event->key() == Qt::Key_Escape) state = STATE_PLAYING;
+        if (event->key() == Qt::Key_Escape) {
+            Player::instance().clearInputState();
+            state = STATE_PLAYING;
+        }
         else if (event->key() == Qt::Key_Q) { gm->saveAndQuit(); close(); }
+        else if (event->key() == Qt::Key_H) { openEncyclopedia(); update(); }
         return;
     }
 
     if (state == STATE_PLAYING) {
+        Player::instance().keyPress(event);
+
         switch (event->key()) {
         case Qt::Key_Space: // 极限冲刺
             Player::instance().triggerDash();
@@ -881,13 +3433,42 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
                 gm->triggerShockWave();
             }
             break;
-        case Qt::Key_P:
-        case Qt::Key_B: // 新增：快捷键打开背包商店
+        case Qt::Key_B:
+            if (isFishing) {
+                break;
+            }
+            Player::instance().clearInputState();
             timer->stop();
-            openShop();
+            openBackpack();
             timer->start(16);
             break;
-        case Qt::Key_Escape: state = STATE_PAUSED; break;
+        case Qt::Key_H:
+            if (isFishing) {
+                break;
+            }
+            Player::instance().clearInputState();
+            timer->stop();
+            openEncyclopedia();
+            timer->start(16);
+            break;
+        case Qt::Key_1:
+        case Qt::Key_2:
+        case Qt::Key_3:
+            if (!isFishing) {
+                InventorySystem::instance().selectWeapon(event->key() - Qt::Key_1);
+            }
+            break;
+        case Qt::Key_4:
+        case Qt::Key_5:
+        case Qt::Key_6:
+            if (!isFishing) {
+                useQuickItemSlot(event->key() - Qt::Key_1);
+            }
+            break;
+        case Qt::Key_Escape:
+            Player::instance().clearInputState();
+            state = STATE_PAUSED;
+            break;
         case Qt::Key_Q: gm->saveAndQuit(); close(); break;
         default: break;
         }
@@ -896,12 +3477,104 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
 
 void GameWindow::keyReleaseEvent(QKeyEvent* event)
 {
-    Player::instance().keyRelease(event);
+    if (state == STATE_PLAYING) {
+        Player::instance().keyRelease(event);
+    }
+    else {
+        Player::instance().clearInputState();
+    }
+}
+
+void GameWindow::mouseMoveEvent(QMouseEvent* event)
+{
+    if (state == STATE_MENU) {
+        const int hoverIndex = menuButtonAt(event->position().toPoint());
+        if (hoverIndex != menuHoverIndex) {
+            menuHoverIndex = hoverIndex;
+            setCursor(menuHoverIndex >= 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
+            update();
+        }
+        return;
+    }
+
+    if (state == STATE_STAGE_START || state == STATE_STAGE_CLEAR) {
+        const bool hover = stagePromptButtonRect().contains(event->position().toPoint());
+        if (hover != promptButtonHover) {
+            promptButtonHover = hover;
+            setCursor(promptButtonHover ? Qt::PointingHandCursor : Qt::ArrowCursor);
+            update();
+        }
+        return;
+    }
+
+    if (menuHoverIndex != -1 || promptButtonHover) {
+        menuHoverIndex = -1;
+        promptButtonHover = false;
+        setCursor(Qt::ArrowCursor);
+    }
+}
+
+void GameWindow::leaveEvent(QEvent* event)
+{
+    if (menuHoverIndex != -1) {
+        menuHoverIndex = -1;
+        setCursor(Qt::ArrowCursor);
+        update();
+    }
+
+    if (promptButtonHover) {
+        promptButtonHover = false;
+        setCursor(Qt::ArrowCursor);
+        update();
+    }
+
+    QWidget::leaveEvent(event);
 }
 
 // 鼠标左键：统一接管捕鱼与武器射击
 void GameWindow::mousePressEvent(QMouseEvent* event)
 {
+    if (state == STATE_MENU) {
+        if (event->button() != Qt::LeftButton) return;
+
+        const int buttonIndex = menuButtonAt(event->position().toPoint());
+        if (buttonIndex == 0) {
+            startNewGame();
+        }
+        else if (buttonIndex == 1) {
+            continueGame();
+        }
+        else if (buttonIndex == 2) {
+            openEncyclopedia();
+            menuHoverIndex = -1;
+            setCursor(Qt::ArrowCursor);
+            update();
+        }
+        else if (buttonIndex == 3) {
+            state = STATE_INTRO;
+            menuHoverIndex = -1;
+            setCursor(Qt::ArrowCursor);
+            update();
+        }
+        else if (buttonIndex == 4) {
+            GameUi::showWoodMessage(this,
+                                    QStringLiteral("\u6e38\u620f\u8bbe\u7f6e"),
+                                    QStringLiteral("\u8bbe\u7f6e\u754c\u9762\u540e\u7eed\u63a5\u5165\u3002"));
+        }
+        else if (buttonIndex == 5) {
+            close();
+        }
+        return;
+    }
+
+    if (state == STATE_STAGE_START || state == STATE_STAGE_CLEAR) {
+        if (event->button() == Qt::LeftButton &&
+            stagePromptButtonRect().contains(event->position().toPoint())) {
+            confirmStagePrompt();
+        }
+        return;
+    }
+
     if (state != STATE_PLAYING) return;
     if (event->button() != Qt::LeftButton) return;
 
@@ -911,52 +3584,54 @@ void GameWindow::mousePressEvent(QMouseEvent* event)
 
     // 0. 正在捕鱼中：点击目标鱼附近视为 QTE 连击
     if (isFishing && targetFish) {
-        int dx = targetFish->x - worldX;
-        int dy = targetFish->y - worldY;
-        if (dx * dx + dy * dy < 40 * 40) {
-            fishClickCount++;
-            return;
-        }
+        fishClickCount++;
+        return;
     }
 
     Weapon* weapon = InventorySystem::instance().currentWeapon();
-    if (!weapon || weapon->isBroken()) return;
+    if (!weapon) return;
+    if (weapon->isBroken()) {
+        showFloatingNotice(QStringLiteral("\u88c5\u5907\u5df2\u635f\u574f"),
+                           QStringLiteral("\u8bf7\u56de\u6e2f\u4fee\u590d\uff0c\u6216\u4f7f\u7528\u7d27\u6025\u88c5\u5907\u4fee\u7406\u5de5\u5177\u3002"));
+        return;
+    }
+    const bool wasWeaponBroken = weapon->isBroken();
 
     // 1. 优先尝试攻击敌人
     // 如果命中敌人，则本次点击结束，不再进入捕鱼逻辑。
     bool hitEnemy = false;
+    QPointF hitFeedbackWorld(worldX, worldY);
 
-    if (weapon->canAttack()) {
+    if (weapon->canAttack() && gm->canAttemptAttack(weapon)) {
+        if (isGunWeapon(weapon)) {
+            spawnGunProjectiles(QPointF(worldX, worldY), weapon);
+        }
         hitEnemy = gm->attackAt(worldX, worldY, weapon);
+        if (hitEnemy && isHarpoonWeapon(weapon)) {
+            spawnHarpoonProjectile(QPointF(worldX, worldY), weapon);
+            if (!attackProjectiles.isEmpty()) {
+                hitFeedbackWorld = attackProjectiles.last().endWorld;
+            }
+        }
     }
 
     if (hitEnemy) {
+        spawnHitFeedback(hitFeedbackWorld);
+        notifyWeaponBrokenIfNeeded(weapon, wasWeaponBroken);
         return;
     }
 
     // 2. 如果没有命中敌人，再尝试捕鱼
     // 这样可以避免鱼叉同一次点击既打中敌人又开始捕鱼。
     if (weapon->canFish() && !isFishing) {
-        for (auto f : gm->fish) {
-            if (f->caught || f->escaped) continue;
-
-            int dx = f->x - worldX;
-            int dy = f->y - worldY;
-
-            bool clickedFish = (dx * dx + dy * dy < 40 * 40);
-            bool fishInToolRange = f->isNearPlayer(
-                gm->playerX(),
-                gm->playerY(),
-                weapon->getRange()
-            );
-
-            if (clickedFish && fishInToolRange) {
-                targetFish = f;
-                isFishing = true;
-                fishClickCount = 0;
-                fishTimer = 0;
-                return;
-            }
+        Fish* nearest = nearestFishInWeaponRange(weapon);
+        if (nearest) {
+            targetFish = nearest;
+            targetFish->lockedForCatch = true;
+            isFishing = true;
+            fishClickCount = 0;
+            fishTimer = 0;
+            return;
         }
     }
 }

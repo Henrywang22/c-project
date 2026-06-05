@@ -1,5 +1,6 @@
 #include "Boss.h"
 #include "Player.h"
+#include "GameConfig.h"
 #include <QLineF>
 #include <algorithm>
 #include <cmath>
@@ -55,15 +56,29 @@ void Boss::update(Player& player)
 
 bool Boss::collidesWithPlayer(int px, int py)
 {
-    int dx = px - x;
-    int dy = py - y;
-    return dx * dx + dy * dy < 40 * 40;
+    QRectF playerRect(
+        px - Config::GameConfig::PLAYER_COLLIDER_WIDTH / 2.0,
+        py - Config::GameConfig::PLAYER_COLLIDER_HEIGHT / 2.0,
+        Config::GameConfig::PLAYER_COLLIDER_WIDTH,
+        Config::GameConfig::PLAYER_COLLIDER_HEIGHT
+    );
+    return collider().intersects(playerRect);
+}
+
+QRectF Boss::collider() const
+{
+    return QRectF(
+        x - Config::GameConfig::BOSS_COLLIDER_WIDTH / 2.0,
+        y - Config::GameConfig::BOSS_COLLIDER_HEIGHT / 2.0,
+        Config::GameConfig::BOSS_COLLIDER_WIDTH,
+        Config::GameConfig::BOSS_COLLIDER_HEIGHT
+    );
 }
 
 bool Boss::canBeHitAt(int targetX, int targetY) const
 {
     if (!alive || invulnerable) return false;
-    return std::abs(x - targetX) < 100 && std::abs(y - targetY) < 100;
+    return collider().contains(QPointF(targetX, targetY));
 }
 
 void Boss::takeDamage(int damage)
@@ -144,9 +159,7 @@ FiveHeadSharkBoss::FiveHeadSharkBoss(int x, int y)
 
 bool FiveHeadSharkBoss::collidesWithPlayer(int px, int py)
 {
-    int dx = px - x;
-    int dy = py - y;
-    return dx * dx + dy * dy < 42 * 42;
+    return Boss::collidesWithPlayer(px, py);
 }
 
 void FiveHeadSharkBoss::updateBoss(Player& player)
@@ -178,9 +191,9 @@ void FiveHeadSharkBoss::updateMelee(Player& player)
         meleeWindupMs -= FrameMs;
         if (meleeWindupMs <= 0) {
             QRectF hitRect(x - 130, y - 42, 130, 84);
-            addHazard({ BossHazardType::MeleeHitbox, hitRect.center(), hitRect, 0, 250, 0, scaledDamage(100), true });
+            addHazard({ BossHazardType::MeleeHitbox, hitRect.center(), hitRect, 0, 250, 0, scaledDamage(45), true });
             if (rectHitsPlayer(hitRect, player))
-                player.takeDurabilityDamage(scaledDamage(100));
+                player.takeDurabilityDamage(scaledDamage(45));
             meleeRecoveryMs = 600;
             meleeCooldownMs = 3000;
         }
@@ -214,9 +227,9 @@ void FiveHeadSharkBoss::updateBombardment(Player& player)
         bombardmentCastMs -= FrameMs;
         if (bombardmentCastMs <= 0) {
             for (const QRectF& rect : pendingBombRects) {
-                addHazard({ BossHazardType::BombHitbox, rect.center(), rect, 0, 300, 0, scaledDamage(150), true });
+                addHazard({ BossHazardType::BombHitbox, rect.center(), rect, 0, 300, 0, scaledDamage(60), true });
                 if (rectHitsPlayer(rect, player))
-                    player.takeDurabilityDamage(scaledDamage(150));
+                    player.takeDurabilityDamage(scaledDamage(60));
             }
             pendingBombRects.clear();
         }
@@ -257,7 +270,13 @@ bool TaliMonsterBoss::canBeHitAt(int targetX, int targetY) const
     if (!alive) return false;
 
     if (state == PHASE2 && invulnerable && cloneAlive) {
-        return QLineF(clonePos, QPointF(targetX, targetY)).length() <= 80;
+        const QRectF cloneRect(
+            clonePos.x() - Config::GameConfig::TALI_CLONE_COLLIDER_WIDTH / 2.0,
+            clonePos.y() - Config::GameConfig::TALI_CLONE_COLLIDER_HEIGHT / 2.0,
+            Config::GameConfig::TALI_CLONE_COLLIDER_WIDTH,
+            Config::GameConfig::TALI_CLONE_COLLIDER_HEIGHT
+        );
+        return cloneRect.contains(QPointF(targetX, targetY));
     }
 
     return Boss::canBeHitAt(targetX, targetY);
@@ -336,13 +355,23 @@ void TaliMonsterBoss::updateMovement(Player& player)
 
 void TaliMonsterBoss::updateMouthStrike(Player& player)
 {
+    auto addMouthWarning = [&]() {
+        QPointF target = player.worldPos();
+        QRectF warnRect(std::min((qreal)x, target.x()) - 20,
+                        std::min((qreal)y, target.y()) - 20,
+                        std::abs(target.x() - x) + 40,
+                        std::abs(target.y() - y) + 40);
+        addHazard({ BossHazardType::MouthStrike, warnRect.center(), warnRect, 0,
+                    (qreal)mouthSequenceTimerMs, 0, 0, true });
+    };
+
     if (mouthSequenceTimerMs > 0) {
         mouthSequenceTimerMs -= FrameMs;
         if (mouthSequenceTimerMs > 0) return;
 
         ++mouthStrikeIndex;
         bool grabStrike = mouthStrikeIndex >= 4;
-        int stabDamage = phase2InvulnerabilityEnded ? 120 : 100;
+        int stabDamage = phase2InvulnerabilityEnded ? 50 : 40;
         QPointF target = player.worldPos();
         QRectF hitRect(std::min((qreal)x, target.x()) - 20,
                        std::min((qreal)y, target.y()) - 20,
@@ -353,7 +382,7 @@ void TaliMonsterBoss::updateMouthStrike(Player& player)
             player.takeDurabilityDamage(stabDamage);
             if (grabStrike) {
                 holdingPlayer = true;
-                player.takeDurabilityDamage(phase2InvulnerabilityEnded ? 230 : 200);
+                player.takeDurabilityDamage(phase2InvulnerabilityEnded ? 75 : 60);
             }
         }
 
@@ -362,7 +391,8 @@ void TaliMonsterBoss::updateMouthStrike(Player& player)
             mouthTimerMs = (state == PHASE2 && invulnerable) ? 23000 : 15000;
             mouthSequenceTimerMs = 0;
         } else {
-            mouthSequenceTimerMs = 250;
+            mouthSequenceTimerMs = 650;
+            addMouthWarning();
         }
         return;
     }
@@ -370,7 +400,8 @@ void TaliMonsterBoss::updateMouthStrike(Player& player)
     mouthTimerMs -= FrameMs;
     if (mouthTimerMs <= 0) {
         mouthStrikeIndex = 0;
-        mouthSequenceTimerMs = 550;
+        mouthSequenceTimerMs = 850;
+        addMouthWarning();
     }
 }
 
@@ -485,14 +516,17 @@ void SirenBoss::updatePhase2(Player& player)
     updateEndlessReturn(player);
 
     addHazard({ BossHazardType::SeaweedZone, position(), QRectF(), 90, 100, 0, 10, true });
-    if (circleHitsPlayer(position(), 90, player))
-        player.takeDurabilityDamage(1);
+    seaweedTickMs = std::max(0, seaweedTickMs - FrameMs);
+    if (circleHitsPlayer(position(), 90, player) && seaweedTickMs <= 0) {
+        player.takeDurabilityDamage(8);
+        seaweedTickMs = 1000;
+    }
 
     if (poisonRemainingMs > 0) {
         poisonRemainingMs -= FrameMs;
         player.applySpeedReduction(0.5);
         if (poisonRemainingMs % 1000 < FrameMs)
-            player.takeDurabilityDamage(20);
+            player.takeDurabilityDamage(8);
         if (poisonRemainingMs <= 0)
             player.maxStamina = std::max(1, int(player.maxStamina * 0.9f));
     }
@@ -535,8 +569,11 @@ void SirenBoss::updatePhantom(Player& player)
         return;
     }
     phantomPos = stepToward(phantomPos, player.worldPos(), 2.2);
-    if (circleHitsPlayer(phantomPos, 36, player))
-        player.takeDurabilityDamage(1);
+    phantomContactTickMs = std::max(0, phantomContactTickMs - FrameMs);
+    if (circleHitsPlayer(phantomPos, 36, player) && phantomContactTickMs <= 0) {
+        player.takeDurabilityDamage(8);
+        phantomContactTickMs = 1000;
+    }
 }
 
 void SirenBoss::updateElegy(Player& player)
@@ -570,7 +607,7 @@ void SirenBoss::updateEndlessReturn(Player& player)
         QRectF reefRect(rx - 24, ry - 24, 48, 48);
         addHazard({ BossHazardType::ReefHitbox, QPointF(rx, ry), reefRect, 0, 20000, 0, 50, true });
         if (rectHitsPlayer(reefRect, player))
-            player.takeDurabilityDamage(50);
+            player.takeDurabilityDamage(35);
     }
 
     endlessReturnTimerMs = 20000;
@@ -581,7 +618,7 @@ void SirenBoss::applyNaturalDecay()
     naturalDecayTimerMs += FrameMs;
     if (naturalDecayTimerMs < 1000) return;
     naturalDecayTimerMs -= 1000;
-    hp -= 15;
+    hp -= 30;
     if (hp <= 0) {
         hp = 0;
         alive = false;

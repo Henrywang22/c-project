@@ -27,11 +27,19 @@ void InventorySystem::initDefaultWeaponIfNeeded()
 
     Weapon* defaultRod = ItemFactory::createWeapon("Rod", 1);
     if (defaultRod) {
+        defaultRod->makeDurabilityInfinite();
         m_weapons.push_back(defaultRod);
-        m_currentWeaponIndex = 0;
+    }
 
-        // 兼容现有 Player 接口
-        Player::instance().equipWeapon(defaultRod);
+    Weapon* starterHarpoon = ItemFactory::createWeapon("Harpoon", 1);
+    if (starterHarpoon) {
+        starterHarpoon->makeDurabilityInfinite();
+        m_weapons.push_back(starterHarpoon);
+    }
+
+    if (!m_weapons.empty()) {
+        m_currentWeaponIndex = static_cast<int>(m_weapons.size()) > 1 ? 1 : 0;
+        Player::instance().equipWeapon(m_weapons[m_currentWeaponIndex]);
     }
 }
 
@@ -169,7 +177,7 @@ int InventorySystem::getTotalItemCount() const
 
 bool InventorySystem::canAddWeapon() const
 {
-    return static_cast<int>(m_weapons.size()) < Config::MAX_WEAPON_BACKPACK;
+    return true;
 }
 
 bool InventorySystem::addWeapon(Weapon* weapon)
@@ -364,6 +372,7 @@ InventorySystem::InventoryLoadData InventorySystem::exportData() const
         w.currentDurability = weapon->getCurrentDur();
         w.range = weapon->getRange();
         w.durabilityConsumption = weapon->getDurabilityConsumption();
+        w.enhancementLevel = weapon->getEnhancementLevel();
 
         data.weapons.push_back(w);
     }
@@ -403,7 +412,8 @@ void InventorySystem::loadFromData(const InventoryLoadData& data)
             savedWeapon.maxDurability,
             savedWeapon.currentDurability,
             savedWeapon.range,
-            savedWeapon.durabilityConsumption
+            savedWeapon.durabilityConsumption,
+            savedWeapon.enhancementLevel
         );
 
         m_weapons.push_back(weapon);

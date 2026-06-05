@@ -54,6 +54,9 @@ protected:
     // 攻击冷却时间，后续联调鼠标攻击时使用
     int attackCooldownMs;
 
+    // 商店强化次数，用于显示和存档；不限制继续强化。
+    int enhancementLevel = 0;
+
 public:
     Weapon(
         std::string specificName,
@@ -137,7 +140,8 @@ public:
         int savedMaxDurability,
         int savedCurrentDurability,
         int savedRange,
-        int savedDurabilityConsumption
+        int savedDurabilityConsumption,
+        int savedEnhancementLevel = 0
     );
 
     // ========================================================
@@ -145,6 +149,8 @@ public:
     // ========================================================
 
     bool isBroken() const;
+    bool isInfiniteDurability() const;
+    void makeDurabilityInfinite();
 
     bool canFish() const;
     bool canAttack() const;
@@ -156,6 +162,7 @@ public:
     int getDurabilityConsumption() const;
     int getAttackCooldownMs() const;
     int getTier() const;
+    int getEnhancementLevel() const;
 
     Config::EquipmentRole getRole() const;
     Config::FishingMode getFishingMode() const;

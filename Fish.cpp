@@ -19,6 +19,76 @@ Fish::Fish(int x, int y, Type type)
     vx = 0; vy = 0;
 }
 
+QRectF Fish::collider() const
+{
+    qreal width = 42.0;
+    qreal height = 22.0;
+    switch (type) {
+    case SARDINE:
+        width = 34.0;
+        height = 18.0;
+        break;
+    case TUNA:
+        width = 48.0;
+        height = 24.0;
+        break;
+    case DEEPSEAEEL:
+        width = 56.0;
+        height = 18.0;
+        break;
+    case SWORDFISH_FISH:
+        width = 42.0;
+        height = 22.0;
+        break;
+    case ANCHOVY:
+        width = 40.0;
+        height = 18.0;
+        break;
+    case CLOWNFISH:
+        width = 38.0;
+        height = 24.0;
+        break;
+    case MACKEREL:
+        width = 52.0;
+        height = 24.0;
+        break;
+    case SEA_BREAM:
+        width = 46.0;
+        height = 28.0;
+        break;
+    case LANTERNFISH:
+        width = 44.0;
+        height = 24.0;
+        break;
+    case GROUPER:
+        width = 58.0;
+        height = 30.0;
+        break;
+    case KOI:
+        width = 52.0;
+        height = 26.0;
+        break;
+    case CRYSTAL_FISH:
+        width = 58.0;
+        height = 28.0;
+        break;
+    }
+    return QRectF(x - width / 2.0, y - height / 2.0, width, height);
+}
+
+QPointF Fish::position() const
+{
+    return QPointF(posX, posY);
+}
+
+void Fish::setPosition(const QPointF& pos)
+{
+    posX = static_cast<float>(pos.x());
+    posY = static_cast<float>(pos.y());
+    x = static_cast<int>(std::round(posX));
+    y = static_cast<int>(std::round(posY));
+}
+
 // 随机改变游动方向，保持原有速度大小
 void Fish::changeDirection()
 {
@@ -34,7 +104,8 @@ bool Fish::isNearPlayer(int px, int py, int range)
 {
     int dx = px - x;
     int dy = py - y;
-    return (dx * dx + dy * dy) <= (range * range);
+    int effectiveRange = range + Config::GameConfig::FISH_INTERACTION_RADIUS;
+    return (dx * dx + dy * dy) <= (effectiveRange * effectiveRange);
 }
 
 // 基类默认update（子类会覆盖）
@@ -43,8 +114,11 @@ void Fish::update(int playerX, int playerY)
     lifeTimer++;
     moveTimer++;
     if (lifeTimer >= maxLife) { escaped = true; return; }
-    posX += vx;
-    posY += vy;
+    const float speedScale = lockedForCatch
+        ? static_cast<float>(Config::GameConfig::FISH_LOCKED_SPEED_MULTIPLIER)
+        : 1.0f;
+    posX += vx * speedScale;
+    posY += vy * speedScale;
     x = (int)std::round(posX);
     y = (int)std::round(posY);
     if (x < 0 || x > Config::GameConfig::RIGHT_BORDER) { escaped = true; return; }
@@ -89,8 +163,11 @@ void CommonFish::update(int playerX, int playerY)
     // 每120帧随机改变方向（不在逃跑时）
     if (moveTimer % 120 == 0 && !fleeing) changeDirection();
 
-    posX += vx;
-    posY += vy;
+    const float speedScale = lockedForCatch
+        ? static_cast<float>(Config::GameConfig::FISH_LOCKED_SPEED_MULTIPLIER)
+        : 1.0f;
+    posX += vx * speedScale;
+    posY += vy * speedScale;
     x = (int)std::round(posX);
     y = (int)std::round(posY);
 
@@ -136,8 +213,11 @@ void RareFish::update(int playerX, int playerY)
     // 每80帧随机改变方向（更频繁，更难预判）
     if (moveTimer % 80 == 0 && !fleeing) changeDirection();
 
-    posX += vx;
-    posY += vy;
+    const float speedScale = lockedForCatch
+        ? static_cast<float>(Config::GameConfig::FISH_LOCKED_SPEED_MULTIPLIER)
+        : 1.0f;
+    posX += vx * speedScale;
+    posY += vy * speedScale;
     x = (int)std::round(posX);
     y = (int)std::round(posY);
 
@@ -195,5 +275,77 @@ GoldenFish::GoldenFish(int x, int y) : RareFish(x, y, SWORDFISH_FISH)
     staminaGain = 30;
     staminaCost = 10;
     catchRequired = 10;
-    catchTimeLimit = 75; // 1.25秒，极限
+    catchTimeLimit = 75;
+}
+
+Anchovy::Anchovy(int x, int y) : CommonFish(x, y, ANCHOVY)
+{
+    value = 8 + rand() % 11;
+    staminaGain = 10;
+    staminaCost = 8;
+    catchRequired = 3;
+    catchTimeLimit = 190;
+}
+
+Clownfish::Clownfish(int x, int y) : CommonFish(x, y, CLOWNFISH)
+{
+    value = 12 + rand() % 13;
+    staminaGain = 12;
+    staminaCost = 8;
+    catchRequired = 4;
+    catchTimeLimit = 180;
+}
+
+Mackerel::Mackerel(int x, int y) : CommonFish(x, y, MACKEREL)
+{
+    value = 35 + rand() % 31;
+    staminaGain = 18;
+    staminaCost = 10;
+    catchRequired = 4;
+    catchTimeLimit = 165;
+}
+
+SeaBream::SeaBream(int x, int y) : CommonFish(x, y, SEA_BREAM)
+{
+    value = 45 + rand() % 36;
+    staminaGain = 18;
+    staminaCost = 10;
+    catchRequired = 5;
+    catchTimeLimit = 155;
+}
+
+Lanternfish::Lanternfish(int x, int y) : RareFish(x, y, LANTERNFISH)
+{
+    value = 95 + rand() % 66;
+    staminaGain = 8;
+    staminaCost = 12;
+    catchRequired = 7;
+    catchTimeLimit = 105;
+}
+
+Grouper::Grouper(int x, int y) : RareFish(x, y, GROUPER)
+{
+    value = 110 + rand() % 81;
+    staminaGain = 15;
+    staminaCost = 12;
+    catchRequired = 7;
+    catchTimeLimit = 120;
+}
+
+KoiFish::KoiFish(int x, int y) : RareFish(x, y, KOI)
+{
+    value = 180 + rand() % 101;
+    staminaGain = 25;
+    staminaCost = 14;
+    catchRequired = 9;
+    catchTimeLimit = 90;
+}
+
+CrystalFish::CrystalFish(int x, int y) : RareFish(x, y, CRYSTAL_FISH)
+{
+    value = 240 + rand() % 141;
+    staminaGain = 30;
+    staminaCost = 15;
+    catchRequired = 11;
+    catchTimeLimit = 82;
 }

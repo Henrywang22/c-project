@@ -17,7 +17,8 @@ namespace Config {
     // 0. 背包系统
     // ==========================================
 
-    const int MAX_WEAPON_BACKPACK = 3;
+    const int MAX_WEAPON_BACKPACK = 99;
+    const int INFINITE_WEAPON_DURABILITY = 999999;
 
     // 当前阶段先视为“不限制物品背包”
     // 最终版本如果要限制容量，直接改成 10 / 12 / 20 即可。
@@ -112,6 +113,7 @@ namespace Config {
 
     // ---- 鱼叉：双用工具，校准捕鱼，也能攻击 ----
     const int RANGE_HARPOON = 120;
+    const int HARPOON_PROJECTILE_HIT_PADDING = 5;
     const int CONS_HARPOON = 1;
 
     const int PRICE_HARPOON_T1 = 100;
@@ -195,13 +197,13 @@ namespace Config {
     // ==========================================
 
     const int PRICE_UPG_SPEED_T1 = 120;
-    const float VAL_UPG_SPEED_T1 = 1.0f;
+    const float VAL_UPG_SPEED_T1 = 12.0f;
 
     const int PRICE_UPG_SPEED_T2 = 250;
-    const float VAL_UPG_SPEED_T2 = 2.0f;
+    const float VAL_UPG_SPEED_T2 = 22.0f;
 
     const int PRICE_UPG_SPEED_T3 = 500;
-    const float VAL_UPG_SPEED_T3 = 3.5f;
+    const float VAL_UPG_SPEED_T3 = 38.0f;
 
     const int PRICE_UPG_DUR_T1 = 100;
     const int VAL_UPG_DUR_T1 = 20;
@@ -272,7 +274,38 @@ namespace Config {
         const int   BOOST_STAMINA_COST_PER_FRAME = 1;
         const int   TOP_BORDER = 60;
         const int   BOTTOM_BORDER = 700;
-        const int   RIGHT_BORDER = 10000;
+        const int   RIGHT_BORDER = 33000;
+        const int   STAGE_COUNT = 6;
+        const int   STAGE_LENGTH = 2000;
+        const int   FINAL_BOSS_TRIGGER_BUFFER = 500;
+        const int   BOSS_EDGE_BUFFER = 320;
+
+        const int   PLAYER_COLLIDER_WIDTH = 56;
+        const int   PLAYER_COLLIDER_HEIGHT = 32;
+        const int   FISH_INTERACTION_RADIUS = 34;
+        const int   SHARK_VISUAL_WIDTH = 122;
+        const int   SHARK_VISUAL_HEIGHT = 66;
+        const int   SHARK_COLLIDER_WIDTH = 92;
+        const int   SHARK_COLLIDER_HEIGHT = 34;
+        const int   SHARK_BITE_REACH = 34;
+        const int   SHARK_BITE_HEIGHT = 50;
+        const int   SWORDFISH_VISUAL_WIDTH = 122;
+        const int   SWORDFISH_VISUAL_HEIGHT = 72;
+        const int   SWORDFISH_COLLIDER_WIDTH = 102;
+        const int   SWORDFISH_COLLIDER_HEIGHT = 30;
+        const int   OCTOPUS_VISUAL_WIDTH = 78;
+        const int   OCTOPUS_VISUAL_HEIGHT = 76;
+        const int   OCTOPUS_COLLIDER_WIDTH = 54;
+        const int   OCTOPUS_COLLIDER_HEIGHT = 54;
+        const int   BOSS_COLLIDER_WIDTH = 80;
+        const int   BOSS_COLLIDER_HEIGHT = 40;
+        const int   TALI_CLONE_COLLIDER_WIDTH = 56;
+        const int   TALI_CLONE_COLLIDER_HEIGHT = 44;
+
+        const int   SHARK_ATTACK_COOLDOWN_FRAMES = 90;
+        const int   SHARK_RETREAT_FRAMES = 36;
+        const qreal SHARK_RETREAT_SPEED_MULTIPLIER = 1.8;
+        const qreal FISH_LOCKED_SPEED_MULTIPLIER = 0.35;
 
         const int   WAVE_WARNING_MS = 3000;
         const int   WAVE_DURATION_MS = 8000;
@@ -289,10 +322,137 @@ namespace Config {
         const int   REEF_MAX_SIZE = 40;
         const int   REEF_DAMAGE = 10;
         const int   STUN_DURATION_MS = 500;
-        const qreal REEF_REBOUND_FACTOR = 1.5;
+        const int   REEF_COLLISION_COOLDOWN_MS = 700;
+        const qreal REEF_REBOUND_FACTOR = 0.45;
         const qreal WHIRLPOOL_MAX_SPEED_REDUCTION = 0.7;
 
         const int   VISION_RANGE = 800;
         const int   WINDOW_HEIGHT = 720;
+
+        struct StageConfig {
+            int targetDistance;
+            bool hasBoss;
+
+            int initialFish;
+            int fishCap;
+            int fishSpawnInterval;
+            int sardineWeight;
+            int tunaWeight;
+            int eelWeight;
+            int goldenWeight;
+
+            int sharkCap;
+            int sharkSpawnInterval;
+            int swordfishCap;
+            int swordfishSpawnInterval;
+            int octopusCap;
+            int octopusSpawnInterval;
+
+            int reefCount;
+            int whirlpoolCount;
+
+            int waveChancePerFrame;
+            int waveRightWeight;
+            int waveLeftWeight;
+
+            int sunnyWeight;
+            int fogWeight;
+            int stormWeight;
+            int weatherMinFrames;
+            int weatherMaxFrames;
+            int lightningChanceDenominator;
+        };
+
+        inline const StageConfig STAGE_CONFIGS[STAGE_COUNT] = {
+            // 1. 近海试航：捕鱼、移动、少量威胁，无 Boss。
+            {4200, false,
+             16, 22, 95, 60, 40, 0, 0,
+             1, 780, 0, 0, 0, 0,
+             6, 0,
+             1900, 70, 30,
+             100, 0, 0, 3600, 5400, 0},
+
+            // 2. 外海遭遇：第一次 Boss 考试，压力仍然温和。
+            {9000, false,
+             18, 24, 90, 35, 50, 15, 0,
+             2, 650, 1, 1100, 0, 0,
+             7, 1,
+             1500, 60, 40,
+             80, 20, 0, 2700, 4500, 0},
+
+            // 3. 暗流航段：环境和机动考验，无正式 Boss。
+            {14200, true,
+             18, 25, 85, 20, 45, 25, 10,
+             2, 560, 1, 850, 1, 1300,
+             8, 2,
+             1200, 50, 50,
+             55, 35, 10, 2200, 3900, 520},
+
+            // 4. 深海裂谷：敌人、障碍、塔里海怪组合考验。
+            {19800, false,
+             20, 27, 80, 15, 35, 35, 15,
+             2, 500, 2, 760, 1, 980,
+             9, 2,
+             1000, 45, 55,
+             40, 35, 25, 1900, 3500, 460},
+
+            // 5. 塞壬海域：最终压迫，暴风雨和逆浪权重更高。
+            {25800, false,
+             22, 29, 75, 10, 25, 40, 25,
+             3, 440, 2, 650, 2, 860,
+             10, 3,
+             850, 40, 60,
+             25, 30, 45, 1700, 3200, 390},
+
+            {32200, true,
+             24, 32, 70, 5, 20, 40, 35,
+             3, 390, 3, 560, 2, 700,
+             12, 4,
+             700, 35, 65,
+             15, 25, 60, 1500, 3000, 330}
+        };
+
+        inline const StageConfig& stageConfig(int stage)
+        {
+            return STAGE_CONFIGS[qBound(0, stage - 1, STAGE_COUNT - 1)];
+        }
+
+        struct StageText {
+            const char* name;
+            const char* brief;
+            const char* clearSummary;
+        };
+
+        inline const StageText STAGE_TEXTS[STAGE_COUNT] = {
+            {u8"\u8fd1\u5cb8\u7ec3\u4e60\u6d77\u57df",
+             u8"\u4ece\u6e2f\u53e3\u5916\u4fa7\u51fa\u822a\uff0c\u719f\u6089\u6355\u9c7c\u4e0e\u907f\u969c\u8282\u594f\u3002",
+             u8"\u6e2f\u53e3\u5916\u4fa7\u822a\u7ebf\u6062\u590d\u5b89\u5168\u3002"},
+            {u8"\u5916\u6d77\u906d\u9047",
+             u8"\u79bb\u5f00\u6d45\u6d77\u4fdd\u62a4\uff0c\u5f00\u59cb\u5e94\u5bf9\u6b63\u9762\u5a01\u80c1\u3002",
+             u8"\u5916\u6d77\u822a\u7ebf\u7684\u7b2c\u4e00\u6b21\u5371\u673a\u5df2\u89e3\u9664\u3002"},
+            {u8"\u6697\u6d41\u822a\u6bb5",
+             u8"\u6d77\u6d41\u5f00\u59cb\u53d8\u5f97\u53cd\u590d\uff0c\u9c7c\u7fa4\u548c\u654c\u4eba\u66f4\u96be\u9884\u5224\u3002",
+             u8"\u6697\u6d41\u533a\u5df2\u7ecf\u88ab\u7a7f\u8d8a\uff0c\u8239\u961f\u638c\u63e1\u4e86\u65b0\u7684\u822a\u7ebf\u3002"},
+            {u8"\u6df1\u6d77\u88c2\u8c37",
+             u8"\u6697\u7901\u4e0e\u6f29\u6da1\u5bc6\u96c6\uff0c\u9700\u8981\u540c\u65f6\u5904\u7406\u822a\u884c\u548c\u6218\u6597\u538b\u529b\u3002",
+             u8"\u6df1\u6d77\u88c2\u8c37\u6682\u65f6\u5f52\u4e8e\u5e73\u9759\u3002"},
+            {u8"\u585e\u58ec\u6d77\u57df",
+             u8"\u66b4\u98ce\u96e8\u4e0e\u9006\u6d6a\u4ea4\u9519\uff0c\u524d\u65b9\u662f\u7ec8\u6d77\u95e8\u7684\u5916\u5708\u9632\u7ebf\u3002",
+             u8"\u585e\u58ec\u7684\u8ff7\u96fe\u6563\u53bb\uff0c\u7ec8\u6d77\u95e8\u5df2\u7ecf\u5728\u524d\u65b9\u663e\u5f62\u3002"},
+            {u8"\u7ec8\u6d77\u95e8",
+             u8"\u6700\u540e\u7684\u957f\u7ebf\u822a\u6bb5\uff0c\u654c\u7fa4\u3001\u9006\u6d6a\u4e0e Boss \u4e00\u8d77\u538b\u4e0a\u6765\u3002",
+             u8"\u7ec8\u6d77\u95e8\u88ab\u6253\u5f00\uff0c\u6e14\u9014\u822a\u7ebf\u5b8c\u6574\u8fde\u901a\u3002"}
+        };
+
+        inline const StageText& stageText(int stage)
+        {
+            return STAGE_TEXTS[qBound(0, stage - 1, STAGE_COUNT - 1)];
+        }
+
+        inline int stageStartDistance(int stage)
+        {
+            if (stage <= 1) return 0;
+            return stageConfig(stage - 1).targetDistance;
+        }
     }
 }

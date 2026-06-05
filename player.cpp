@@ -33,8 +33,10 @@ void Player::reset() {
     m_isStunned = false;
     m_isDead = false;
     m_reboundActive = false;
+    m_reboundDurationMs = 180;
     m_speedReduction = 0;
-    m_keyW = m_keyA = m_keyS = m_keyD = m_keyShift = m_keySpace = false;
+    clearInputState();
+    m_facingDirection = 3;
 
     // Dash 初始化
     m_isDashing = false;
@@ -90,6 +92,7 @@ void Player::restoreSavedProgress(
     m_isDead = false;
     m_isStunned = false;
     m_reboundActive = false;
+    m_reboundDurationMs = 180;
     m_speedReduction = 0;
     m_isDashing = false;
     m_isShockActive = false;
@@ -97,6 +100,8 @@ void Player::restoreSavedProgress(
     m_noRangedAttack = false;
     m_isPoisoned = false;
     visionReduced = false;
+    m_facingDirection = 3;
+    clearInputState();
 }
 
 void Player::keyPress(QKeyEvent* e) {
@@ -125,6 +130,15 @@ void Player::keyRelease(QKeyEvent* e) {
     }
 }
 
+void Player::clearInputState() {
+    m_keyW = m_keyA = m_keyS = m_keyD = m_keyShift = m_keySpace = false;
+}
+
+void Player::setWorldPos(const QPointF& pos) {
+    m_worldPos = pos;
+    checkBorder();
+}
+
 void Player::update(qreal deltaTime) {
     if (m_isDead) return;
 
@@ -132,9 +146,6 @@ void Player::update(qreal deltaTime) {
 
     if (m_isStunned && m_stunTimer.elapsed() >= m_stunDuration)
         m_isStunned = false;
-
-    if (WeatherSystem::instance().shouldTriggerLightning())
-        takeDurabilityDamage(GameConfig::STORM_LIGHTNING_DAMAGE);
 
     updateMovement(deltaTime);
     checkBorder();
@@ -186,7 +197,10 @@ void Player::updateMovement(qreal deltaTime) {
 
     if (m_reboundActive) {
         m_worldPos += m_reboundDir * deltaTime * 200.0f;
-        m_reboundActive = false;
+        if (m_reboundTimer.elapsed() >= m_reboundDurationMs) {
+            m_reboundActive = false;
+        }
+        return;
     }
 
     if (m_isStunned) return;
@@ -203,7 +217,15 @@ void Player::updateMovement(qreal deltaTime) {
     }
 
     // 环境与中毒衰减
-    targetBaseSpeed *= WaveSystem::instance().currentSpeedMultiplier();
+    QPointF waveMoveDir(0, 0);
+    if (m_keyW) waveMoveDir.ry() -= 1;
+    if (m_keyS) waveMoveDir.ry() += 1;
+    if (m_keyA) waveMoveDir.rx() -= 1;
+    if (m_keyD) waveMoveDir.rx() += 1;
+    if (m_isInputReversed) {
+        waveMoveDir = -waveMoveDir;
+    }
+    targetBaseSpeed *= WaveSystem::instance().currentSpeedMultiplierForMovement(waveMoveDir);
     targetBaseSpeed *= (1.0f - m_speedReduction);
     if (m_isPoisoned) targetBaseSpeed *= 0.5f; // 中毒减速 50%
 
@@ -221,9 +243,22 @@ void Player::updateMovement(qreal deltaTime) {
     }
 
     if (!moveDir.isNull()) {
+        if (std::abs(moveDir.x()) >= std::abs(moveDir.y())) {
+            m_facingDirection = moveDir.x() < 0 ? 2 : 3;
+        }
+        else {
+            m_facingDirection = moveDir.y() < 0 ? 0 : 1;
+        }
+
         QVector2D dirVec(moveDir);
         dirVec.normalize();
         m_worldPos += dirVec.toPointF() * m_currentSpeed * deltaTime;
+    }
+
+    if (WaveSystem::instance().isWaveActive()) {
+        const qreal driftDir = WaveSystem::instance().currentDirection() == WaveDirection::RIGHT ? 1.0 : -1.0;
+        const qreal driftStrength = 42.0 * qAbs(WaveSystem::instance().currentSpeedMultiplier() - 1.0);
+        m_worldPos.rx() += driftDir * driftStrength * deltaTime;
     }
 
     resetSpeedReduction();
@@ -261,6 +296,7 @@ void Player::applyStun(int durationMs) {
 void Player::applyRebound(const QPointF& direction) {
     m_reboundDir = direction;
     m_reboundActive = true;
+    m_reboundTimer.restart();
 }
 
 void Player::applySpeedReduction(qreal reduction) {
@@ -300,6 +336,12 @@ void Player::triggerDash() {
     if (m_isInputReversed) dir = -dir;
 
     if (dir.isNull()) dir.rx() = 1.0;
+    if (std::abs(dir.x()) >= std::abs(dir.y())) {
+        m_facingDirection = dir.x() < 0 ? 2 : 3;
+    }
+    else {
+        m_facingDirection = dir.y() < 0 ? 0 : 1;
+    }
 
     QVector2D norm(dir);
     norm.normalize();
@@ -398,6 +440,8 @@ bool Player::isMoving() const {
 }
 
 bool Player::isSpaceHeld() const { return m_keySpace; }
+bool Player::isBoosting() const { return isMoving() && m_keyShift && m_stamina > 0; }
+int Player::facingDirection() const { return m_facingDirection; }
 
 // ==========================================
 // 原有升级/道具回调

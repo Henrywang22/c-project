@@ -48,6 +48,7 @@ public:
 
     void update(Player& player) override;
     bool collidesWithPlayer(int px, int py) override;
+    QRectF collider() const override;
     virtual bool canBeHitAt(int targetX, int targetY) const;
     virtual void takeDamage(int damage);
     virtual void applyShockStun(int durationMs);
@@ -171,4 +172,6 @@ private:
     int endlessReturnTimerMs = 20000;
     int naturalDecayTimerMs = 0;
     int poisonRemainingMs = 0;
+    int phantomContactTickMs = 0;
+    int seaweedTickMs = 0;
 };

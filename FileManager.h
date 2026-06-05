@@ -30,6 +30,9 @@ struct SaveData {
 
     // 船速升级后的基础速度
     float baseSpeed;
+
+    // V4：继续游戏后保留击杀统计，保证排行榜可信。
+    int killCount;
 };
 
 // ============================================================
@@ -93,6 +96,10 @@ public:
     // -------------------------
     void markFishDiscovered(int fishID, const char* fishName);
     bool isFishDiscovered(int fishID);
+    void markEnemyDiscovered(int enemyID, const char* enemyName);
+    bool isEnemyDiscovered(int enemyID);
+    void markBossDiscovered(int bossID, const char* bossName);
+    bool isBossDiscovered(int bossID);
 
     // -------------------------
     // 排行榜

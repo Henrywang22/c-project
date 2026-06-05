@@ -31,16 +31,38 @@ Reef::Reef(const QPointF& worldPos) : Obstacle(ObstacleType::REEF, worldPos) {
              QRandomGenerator::global()->generate() % (GameConfig::REEF_MAX_SIZE - GameConfig::REEF_MIN_SIZE + 1);
 }
 
+QRectF Reef::collider() const {
+    const qreal targetW = qMax<qreal>(104.0, m_size * 5.0);
+    const qreal targetH = qMax<qreal>(78.0, m_size * 4.0);
+    const qreal colliderW = targetW * 0.58;
+    const qreal colliderH = targetH * 0.54;
+    const qreal colliderCenterY = m_worldPos.y() - m_size * 0.82;
+    return QRectF(
+        m_worldPos.x() - colliderW / 2.0,
+        colliderCenterY - colliderH / 2.0,
+        colliderW,
+        colliderH
+    );
+}
+
 void Reef::onPlayerCollision(Player* player) {
     if (!player) return;
-    player->takeDurabilityDamage(GameConfig::REEF_DAMAGE);
-    player->applyStun(GameConfig::STUN_DURATION_MS);
+
+    if (m_collisionCooldown.isValid() &&
+        m_collisionCooldown.elapsed() < GameConfig::REEF_COLLISION_COOLDOWN_MS) {
+        return;
+    }
 
     QVector2D dirVec(player->worldPos() - m_worldPos);
-    if (!dirVec.isNull()) {
-        dirVec.normalize();
-        player->applyRebound(dirVec.toPointF() * GameConfig::REEF_REBOUND_FACTOR * player->currentSpeed());
+    if (dirVec.isNull()) {
+        dirVec = QVector2D(player->worldPos().x() < m_worldPos.x() ? -1.0f : 1.0f, 0.0f);
     }
+
+    dirVec.normalize();
+    player->takeDurabilityDamage(GameConfig::REEF_DAMAGE);
+    player->applyStun(GameConfig::STUN_DURATION_MS);
+    player->applyRebound(dirVec.toPointF() * GameConfig::REEF_REBOUND_FACTOR);
+    m_collisionCooldown.restart();
 }
 
 Whirlpool::Whirlpool(const QPointF& worldPos)
@@ -48,6 +70,17 @@ Whirlpool::Whirlpool(const QPointF& worldPos)
       m_speedReduction(0),
       m_timeInWhirlpool(0),
       m_touchedThisFrame(false) {}
+
+QRectF Whirlpool::collider() const {
+    const qreal targetSize = qMax<qreal>(92.0, m_size * 4.0);
+    const qreal pullSize = targetSize * 0.78;
+    return QRectF(
+        m_worldPos.x() - pullSize / 2.0,
+        m_worldPos.y() - pullSize / 2.0,
+        pullSize,
+        pullSize
+    );
+}
 
 void Whirlpool::update(qreal deltaTime) {
     if (!m_touchedThisFrame) {
@@ -72,13 +105,70 @@ ObstacleManager& ObstacleManager::instance() {
     return mgr;
 }
 
-void ObstacleManager::generateLevel(int level) {
+void ObstacleManager::generateLevel(int level, int reefCount, int whirlpoolCount) {
     clear();
-    int obstacleCount = 6 + level * 2;
-    for (int i = 0; i < obstacleCount; ++i) {
-        qreal x = 500.0 + QRandomGenerator::global()->generateDouble() * 9500.0;
-        qreal y = 50.0 + QRandomGenerator::global()->generateDouble() * (GameConfig::WINDOW_HEIGHT - 150.0);
-        ObstacleType type = (QRandomGenerator::global()->generate() % 2 == 0) ? ObstacleType::REEF : ObstacleType::WHIRLPOOL;
+    if (reefCount < 0 || whirlpoolCount < 0) {
+        reefCount = qMax(0, 4 + level);
+        whirlpoolCount = qMax(0, level - 1);
+    }
+
+    int obstacleCount = qMin(16, qMax(0, reefCount + whirlpoolCount));
+    if (obstacleCount <= 0) {
+        return;
+    }
+
+    const qreal stageStart = qMax<qreal>(
+        520.0,
+        GameConfig::stageStartDistance(level) + 360.0
+    );
+    qreal stageEnd = qMin<qreal>(
+        GameConfig::stageConfig(level).targetDistance - 260.0,
+        GameConfig::RIGHT_BORDER - 520.0
+    );
+    if (stageEnd <= stageStart) {
+        stageEnd = stageStart + 600.0;
+    }
+
+    int placedReefs = 0;
+    int placedWhirlpools = 0;
+    int attempts = 0;
+    while (m_obstacles.size() < obstacleCount && attempts < obstacleCount * 20) {
+        ++attempts;
+        qreal x = stageStart + QRandomGenerator::global()->generateDouble() * (stageEnd - stageStart);
+        qreal y = GameConfig::TOP_BORDER + 70.0 +
+                  QRandomGenerator::global()->generateDouble() *
+                  (GameConfig::BOTTOM_BORDER - GameConfig::TOP_BORDER - 140.0);
+
+        bool tooClose = false;
+        for (auto* existing : m_obstacles) {
+            if (QLineF(existing->worldPos(), QPointF(x, y)).length() < 230.0) {
+                tooClose = true;
+                break;
+            }
+        }
+        if (tooClose) {
+            continue;
+        }
+
+        const int remainingReefs = qMax(0, reefCount - placedReefs);
+        const int remainingWhirlpools = qMax(0, whirlpoolCount - placedWhirlpools);
+        const int remainingTotal = qMax(1, remainingReefs + remainingWhirlpools);
+        ObstacleType type = ObstacleType::REEF;
+        if (remainingReefs <= 0) {
+            type = ObstacleType::WHIRLPOOL;
+        }
+        else if (remainingWhirlpools > 0 &&
+                 QRandomGenerator::global()->bounded(remainingTotal) < remainingWhirlpools) {
+            type = ObstacleType::WHIRLPOOL;
+        }
+
+        if (type == ObstacleType::REEF) {
+            ++placedReefs;
+        }
+        else {
+            ++placedWhirlpools;
+        }
+
         m_obstacles.append(type == ObstacleType::REEF
                                ? static_cast<Obstacle*>(new Reef({x, y}))
                                : static_cast<Obstacle*>(new Whirlpool({x, y})));

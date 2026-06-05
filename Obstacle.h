@@ -34,7 +34,11 @@ class Reef : public Obstacle
 {
 public:
     explicit Reef(const QPointF& worldPos);
+    QRectF collider() const override;
     void onPlayerCollision(Player* player) override;
+
+private:
+    QElapsedTimer m_collisionCooldown;
 };
 
 class Whirlpool : public Obstacle
@@ -42,6 +46,7 @@ class Whirlpool : public Obstacle
 public:
     explicit Whirlpool(const QPointF& worldPos);
     void update(qreal deltaTime) override;
+    QRectF collider() const override;
     void onPlayerCollision(Player* player) override;
     qreal currentSpeedReduction() const { return m_speedReduction; }
 
@@ -55,7 +60,7 @@ class ObstacleManager
 {
 public:
     static ObstacleManager& instance();
-    void generateLevel(int level);
+    void generateLevel(int level, int reefCount = -1, int whirlpoolCount = -1);
     void update(qreal deltaTime);
     const QList<Obstacle*>& obstacles() const { return m_obstacles; }
     void clear();

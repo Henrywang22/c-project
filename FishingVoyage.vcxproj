@@ -102,10 +102,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="BackpackDialog.cpp" />
     <ClCompile Include="boss.cpp" />
     <ClCompile Include="Enemy.cpp" />
+    <ClCompile Include="EncyclopediaDialog.cpp" />
     <ClCompile Include="FileManager.cpp" />
     <ClCompile Include="Fish.cpp" />
+    <ClCompile Include="GameUiDialog.cpp" />
     <ClCompile Include="GameManager.cpp" />
     <ClCompile Include="InventorySystem.cpp" />
     <ClCompile Include="Item.cpp" />
@@ -122,11 +125,14 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="BackpackDialog.h" />
     <ClInclude Include="boss.h" />
     <ClInclude Include="Enemy.h" />
+    <ClInclude Include="EncyclopediaDialog.h" />
     <ClInclude Include="FileManager.h" />
     <ClInclude Include="Fish.h" />
     <ClInclude Include="GameConfig.h" />
+    <ClInclude Include="GameUiDialog.h" />
     <ClInclude Include="InventorySystem.h" />
     <ClInclude Include="Item.h" />
     <ClInclude Include="ItemFactory.h" />

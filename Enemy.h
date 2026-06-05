@@ -1,4 +1,6 @@
 #pragma once
+#include <QPointF>
+#include <QRectF>
 class Player;
 
 // ============================================================
@@ -10,6 +12,9 @@ public:
     virtual ~Enemy() {}
     virtual void update(Player& player) = 0;
     virtual bool collidesWithPlayer(int px, int py) = 0;
+    virtual QRectF collider() const;
+    virtual QPointF position() const;
+    virtual void setPosition(const QPointF& pos);
     virtual void takeDamage(int damage);
 
     int x, y;
@@ -17,6 +22,7 @@ public:
     int maxHp;
     int attack;
     float speed;
+    float facingX = -1.0f;
     bool alive = true;
     int attackTimer = 0;
     int dropValue;
@@ -31,9 +37,19 @@ public:
     Shark(int x, int y);
     void update(Player& player) override;
     bool collidesWithPlayer(int px, int py) override;
+    QRectF collider() const override;
+    QRectF biteCollider() const;
+    bool canBite() const;
+    void startBiteCooldown(const QPointF& playerPos);
+    QPointF position() const override;
+    void setPosition(const QPointF& pos) override;
 
 private:
     float posX, posY;
+    int biteCooldown = 0;
+    int retreatTimer = 0;
+    float retreatVx = 0.0f;
+    float retreatVy = 0.0f;
 };
 
 // ============================================================
@@ -47,6 +63,9 @@ public:
     Swordfish(int x, int y);
     void update(Player& player) override;
     bool collidesWithPlayer(int px, int py) override;
+    QRectF collider() const override;
+    QPointF position() const override;
+    void setPosition(const QPointF& pos) override;
 
     State state = IDLE;
     int windupTimer = 0;  // 蓄力计时
@@ -69,6 +88,9 @@ public:
     Octopus(int x, int y);
     void update(Player& player) override;
     bool collidesWithPlayer(int px, int py) override;
+    QRectF collider() const override;
+    QPointF position() const override;
+    void setPosition(const QPointF& pos) override;
 
     bool isInvisible = false;  // 是否处于隐身状态
     int contactTimer = 0;      // 接触玩家计时（达到30帧触发视野遮挡）

@@ -14,6 +14,8 @@ class WeatherSystem : public QObject
 public:
     static WeatherSystem& instance();
     void update(qreal deltaTime);
+    void configureStage(int sunnyWeight, int fogWeight, int stormWeight,
+                        int minFrames, int maxFrames, int lightningChanceDenominator);
     void reset();
     WeatherType currentWeather() const { return m_currentWeather; }
     qreal currentVisionMultiplier() const;
@@ -26,11 +28,18 @@ signals:
 
 private:
     WeatherSystem();
+    WeatherType pickWeightedWeather() const;
     void switchWeather();
     WeatherType m_currentWeather;
     int m_weatherFrameCount;
     int m_weatherDurationFrames;
     mutable bool m_lightningTriggered;
+    int m_sunnyWeight;
+    int m_fogWeight;
+    int m_stormWeight;
+    int m_weatherMinFrames;
+    int m_weatherMaxFrames;
+    int m_lightningChanceDenominator;
 };
 
 #endif // WEATHERSYSTEM_H

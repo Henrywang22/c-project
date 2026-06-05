@@ -1,8 +1,24 @@
 #pragma once
 
+#include <QPointF>
+#include <QRectF>
+
 class Fish {
 public:
-    enum Type { SARDINE, TUNA, DEEPSEAEEL, SWORDFISH_FISH };
+    enum Type {
+        SARDINE,
+        TUNA,
+        DEEPSEAEEL,
+        SWORDFISH_FISH,
+        ANCHOVY,
+        CLOWNFISH,
+        MACKEREL,
+        SEA_BREAM,
+        LANTERNFISH,
+        GROUPER,
+        KOI,
+        CRYSTAL_FISH
+    };
 
     Fish(int x, int y, Type type);
     virtual ~Fish() {}
@@ -10,6 +26,9 @@ public:
     virtual int getEconomicValue() = 0;
     virtual int getCookingValue() = 0;
     bool isNearPlayer(int px, int py, int range);
+    QRectF collider() const;
+    QPointF position() const;
+    void setPosition(const QPointF& pos);
 
     int x, y;
     float vx, vy;
@@ -21,6 +40,7 @@ public:
     int catchTimeLimit; // 捕鱼时间限制（帧数）
     bool caught = false;
     bool escaped = false;
+    bool lockedForCatch = false;
     int lifeTimer = 0;
     int maxLife;
     bool fleeing = false;
@@ -66,4 +86,44 @@ public:
 class GoldenFish : public RareFish {
 public:
     GoldenFish(int x, int y);
+};
+
+class Anchovy : public CommonFish {
+public:
+    Anchovy(int x, int y);
+};
+
+class Clownfish : public CommonFish {
+public:
+    Clownfish(int x, int y);
+};
+
+class Mackerel : public CommonFish {
+public:
+    Mackerel(int x, int y);
+};
+
+class SeaBream : public CommonFish {
+public:
+    SeaBream(int x, int y);
+};
+
+class Lanternfish : public RareFish {
+public:
+    Lanternfish(int x, int y);
+};
+
+class Grouper : public RareFish {
+public:
+    Grouper(int x, int y);
+};
+
+class KoiFish : public RareFish {
+public:
+    KoiFish(int x, int y);
+};
+
+class CrystalFish : public RareFish {
+public:
+    CrystalFish(int x, int y);
 };

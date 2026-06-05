@@ -133,6 +133,10 @@ bool Weapon::consumeDurability(int amount)
         return true;
     }
 
+    if (isInfiniteDurability()) {
+        return true;
+    }
+
     if (isBroken()) {
         std::cout << Config::Messages::WARN_BROKEN << std::endl;
         return false;
@@ -150,11 +154,16 @@ bool Weapon::consumeDurability(int amount)
 void Weapon::upgradeStats(int dmgBoost, int durBoost)
 {
     damage += dmgBoost;
-    maxDurability += durBoost;
+    if (!isInfiniteDurability()) {
+        maxDurability += durBoost;
+    }
+    enhancementLevel++;
 
     // 强化时顺带恢复一部分耐久，但不直接修满
     // 这样不会完全替代“装备修复”系统
-    currentDurability += durBoost / 2;
+    if (!isInfiniteDurability()) {
+        currentDurability += durBoost / 2;
+    }
 
     if (currentDurability > maxDurability) {
         currentDurability = maxDurability;
@@ -187,6 +196,10 @@ void Weapon::repairFixed(int amount)
         return;
     }
 
+    if (isInfiniteDurability()) {
+        return;
+    }
+
     currentDurability += amount;
 
     if (currentDurability > maxDurability) {
@@ -196,6 +209,10 @@ void Weapon::repairFixed(int amount)
 
 void Weapon::repairToFull()
 {
+    if (isInfiniteDurability()) {
+        return;
+    }
+
     currentDurability = maxDurability;
 }
 
@@ -204,7 +221,8 @@ void Weapon::loadRuntimeState(
     int savedMaxDurability,
     int savedCurrentDurability,
     int savedRange,
-    int savedDurabilityConsumption
+    int savedDurabilityConsumption,
+    int savedEnhancementLevel
 )
 {
     if (savedDamage >= 0) {
@@ -215,7 +233,13 @@ void Weapon::loadRuntimeState(
         maxDurability = savedMaxDurability;
     }
 
-    if (savedCurrentDurability < 0) {
+    const bool savedInfinite =
+        savedMaxDurability >= Config::INFINITE_WEAPON_DURABILITY ||
+        savedCurrentDurability >= Config::INFINITE_WEAPON_DURABILITY;
+    if (savedInfinite) {
+        makeDurabilityInfinite();
+    }
+    else if (savedCurrentDurability < 0) {
         currentDurability = 0;
     }
     else if (savedCurrentDurability > maxDurability) {
@@ -229,9 +253,11 @@ void Weapon::loadRuntimeState(
         range = savedRange;
     }
 
-    if (savedDurabilityConsumption >= 0) {
+    if (savedDurabilityConsumption >= 0 && !isInfiniteDurability()) {
         durabilityConsumption = savedDurabilityConsumption;
     }
+
+    enhancementLevel = savedEnhancementLevel > 0 ? savedEnhancementLevel : 0;
 }
 
 // ============================================================
@@ -240,7 +266,26 @@ void Weapon::loadRuntimeState(
 
 bool Weapon::isBroken() const
 {
+    if (isInfiniteDurability()) {
+        return false;
+    }
     return currentDurability <= 0;
+}
+
+bool Weapon::isInfiniteDurability() const
+{
+    return maxDurability >= Config::INFINITE_WEAPON_DURABILITY ||
+           currentDurability >= Config::INFINITE_WEAPON_DURABILITY;
+}
+
+void Weapon::makeDurabilityInfinite()
+{
+    maxDurability = Config::INFINITE_WEAPON_DURABILITY;
+    currentDurability = Config::INFINITE_WEAPON_DURABILITY;
+    durabilityConsumption = 0;
+    fishCostFail = 0;
+    fishCostNormal = 0;
+    fishCostPerfect = 0;
 }
 
 bool Weapon::canFish() const
@@ -286,6 +331,11 @@ int Weapon::getAttackCooldownMs() const
 int Weapon::getTier() const
 {
     return tier;
+}
+
+int Weapon::getEnhancementLevel() const
+{
+    return enhancementLevel;
 }
 
 Config::EquipmentRole Weapon::getRole() const

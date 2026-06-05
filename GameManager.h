@@ -30,12 +30,14 @@ public:
 
     // 替换原本旧版本的 attackNearest，接入最新战斗判定
     bool attackAt(int targetX, int targetY, class Weapon* weapon);
+    bool canAttemptAttack(const class Weapon* weapon) const;
     // 新增：触发主角 E 键震荡波效果
     void triggerShockWave();
 
     void saveAndQuit();
     void loadSave();
     bool isBossDefeated();
+    std::vector<QRectF> terrainColliders() const;
 
     // 辅助函数取Player坐标
     int playerX() const { return (int)Player::instance().worldPos().x(); }
@@ -58,7 +60,17 @@ public:
     int gameTimer = 0;
     int cameraX = 0;
 
+    bool lightningWarningActive = false;
+    bool lightningStrikeActive = false;
+    QPointF lightningTarget;
+    int lightningWarningFrames = 0;
+    int lightningStrikeFrames = 0;
+
 private:
+    int stageBossTriggerX() const;
+    void applyStageConfig();
+    void updateLightningHazard(Player& player);
+    void resolveEntitySolids();
     int spawnTimer = 0;
     qreal m_deltaTime = 0.016;
     QElapsedTimer m_attackCooldown;

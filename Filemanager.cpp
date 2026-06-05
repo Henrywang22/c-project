@@ -15,16 +15,39 @@
 
 namespace {
 
-    const char SAVE_MAGIC[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '3', '\0' };
+    const char SAVE_MAGIC[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '5', '\0' };
+    const char SAVE_MAGIC_V4[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '4', '\0' };
+    const char SAVE_MAGIC_V3[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '3', '\0' };
     const char SAVE_MAGIC_V2[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '2', '\0' };
-    const int SAVE_VERSION = 3;
+    const int SAVE_VERSION = 5;
+    const int SAVE_VERSION_V4 = 4;
+    const int SAVE_VERSION_V3 = 3;
     const int SAVE_VERSION_V2 = 2;
 
-    const int MAX_SAVE_WEAPONS = Config::MAX_WEAPON_BACKPACK;
+    const int MAX_SAVE_WEAPONS = 32;
+    const int LEGACY_SAVE_WEAPONS = 3;
+    const int FISH_DISCOVERY_COUNT = 12;
+    const int ENEMY_DISCOVERY_COUNT = 10;
+    const int BOSS_DISCOVERY_COUNT = 10;
+    const int ENEMY_DISCOVERY_OFFSET = FISH_DISCOVERY_COUNT;
+    const int BOSS_DISCOVERY_OFFSET = FISH_DISCOVERY_COUNT + ENEMY_DISCOVERY_COUNT;
+    const int TOTAL_DISCOVERY_COUNT =
+        FISH_DISCOVERY_COUNT + ENEMY_DISCOVERY_COUNT + BOSS_DISCOVERY_COUNT;
 
     struct SaveFileHeader {
         char magic[8];
         int version;
+    };
+
+    struct WeaponSaveBlockV3 {
+        char typeCode[20];
+
+        int tier;
+        int damage;
+        int maxDurability;
+        int currentDurability;
+        int range;
+        int durabilityConsumption;
     };
 
     struct WeaponSaveBlock {
@@ -36,6 +59,33 @@ namespace {
         int currentDurability;
         int range;
         int durabilityConsumption;
+        int enhancementLevel;
+    };
+
+    struct InventorySaveBlockV3 {
+        int foodCount;
+        int shipRepairT1Count;
+        int shipRepairT2Count;
+        int shipRepairT3Count;
+        int emergencyWeaponRepairCount;
+
+        int weaponCount;
+        int currentWeaponIndex;
+
+        WeaponSaveBlockV3 weapons[LEGACY_SAVE_WEAPONS];
+    };
+
+    struct InventorySaveBlockV4 {
+        int foodCount;
+        int shipRepairT1Count;
+        int shipRepairT2Count;
+        int shipRepairT3Count;
+        int emergencyWeaponRepairCount;
+
+        int weaponCount;
+        int currentWeaponIndex;
+
+        WeaponSaveBlock weapons[LEGACY_SAVE_WEAPONS];
     };
 
     struct InventorySaveBlock {
@@ -65,14 +115,39 @@ namespace {
         int maxStamina;
     };
 
+    struct SaveDataV3Core {
+        int stage;
+        int distance;
+        int coins;
+        int durability;
+        int stamina;
+        int fishCaught;
+        int fishTotalValue;
+        int gameSeconds;
+        bool isDead;
+        int maxDurability;
+        int maxStamina;
+        float baseSpeed;
+    };
+
     struct FullSaveData {
         SaveData core;
         InventorySaveBlock inventory;
     };
 
+    struct FullSaveDataV4 {
+        SaveData core;
+        InventorySaveBlockV4 inventory;
+    };
+
+    struct FullSaveDataV3 {
+        SaveDataV3Core core;
+        InventorySaveBlockV3 inventory;
+    };
+
     struct FullSaveDataV2 {
         SaveDataV2Core core;
-        InventorySaveBlock inventory;
+        InventorySaveBlockV3 inventory;
     };
 
     SaveData makeSaveDataFromV2(const SaveDataV2Core& oldCore)
@@ -92,6 +167,29 @@ namespace {
         data.maxDurability = oldCore.maxDurability;
         data.maxStamina = oldCore.maxStamina;
         data.baseSpeed = static_cast<float>(Config::GameConfig::SHIP_BASE_SPEED);
+        data.killCount = 0;
+
+        return data;
+    }
+
+    SaveData makeSaveDataFromV3(const SaveDataV3Core& oldCore)
+    {
+        SaveData data;
+        std::memset(&data, 0, sizeof(SaveData));
+
+        data.stage = oldCore.stage;
+        data.distance = oldCore.distance;
+        data.coins = oldCore.coins;
+        data.durability = oldCore.durability;
+        data.stamina = oldCore.stamina;
+        data.fishCaught = oldCore.fishCaught;
+        data.fishTotalValue = oldCore.fishTotalValue;
+        data.gameSeconds = oldCore.gameSeconds;
+        data.isDead = oldCore.isDead;
+        data.maxDurability = oldCore.maxDurability;
+        data.maxStamina = oldCore.maxStamina;
+        data.baseSpeed = oldCore.baseSpeed;
+        data.killCount = 0;
 
         return data;
     }
@@ -152,6 +250,7 @@ namespace {
             block.weapons[i].currentDurability = w->getCurrentDur();
             block.weapons[i].range = w->getRange();
             block.weapons[i].durabilityConsumption = w->getDurabilityConsumption();
+            block.weapons[i].enhancementLevel = w->getEnhancementLevel();
         }
 
         return block;
@@ -187,6 +286,80 @@ namespace {
             w.currentDurability = block.weapons[i].currentDurability;
             w.range = block.weapons[i].range;
             w.durabilityConsumption = block.weapons[i].durabilityConsumption;
+            w.enhancementLevel = block.weapons[i].enhancementLevel;
+
+            data.weapons.push_back(w);
+        }
+
+        InventorySystem::instance().loadFromData(data);
+    }
+
+    void loadInventoryFromSaveBlockV4(const InventorySaveBlockV4& block)
+    {
+        InventorySystem::InventoryLoadData data;
+
+        data.foodCount = block.foodCount;
+        data.shipRepairT1Count = block.shipRepairT1Count;
+        data.shipRepairT2Count = block.shipRepairT2Count;
+        data.shipRepairT3Count = block.shipRepairT3Count;
+        data.emergencyWeaponRepairCount = block.emergencyWeaponRepairCount;
+        data.currentWeaponIndex = block.currentWeaponIndex;
+
+        int weaponCount = block.weaponCount;
+        if (weaponCount < 0) {
+            weaponCount = 0;
+        }
+        if (weaponCount > LEGACY_SAVE_WEAPONS) {
+            weaponCount = LEGACY_SAVE_WEAPONS;
+        }
+
+        for (int i = 0; i < weaponCount; ++i) {
+            InventorySystem::WeaponLoadData w;
+            w.typeCode = block.weapons[i].typeCode;
+            w.tier = block.weapons[i].tier;
+            w.damage = block.weapons[i].damage;
+            w.maxDurability = block.weapons[i].maxDurability;
+            w.currentDurability = block.weapons[i].currentDurability;
+            w.range = block.weapons[i].range;
+            w.durabilityConsumption = block.weapons[i].durabilityConsumption;
+            w.enhancementLevel = block.weapons[i].enhancementLevel;
+            data.weapons.push_back(w);
+        }
+
+        InventorySystem::instance().loadFromData(data);
+    }
+
+    void loadInventoryFromSaveBlockV3(const InventorySaveBlockV3& block)
+    {
+        InventorySystem::InventoryLoadData data;
+
+        data.foodCount = block.foodCount;
+        data.shipRepairT1Count = block.shipRepairT1Count;
+        data.shipRepairT2Count = block.shipRepairT2Count;
+        data.shipRepairT3Count = block.shipRepairT3Count;
+        data.emergencyWeaponRepairCount = block.emergencyWeaponRepairCount;
+
+        data.currentWeaponIndex = block.currentWeaponIndex;
+
+        int weaponCount = block.weaponCount;
+        if (weaponCount < 0) {
+            weaponCount = 0;
+        }
+        if (weaponCount > LEGACY_SAVE_WEAPONS) {
+            weaponCount = LEGACY_SAVE_WEAPONS;
+        }
+
+        for (int i = 0; i < weaponCount; ++i) {
+            InventorySystem::WeaponLoadData w;
+
+            w.typeCode = block.weapons[i].typeCode;
+            w.tier = block.weapons[i].tier;
+            w.damage = block.weapons[i].damage;
+            w.maxDurability = block.weapons[i].maxDurability;
+            w.currentDurability = block.weapons[i].currentDurability;
+            w.range = block.weapons[i].range;
+            w.durabilityConsumption = block.weapons[i].durabilityConsumption;
+            w.enhancementLevel = 0;
 
             data.weapons.push_back(w);
         }
@@ -196,21 +369,97 @@ namespace {
 
     void initEmptyFishLogIfNeeded()
     {
-        std::fstream f("Log.dat", std::ios::binary | std::ios::in);
+        const std::streamoff expectedBytes =
+            static_cast<std::streamoff>(TOTAL_DISCOVERY_COUNT * sizeof(FishEntry));
 
-        if (f.is_open()) {
+        std::ifstream existing("Log.dat", std::ios::binary | std::ios::ate);
+        if (existing.is_open()) {
+            std::streamoff currentBytes = existing.tellg();
+            existing.close();
+
+            if (currentBytes >= expectedBytes) {
+                return;
+            }
+
+            int startIndex = static_cast<int>(currentBytes / sizeof(FishEntry));
+            std::ofstream append("Log.dat", std::ios::binary | std::ios::app);
+            if (!append.is_open()) {
+                return;
+            }
+
+            FishEntry empty = { 0, false, "" };
+            for (int i = startIndex; i < TOTAL_DISCOVERY_COUNT; ++i) {
+                empty.fishID = i;
+                empty.discovered = false;
+                std::memset(empty.name, 0, sizeof(empty.name));
+                append.write(reinterpret_cast<char*>(&empty), sizeof(FishEntry));
+            }
             return;
         }
 
         std::ofstream init("Log.dat", std::ios::binary);
         FishEntry empty = { 0, false, "" };
 
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < TOTAL_DISCOVERY_COUNT; i++) {
             empty.fishID = i;
             empty.discovered = false;
             std::memset(empty.name, 0, sizeof(empty.name));
             init.write(reinterpret_cast<char*>(&empty), sizeof(FishEntry));
         }
+    }
+
+    void markDiscoveryAt(int logIndex, int entryID, const char* entryName)
+    {
+        if (logIndex < 0 || logIndex >= TOTAL_DISCOVERY_COUNT) {
+            return;
+        }
+
+        initEmptyFishLogIfNeeded();
+
+        std::fstream f("Log.dat", std::ios::binary | std::ios::in | std::ios::out);
+        if (!f.is_open()) {
+            return;
+        }
+
+        FishEntry entry;
+        std::memset(&entry, 0, sizeof(entry));
+
+        f.seekg(logIndex * sizeof(FishEntry), std::ios::beg);
+        f.read(reinterpret_cast<char*>(&entry), sizeof(FishEntry));
+
+        entry.fishID = entryID;
+        entry.discovered = true;
+        copyStringToCharArray(entry.name, 30, entryName);
+
+        f.clear();
+        f.seekp(logIndex * sizeof(FishEntry), std::ios::beg);
+        f.write(reinterpret_cast<char*>(&entry), sizeof(FishEntry));
+    }
+
+    bool isDiscoverySet(int logIndex)
+    {
+        if (logIndex < 0 || logIndex >= TOTAL_DISCOVERY_COUNT) {
+            return false;
+        }
+
+        initEmptyFishLogIfNeeded();
+
+        std::ifstream f("Log.dat", std::ios::binary);
+        if (!f.is_open()) {
+            return false;
+        }
+
+        FishEntry entry;
+        std::memset(&entry, 0, sizeof(entry));
+
+        f.seekg(logIndex * sizeof(FishEntry), std::ios::beg);
+        f.read(reinterpret_cast<char*>(&entry), sizeof(FishEntry));
+
+        if (!f.good()) {
+            return false;
+        }
+
+        return entry.discovered;
     }
 }
 
@@ -254,9 +503,10 @@ void FileManager::saveGame(const SaveData& data)
 // ============================================================
 // 读取游戏
 // 兼容旧版 save.dat：
-// 1. 如果识别到 YUTUSV3，就读取完整背包和船速。
-// 2. 如果识别到 YUTUSV2，就读取完整背包，并用默认船速补齐。
-// 3. 如果不是新格式，就按旧 SaveData 读取，并初始化默认鱼竿。
+// 1. 如果识别到 YUTUSV4，就读取完整背包、船速、击杀数和强化次数。
+// 2. 如果识别到 YUTUSV3，就读取完整背包和船速，并补齐新字段。
+// 3. 如果识别到 YUTUSV2，就读取完整背包，并用默认船速补齐。
+// 4. 如果不是新格式，就按旧 SaveData 读取，并初始化默认装备。
 // ============================================================
 
 bool FileManager::loadGame(SaveData& data)
@@ -276,6 +526,16 @@ bool FileManager::loadGame(SaveData& data)
         f.good()
         && std::memcmp(header.magic, SAVE_MAGIC, sizeof(SAVE_MAGIC)) == 0
         && header.version == SAVE_VERSION;
+
+    bool isV3Save =
+        f.good()
+        && std::memcmp(header.magic, SAVE_MAGIC_V3, sizeof(SAVE_MAGIC_V3)) == 0
+        && header.version == SAVE_VERSION_V3;
+
+    bool isV4Save =
+        f.good()
+        && std::memcmp(header.magic, SAVE_MAGIC_V4, sizeof(SAVE_MAGIC_V4)) == 0
+        && header.version == SAVE_VERSION_V4;
 
     bool isV2Save =
         f.good()
@@ -298,6 +558,38 @@ bool FileManager::loadGame(SaveData& data)
         return true;
     }
 
+    if (isV4Save) {
+        FullSaveDataV4 oldSave;
+        std::memset(&oldSave, 0, sizeof(oldSave));
+
+        f.read(reinterpret_cast<char*>(&oldSave), sizeof(oldSave));
+
+        if (!f.good()) {
+            return false;
+        }
+
+        data = oldSave.core;
+        loadInventoryFromSaveBlockV4(oldSave.inventory);
+
+        return true;
+    }
+
+    if (isV3Save) {
+        FullSaveDataV3 oldSave;
+        std::memset(&oldSave, 0, sizeof(oldSave));
+
+        f.read(reinterpret_cast<char*>(&oldSave), sizeof(oldSave));
+
+        if (!f.good()) {
+            return false;
+        }
+
+        data = makeSaveDataFromV3(oldSave.core);
+        loadInventoryFromSaveBlockV3(oldSave.inventory);
+
+        return true;
+    }
+
     if (isV2Save) {
         FullSaveDataV2 oldSave;
         std::memset(&oldSave, 0, sizeof(oldSave));
@@ -309,7 +601,7 @@ bool FileManager::loadGame(SaveData& data)
         }
 
         data = makeSaveDataFromV2(oldSave.core);
-        loadInventoryFromSaveBlock(oldSave.inventory);
+        loadInventoryFromSaveBlockV3(oldSave.inventory);
 
         return true;
     }
@@ -353,58 +645,56 @@ void FileManager::deleteSave()
 
 void FileManager::markFishDiscovered(int fishID, const char* fishName)
 {
-    if (fishID < 0 || fishID >= 10) {
+    if (fishID < 0 || fishID >= FISH_DISCOVERY_COUNT) {
         return;
     }
 
-    initEmptyFishLogIfNeeded();
-
-    std::fstream f("Log.dat", std::ios::binary | std::ios::in | std::ios::out);
-
-    if (!f.is_open()) {
-        return;
-    }
-
-    FishEntry entry;
-    std::memset(&entry, 0, sizeof(entry));
-
-    f.seekg(fishID * sizeof(FishEntry), std::ios::beg);
-    f.read(reinterpret_cast<char*>(&entry), sizeof(FishEntry));
-
-    entry.fishID = fishID;
-    entry.discovered = true;
-    copyStringToCharArray(entry.name, 30, fishName);
-
-    f.clear();
-    f.seekp(fishID * sizeof(FishEntry), std::ios::beg);
-    f.write(reinterpret_cast<char*>(&entry), sizeof(FishEntry));
+    markDiscoveryAt(fishID, fishID, fishName);
 }
 
 bool FileManager::isFishDiscovered(int fishID)
 {
-    if (fishID < 0 || fishID >= 10) {
+    if (fishID < 0 || fishID >= FISH_DISCOVERY_COUNT) {
         return false;
     }
 
-    initEmptyFishLogIfNeeded();
+    return isDiscoverySet(fishID);
+}
 
-    std::ifstream f("Log.dat", std::ios::binary);
+void FileManager::markEnemyDiscovered(int enemyID, const char* enemyName)
+{
+    if (enemyID < 0 || enemyID >= ENEMY_DISCOVERY_COUNT) {
+        return;
+    }
 
-    if (!f.is_open()) {
+    markDiscoveryAt(ENEMY_DISCOVERY_OFFSET + enemyID, enemyID, enemyName);
+}
+
+bool FileManager::isEnemyDiscovered(int enemyID)
+{
+    if (enemyID < 0 || enemyID >= ENEMY_DISCOVERY_COUNT) {
         return false;
     }
 
-    FishEntry entry;
-    std::memset(&entry, 0, sizeof(entry));
+    return isDiscoverySet(ENEMY_DISCOVERY_OFFSET + enemyID);
+}
 
-    f.seekg(fishID * sizeof(FishEntry), std::ios::beg);
-    f.read(reinterpret_cast<char*>(&entry), sizeof(FishEntry));
+void FileManager::markBossDiscovered(int bossID, const char* bossName)
+{
+    if (bossID < 0 || bossID >= BOSS_DISCOVERY_COUNT) {
+        return;
+    }
 
-    if (!f.good()) {
+    markDiscoveryAt(BOSS_DISCOVERY_OFFSET + bossID, bossID, bossName);
+}
+
+bool FileManager::isBossDiscovered(int bossID)
+{
+    if (bossID < 0 || bossID >= BOSS_DISCOVERY_COUNT) {
         return false;
     }
 
-    return entry.discovered;
+    return isDiscoverySet(BOSS_DISCOVERY_OFFSET + bossID);
 }
 
 // ============================================================

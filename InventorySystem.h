@@ -46,6 +46,7 @@ public:
         int currentDurability = 0;
         int range = 0;
         int durabilityConsumption = 0;
+        int enhancementLevel = 0;
     };
 
     struct InventoryLoadData {

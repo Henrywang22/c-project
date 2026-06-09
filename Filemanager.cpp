@@ -15,11 +15,13 @@
 
 namespace {
 
-    const char SAVE_MAGIC[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '5', '\0' };
+    const char SAVE_MAGIC[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '6', '\0' };
+    const char SAVE_MAGIC_V5[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '5', '\0' };
     const char SAVE_MAGIC_V4[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '4', '\0' };
     const char SAVE_MAGIC_V3[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '3', '\0' };
     const char SAVE_MAGIC_V2[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '2', '\0' };
-    const int SAVE_VERSION = 5;
+    const int SAVE_VERSION = 6;
+    const int SAVE_VERSION_V5 = 5;
     const int SAVE_VERSION_V4 = 4;
     const int SAVE_VERSION_V3 = 3;
     const int SAVE_VERSION_V2 = 2;
@@ -99,6 +101,20 @@ namespace {
         int currentWeaponIndex;
 
         WeaponSaveBlock weapons[MAX_SAVE_WEAPONS];
+        int quickWeaponSlots[6];
+    };
+
+    struct InventorySaveBlockV5 {
+        int foodCount;
+        int shipRepairT1Count;
+        int shipRepairT2Count;
+        int shipRepairT3Count;
+        int emergencyWeaponRepairCount;
+
+        int weaponCount;
+        int currentWeaponIndex;
+
+        WeaponSaveBlock weapons[MAX_SAVE_WEAPONS];
     };
 
     struct SaveDataV2Core {
@@ -138,6 +154,11 @@ namespace {
     struct FullSaveDataV4 {
         SaveData core;
         InventorySaveBlockV4 inventory;
+    };
+
+    struct FullSaveDataV5 {
+        SaveData core;
+        InventorySaveBlockV5 inventory;
     };
 
     struct FullSaveDataV3 {
@@ -231,6 +252,10 @@ namespace {
         }
 
         block.currentWeaponIndex = inv.currentWeaponIndex();
+        const auto& quickSlots = inv.quickWeaponSlots();
+        for (int slot = 0; slot < 6; ++slot) {
+            block.quickWeaponSlots[slot] = quickSlots[slot];
+        }
 
         for (int i = 0; i < block.weaponCount; ++i) {
             const Weapon* w = weapons[i];
@@ -267,6 +292,9 @@ namespace {
         data.emergencyWeaponRepairCount = block.emergencyWeaponRepairCount;
 
         data.currentWeaponIndex = block.currentWeaponIndex;
+        for (int slot = 0; slot < 6; ++slot) {
+            data.quickWeaponSlots[slot] = block.quickWeaponSlots[slot];
+        }
 
         int weaponCount = block.weaponCount;
         if (weaponCount < 0) {
@@ -313,6 +341,34 @@ namespace {
             weaponCount = LEGACY_SAVE_WEAPONS;
         }
 
+        for (int i = 0; i < weaponCount; ++i) {
+            InventorySystem::WeaponLoadData w;
+            w.typeCode = block.weapons[i].typeCode;
+            w.tier = block.weapons[i].tier;
+            w.damage = block.weapons[i].damage;
+            w.maxDurability = block.weapons[i].maxDurability;
+            w.currentDurability = block.weapons[i].currentDurability;
+            w.range = block.weapons[i].range;
+            w.durabilityConsumption = block.weapons[i].durabilityConsumption;
+            w.enhancementLevel = block.weapons[i].enhancementLevel;
+            data.weapons.push_back(w);
+        }
+
+        InventorySystem::instance().loadFromData(data);
+    }
+
+    void loadInventoryFromSaveBlockV5(const InventorySaveBlockV5& block)
+    {
+        InventorySystem::InventoryLoadData data;
+
+        data.foodCount = block.foodCount;
+        data.shipRepairT1Count = block.shipRepairT1Count;
+        data.shipRepairT2Count = block.shipRepairT2Count;
+        data.shipRepairT3Count = block.shipRepairT3Count;
+        data.emergencyWeaponRepairCount = block.emergencyWeaponRepairCount;
+        data.currentWeaponIndex = block.currentWeaponIndex;
+
+        int weaponCount = qBound(0, block.weaponCount, MAX_SAVE_WEAPONS);
         for (int i = 0; i < weaponCount; ++i) {
             InventorySystem::WeaponLoadData w;
             w.typeCode = block.weapons[i].typeCode;
@@ -532,6 +588,11 @@ bool FileManager::loadGame(SaveData& data)
         && std::memcmp(header.magic, SAVE_MAGIC_V3, sizeof(SAVE_MAGIC_V3)) == 0
         && header.version == SAVE_VERSION_V3;
 
+    bool isV5Save =
+        f.good()
+        && std::memcmp(header.magic, SAVE_MAGIC_V5, sizeof(SAVE_MAGIC_V5)) == 0
+        && header.version == SAVE_VERSION_V5;
+
     bool isV4Save =
         f.good()
         && std::memcmp(header.magic, SAVE_MAGIC_V4, sizeof(SAVE_MAGIC_V4)) == 0
@@ -555,6 +616,21 @@ bool FileManager::loadGame(SaveData& data)
         data = fullSave.core;
         loadInventoryFromSaveBlock(fullSave.inventory);
 
+        return true;
+    }
+
+    if (isV5Save) {
+        FullSaveDataV5 oldSave;
+        std::memset(&oldSave, 0, sizeof(oldSave));
+
+        f.read(reinterpret_cast<char*>(&oldSave), sizeof(oldSave));
+
+        if (!f.good()) {
+            return false;
+        }
+
+        data = oldSave.core;
+        loadInventoryFromSaveBlockV5(oldSave.inventory);
         return true;
     }
 

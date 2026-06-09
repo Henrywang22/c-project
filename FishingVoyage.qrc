@@ -72,6 +72,8 @@
         <file alias="encyclopedia/enemy_shark.png">ui图/生成素材/航海图鉴UI/cutouts/enemy_shark_cutout.png</file>
         <file alias="encyclopedia/enemy_swordfish.png">ui图/生成素材/航海图鉴UI/cutouts/enemy_swordfish_cutout.png</file>
         <file alias="encyclopedia/enemy_octopus.png">ui图/生成素材/航海图鉴UI/cutouts/enemy_octopus_cutout.png</file>
+        <file alias="encyclopedia/enemy_electric_ray.png">assets/enemies/electric_ray_cutout.png</file>
+        <file alias="encyclopedia/enemy_poison_jellyfish.png">assets/enemies/poison_jellyfish_cutout.png</file>
         <file alias="encyclopedia/boss_five_head_shark.png">ui图/生成素材/航海图鉴UI/boss_five_head_shark.png</file>
         <file alias="encyclopedia/boss_tali_monster.png">ui图/生成素材/航海图鉴UI/boss_tali_monster.png</file>
         <file alias="encyclopedia/boss_siren.png">ui图/生成素材/航海图鉴UI/boss_siren.png</file>
@@ -84,11 +86,16 @@
         <file alias="ui/common/wood_notice_button.png">assets/ui_common/wood_notice_button.png</file>
         <file alias="ui/common/notice_icon_info.png">assets/ui_common/notice_icon_info.png</file>
         <file alias="projectiles/harpoon.png">assets/projectiles/harpoon_projectile.png</file>
-        <file alias="effects/rain_cluster.png">assets/ui_effects/rain_cluster.png</file>
+        <file alias="projectiles/octopus_ink.png">assets/projectiles/octopus_ink_sheet.png</file>
+        <file alias="effects/rain_cluster.png">assets/ui_effects/rain_splash_sheet.png</file>
+        <file alias="effects/rain_streaks.png">assets/weather/rain_streak_sheet.png</file>
+        <file alias="effects/fog_edge_overlay.png">assets/weather/fog_edge_overlay.png</file>
         <file alias="effects/lightning_warning_ring.png">assets/ui_effects/lightning_warning_ring.png</file>
         <file alias="effects/boss_warning_ring.png">assets/ui_effects/boss_warning_ring.png</file>
         <file alias="effects/boss_warning_rect.png">assets/ui_effects/boss_warning_rect.png</file>
         <file alias="effects/shockwave_ring.png">assets/ui_effects/shockwave_ring.png</file>
+        <file alias="effects/electric_discharge.png">assets/ui_effects/electric_discharge_sheet.png</file>
+        <file alias="effects/jellyfish_sting.png">assets/ui_effects/jellyfish_sting_sheet.png</file>
         <file alias="effects/weapon_range_ring.png">assets/ui_effects/weapon_range_ring.png</file>
         <file alias="effects/hit_spark.png">assets/ui_effects/hit_spark.png</file>
         <file alias="effects/muzzle_flash.png">assets/ui_effects/muzzle_flash.png</file>
@@ -98,6 +105,18 @@
         <file alias="decor/stage4_shipwreck.png">assets/stage_decor/stage4_shipwreck.png</file>
         <file alias="decor/stage5_ruins.png">assets/stage_decor/stage5_ruins.png</file>
         <file alias="decor/stage6_shoal.png">assets/stage_decor/stage6_shoal.png</file>
+        <file alias="decor/props/rocks.png">assets/stage_decor/props/rocks.png</file>
+        <file alias="decor/props/shoal.png">assets/stage_decor/props/shoal.png</file>
+        <file alias="decor/props/palm_islet.png">assets/stage_decor/props/palm_islet.png</file>
+        <file alias="decor/props/coral_outcrop.png">assets/stage_decor/props/coral_outcrop.png</file>
+        <file alias="decor/props/shipwreck.png">assets/stage_decor/props/shipwreck.png</file>
+        <file alias="decor/props/buoy.png">assets/stage_decor/props/buoy.png</file>
+        <file alias="decor/props/broken_dock.png">assets/stage_decor/props/broken_dock.png</file>
+        <file alias="decor/props/stone_arch.png">assets/stage_decor/props/stone_arch.png</file>
+        <file alias="decor/props/reef_patch.png">assets/stage_decor/props/reef_patch.png</file>
+        <file alias="decor/props/driftwood.png">assets/stage_decor/props/driftwood.png</file>
+        <file alias="decor/props/lighthouse_rock.png">assets/stage_decor/props/lighthouse_rock.png</file>
+        <file alias="decor/props/stone_marker.png">assets/stage_decor/props/stone_marker.png</file>
         <file alias="fish/anchovy_swim.png">assets/fish_new/anchovy_swim.png</file>
         <file alias="fish/clownfish_swim.png">assets/fish_new/clownfish_swim.png</file>
         <file alias="fish/mackerel_swim.png">assets/fish_new/mackerel_swim.png</file>
@@ -126,6 +145,8 @@
         <file alias="enemies/shark.png">ui图/生成素材/敌人透明/enemy_shark.png</file>
         <file alias="enemies/swordfish.png">ui图/生成素材/敌人透明/enemy_swordfish.png</file>
         <file alias="enemies/octopus.png">ui图/生成素材/敌人透明/enemy_octopus.png</file>
+        <file alias="enemies/electric_ray.png">assets/enemies/electric_ray_sheet.png</file>
+        <file alias="enemies/poison_jellyfish.png">assets/enemies/poison_jellyfish_sheet.png</file>
 
         <file alias="player/rod_up.png">ui图/生成素材/玩家移动透明/player_rod_up.png</file>
         <file alias="player/rod_down.png">ui图/生成素材/玩家移动透明/player_rod_down.png</file>

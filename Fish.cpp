@@ -8,7 +8,7 @@
 // ============================================================
 
 Fish::Fish(int x, int y, Type type)
-    : x(x), y(y), type(type), maxLife(900 + rand() % 300),
+    : x(x), y(y), type(type), maxLife(0),
       posX((float)x), posY((float)y)
 {
     value = 0;
@@ -111,9 +111,7 @@ bool Fish::isNearPlayer(int px, int py, int range)
 // 基类默认update（子类会覆盖）
 void Fish::update(int playerX, int playerY)
 {
-    lifeTimer++;
     moveTimer++;
-    if (lifeTimer >= maxLife) { escaped = true; return; }
     const float speedScale = lockedForCatch
         ? static_cast<float>(Config::GameConfig::FISH_LOCKED_SPEED_MULTIPLIER)
         : 1.0f;
@@ -121,7 +119,16 @@ void Fish::update(int playerX, int playerY)
     posY += vy * speedScale;
     x = (int)std::round(posX);
     y = (int)std::round(posY);
-    if (x < 0 || x > Config::GameConfig::RIGHT_BORDER) { escaped = true; return; }
+    if (x < 0) {
+        x = 0;
+        posX = 0;
+        vx = std::fabs(vx);
+    }
+    if (x > Config::GameConfig::RIGHT_BORDER) {
+        x = Config::GameConfig::RIGHT_BORDER;
+        posX = static_cast<float>(x);
+        vx = -std::fabs(vx);
+    }
     if (y < 60) { y = 60;  posY = 60;  vy = abs(vy); }
     if (y > 700) { y = 700; posY = 700; vy = -abs(vy); }
 }
@@ -141,10 +148,8 @@ CommonFish::CommonFish(int x, int y, Type type) : Fish(x, y, type)
 
 void CommonFish::update(int playerX, int playerY)
 {
-    lifeTimer++;
     moveTimer++;
 
-    if (lifeTimer >= maxLife) { escaped = true; return; }
     if (fleeCooldown > 0) fleeCooldown--;
 
     // 感知玩家：距离小于阈值时向反方向逃跑
@@ -171,7 +176,16 @@ void CommonFish::update(int playerX, int playerY)
     x = (int)std::round(posX);
     y = (int)std::round(posY);
 
-    if (x < 0 || x > Config::GameConfig::RIGHT_BORDER) { escaped = true; return; }
+    if (x < 0) {
+        x = 0;
+        posX = 0;
+        vx = std::fabs(vx);
+    }
+    if (x > Config::GameConfig::RIGHT_BORDER) {
+        x = Config::GameConfig::RIGHT_BORDER;
+        posX = static_cast<float>(x);
+        vx = -std::fabs(vx);
+    }
     if (y < 60) { y = 60;  posY = 60;  vy = abs(vy); }
     if (y > 700) { y = 700; posY = 700; vy = -abs(vy); }
 }
@@ -191,10 +205,8 @@ RareFish::RareFish(int x, int y, Type type) : Fish(x, y, type)
 
 void RareFish::update(int playerX, int playerY)
 {
-    lifeTimer++;
     moveTimer++;
 
-    if (lifeTimer >= maxLife) { escaped = true; return; }
     if (fleeCooldown > 0) fleeCooldown--;
 
     // 感知范围更大，逃跑更快
@@ -221,7 +233,16 @@ void RareFish::update(int playerX, int playerY)
     x = (int)std::round(posX);
     y = (int)std::round(posY);
 
-    if (x < 0 || x > Config::GameConfig::RIGHT_BORDER) { escaped = true; return; }
+    if (x < 0) {
+        x = 0;
+        posX = 0;
+        vx = std::fabs(vx);
+    }
+    if (x > Config::GameConfig::RIGHT_BORDER) {
+        x = Config::GameConfig::RIGHT_BORDER;
+        posX = static_cast<float>(x);
+        vx = -std::fabs(vx);
+    }
     if (y < 60) { y = 60;  posY = 60;  vy = abs(vy); }
     if (y > 700) { y = 700; posY = 700; vy = -abs(vy); }
 }

@@ -56,6 +56,7 @@ void Player::reset() {
     m_isInputReversed = false;
     m_noRangedAttack = false;
     m_isPoisoned = false;
+    m_isInkBlinded = false;
 
     coins = 0;
     fishCaught = 0;
@@ -99,6 +100,7 @@ void Player::restoreSavedProgress(
     m_isInputReversed = false;
     m_noRangedAttack = false;
     m_isPoisoned = false;
+    m_isInkBlinded = false;
     visionReduced = false;
     m_facingDirection = 3;
     clearInputState();
@@ -185,6 +187,17 @@ void Player::updateDebuffs() {
             m_poisonTickTimer.restart();
         }
     }
+
+    if (m_isInkBlinded) {
+        if (m_inkBlindTimer.elapsed() >= m_inkBlindDurationMs) {
+            m_isInkBlinded = false;
+            visionReduced = false;
+        }
+        else {
+            visionReduced = true;
+            applySpeedReduction(0.28);
+        }
+    }
 }
 
 void Player::updateMovement(qreal deltaTime) {
@@ -209,7 +222,10 @@ void Player::updateMovement(qreal deltaTime) {
     int currentEffectiveMaxStamina = qMax(1, maxStamina - m_staminaPenalty);
 
     if (m_keyShift && m_stamina > 0) {
-        targetBaseSpeed = GameConfig::SHIP_BOOST_SPEED;
+        targetBaseSpeed = qMax(
+            GameConfig::SHIP_BOOST_SPEED,
+            m_baseSpeed * GameConfig::SHIP_BOOST_MULTIPLIER
+        );
         m_stamina = qMax(0, m_stamina - GameConfig::BOOST_STAMINA_COST_PER_FRAME);
     }
     else if (!m_keyShift && m_stamina < currentEffectiveMaxStamina) {
@@ -305,6 +321,14 @@ void Player::applySpeedReduction(qreal reduction) {
 
 void Player::resetSpeedReduction() {
     m_speedReduction = 0;
+}
+
+void Player::applyInkBlind(int durationMs)
+{
+    m_isInkBlinded = true;
+    m_inkBlindDurationMs = qMax(1, durationMs);
+    m_inkBlindTimer.restart();
+    visionReduced = true;
 }
 
 // ==========================================

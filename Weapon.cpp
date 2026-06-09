@@ -154,15 +154,26 @@ bool Weapon::consumeDurability(int amount)
 void Weapon::upgradeStats(int dmgBoost, int durBoost)
 {
     damage += dmgBoost;
+    int proportionalDurability = currentDurability;
     if (!isInfiniteDurability()) {
+        const int oldMaxDurability = qMax(1, maxDurability);
+        const qreal durabilityRatio = qBound<qreal>(
+            0.0,
+            static_cast<qreal>(currentDurability) / oldMaxDurability,
+            1.0
+        );
+        const bool wasFull = currentDurability >= maxDurability;
         maxDurability += durBoost;
+        proportionalDurability = wasFull
+            ? maxDurability
+            : qRound(maxDurability * durabilityRatio);
     }
     enhancementLevel++;
 
     // 强化时顺带恢复一部分耐久，但不直接修满
     // 这样不会完全替代“装备修复”系统
     if (!isInfiniteDurability()) {
-        currentDurability += durBoost / 2;
+        currentDurability = proportionalDurability;
     }
 
     if (currentDurability > maxDurability) {

@@ -16,6 +16,8 @@ public:
     virtual QPointF position() const;
     virtual void setPosition(const QPointF& pos);
     virtual void takeDamage(int damage);
+    void applyKnockback(const QPointF& origin, qreal strength);
+    void applyStageScaling(int stage);
 
     int x, y;
     int hp;
@@ -26,6 +28,14 @@ public:
     bool alive = true;
     int attackTimer = 0;
     int dropValue;
+
+protected:
+    bool advanceKnockback();
+
+private:
+    QPointF m_knockbackVelocity;
+    int m_knockbackFrames = 0;
+    int m_scaledStage = 0;
 };
 
 // ============================================================
@@ -66,8 +76,10 @@ public:
     QRectF collider() const override;
     QPointF position() const override;
     void setPosition(const QPointF& pos) override;
+    void takeDamage(int damage) override;
 
     State state = IDLE;
+    int chargeTimer = 0;
     int windupTimer = 0;  // 蓄力计时
     float chargeVx = 0;   // 冲刺方向X
     float chargeVy = 0;   // 冲刺方向Y
@@ -92,10 +104,67 @@ public:
     QPointF position() const override;
     void setPosition(const QPointF& pos) override;
 
-    bool isInvisible = false;  // 是否处于隐身状态
-    int contactTimer = 0;      // 接触玩家计时（达到30帧触发视野遮挡）
+    bool isInvisible = false;
+    bool isInkCharging() const { return inkWindupFrames > 0; }
+    bool hasInkProjectile() const { return inkProjectileActive; }
+    QPointF inkProjectilePosition() const { return inkProjectilePos; }
+    QPointF inkProjectileDirection() const { return inkProjectileVelocity; }
+    int inkAnimationFrame() const { return (inkProjectileAge / 5) % 4; }
 
 private:
     int invisTimer = 0;
+    int inkCooldownFrames = 120;
+    int inkWindupFrames = 0;
+    int inkProjectileLife = 0;
+    int inkProjectileAge = 0;
+    bool inkProjectileActive = false;
+    QPointF inkProjectilePos;
+    QPointF inkProjectileVelocity;
     float posX, posY;
+};
+
+class ElectricRay : public Enemy {
+public:
+    ElectricRay(int x, int y);
+    void update(Player& player) override;
+    bool collidesWithPlayer(int px, int py) override;
+    QRectF collider() const override;
+    QPointF position() const override;
+    void setPosition(const QPointF& pos) override;
+
+    bool isPulseCharging() const { return pulseWarningFrames > 0; }
+    bool isPulseVisible() const { return pulseVisualFrames > 0; }
+    int pulseAnimationFrame() const;
+    qreal pulseRadius() const;
+
+private:
+    float posX, posY;
+    int pulseCooldownFrames = 120;
+    int pulseWarningFrames = 0;
+    int pulseVisualFrames = 0;
+};
+
+class PoisonJellyfish : public Enemy {
+public:
+    enum State { DRIFT, WINDUP, STRIKE, RETREAT };
+
+    PoisonJellyfish(int x, int y);
+    void update(Player& player) override;
+    bool collidesWithPlayer(int px, int py) override;
+    QRectF collider() const override;
+    QRectF stingCollider() const;
+    QPointF position() const override;
+    void setPosition(const QPointF& pos) override;
+    bool isStingCharging() const { return state == WINDUP; }
+    bool isStingActive() const { return state == STRIKE; }
+    int stingAnimationFrame() const;
+
+private:
+    float posX, posY;
+    float driftPhase = 0.0f;
+    int poisonCooldownFrames = 0;
+    int stateTimer = 0;
+    bool stingHit = false;
+    QPointF retreatVelocity;
+    State state = DRIFT;
 };

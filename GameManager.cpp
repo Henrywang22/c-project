@@ -138,6 +138,12 @@ void recordEnemyDiscovery(FileManager& fileManager, const Enemy* enemy)
     else if (dynamic_cast<const Octopus*>(enemy)) {
         fileManager.markEnemyDiscovered(2, "Octopus");
     }
+    else if (dynamic_cast<const ElectricRay*>(enemy)) {
+        fileManager.markEnemyDiscovered(3, "Electric Ray");
+    }
+    else if (dynamic_cast<const PoisonJellyfish*>(enemy)) {
+        fileManager.markEnemyDiscovered(4, "Poison Jellyfish");
+    }
 }
 
 void recordBossDiscovery(FileManager& fileManager, BossKind kind)
@@ -206,6 +212,11 @@ void moveSolidBy(const SolidBody& body, const QPointF& delta)
 void applyHitKnockback(Enemy* enemy, const QPointF& origin, qreal strength)
 {
     if (!enemy || !enemy->alive || strength <= 0.0) return;
+
+    if (!dynamic_cast<Boss*>(enemy)) {
+        enemy->applyKnockback(origin, strength);
+        return;
+    }
 
     QPointF dir = enemy->position() - origin;
     qreal length = std::sqrt(dir.x() * dir.x() + dir.y() * dir.y());
@@ -338,6 +349,9 @@ std::vector<QLineF> gunAttackLines(const Weapon* weapon, const QPointF& origin, 
 
 GameManager::GameManager()
 {
+    for (int i = 0; i < 5; ++i) {
+        m_enemyDiscoveryRecorded[i] = fileManager.isEnemyDiscovered(i);
+    }
     WaveSystem::instance().reset();
     WeatherSystem::instance().reset();
     applyStageConfig();
@@ -390,16 +404,23 @@ void GameManager::update()
     eraseDead(sharks);
     eraseDead(swordfishes);
     eraseDead(octopuses);
+    eraseDead(specialEnemies);
 
     int px = playerX();
     int py = playerY();
 
     ObstacleManager::instance().update(m_deltaTime);
 
-    for (auto f : fish)        f->update(px, py);
+    for (auto f : fish) {
+        f->update(px, py);
+        if (!f->lockedForCatch && f->x < px - 1800) {
+            f->escaped = true;
+        }
+    }
     for (auto s : sharks)      s->update(p);
     for (auto s : swordfishes) s->update(p);
     for (auto o : octopuses)   o->update(p);
+    for (auto e : specialEnemies) e->update(p);
 
     const auto terrain = terrainColliders();
     auto nudgeEnemyAroundSolids = [&](Enemy* enemy) {
@@ -416,6 +437,7 @@ void GameManager::update()
     for (auto s : sharks)      nudgeEnemyAroundSolids(s);
     for (auto s : swordfishes) nudgeEnemyAroundSolids(s);
     for (auto o : octopuses)   nudgeEnemyAroundSolids(o);
+    for (auto e : specialEnemies) nudgeEnemyAroundSolids(e);
 
     // 接入 B 模块真实接口，仅传入 p
     if (boss && boss->alive) boss->update(p);
@@ -449,7 +471,30 @@ void GameManager::update()
             static_cast<int>(octopuses.size()) < cfg.octopusCap) {
             spawnOctopus();
         }
+        int rayCount = 0;
+        int jellyCount = 0;
+        for (Enemy* enemy : specialEnemies) {
+            if (dynamic_cast<ElectricRay*>(enemy)) ++rayCount;
+            else if (dynamic_cast<PoisonJellyfish*>(enemy)) ++jellyCount;
+        }
+        static const int rayCaps[] = {0, 0, 1, 1, 2, 2, 3};
+        static const int rayIntervals[] = {0, 0, 980, 840, 700, 610, 520};
+        static const int jellyCaps[] = {0, 0, 0, 1, 1, 2, 3};
+        static const int jellyIntervals[] = {0, 0, 0, 1040, 860, 690, 570};
+        const int stageIndex = qBound(1, stage, Config::GameConfig::STAGE_COUNT);
+        if (rayCaps[stageIndex] > 0 &&
+            spawnTimer % rayIntervals[stageIndex] == 0 &&
+            rayCount < rayCaps[stageIndex]) {
+            spawnElectricRay();
+        }
+        if (jellyCaps[stageIndex] > 0 &&
+            spawnTimer % jellyIntervals[stageIndex] == 0 &&
+            jellyCount < jellyCaps[stageIndex]) {
+            spawnPoisonJellyfish();
+        }
     }
+
+    recordVisibleEnemyDiscoveries();
 
     if (!stageClear && px >= stageBossTriggerX()) {
         if (cfg.hasBoss) {
@@ -478,65 +523,90 @@ int GameManager::stageBossTriggerX() const
 
 std::vector<QRectF> GameManager::terrainColliders() const
 {
-    struct TerrainSpec {
-        int stage;
-        qreal ratio;
-        qreal y;
-        qreal width;
-        qreal height;
-    };
-
-    static const TerrainSpec specs[] = {
-        {1, 0.18, 132, 330, 150},
-        {1, 0.78, 640, 300, 120},
-
-        {2, 0.16, 132, 250, 170},
-        {2, 0.52, 622, 280, 130},
-        {2, 0.78, 196, 240, 120},
-
-        {3, 0.20, 612, 330, 132},
-        {3, 0.50, 130, 260, 120},
-        {3, 0.76, 620, 260, 116},
-
-        {4, 0.18, 620, 330, 150},
-        {4, 0.50, 118, 280, 126},
-        {4, 0.78, 622, 240, 115},
-
-        {5, 0.18, 128, 330, 150},
-        {5, 0.48, 628, 310, 140},
-        {5, 0.78, 610, 300, 130},
-
-        {6, 0.16, 130, 320, 140},
-        {6, 0.42, 618, 340, 150},
-        {6, 0.68, 132, 280, 130},
-        {6, 0.86, 604, 300, 140}
-    };
-
     std::vector<QRectF> rects;
     const int stageStart = Config::GameConfig::stageStartDistance(stage);
     const int stageEnd = Config::GameConfig::stageConfig(stage).targetDistance;
     const int stageLength = qMax(1, stageEnd - stageStart);
 
-    for (const TerrainSpec& spec : specs) {
-        if (spec.stage != stage) {
-            continue;
-        }
-        const qreal worldX = stageStart + stageLength * spec.ratio;
+    for (int i = 0; i < Config::GameConfig::STAGE_DECOR_COUNT; ++i) {
+        const auto& decor = Config::GameConfig::STAGE_DECORS[i];
+        if (decor.stage != stage) continue;
+
+        const qreal worldX = stageStart + stageLength * decor.stageRatio;
         rects.emplace_back(
-            worldX - spec.width / 2.0,
-            spec.y - spec.height / 2.0,
-            spec.width,
-            spec.height
+            worldX - decor.colliderWidth / 2.0,
+            decor.y + decor.colliderOffsetY - decor.colliderHeight / 2.0,
+            decor.colliderWidth,
+            decor.colliderHeight
+        );
+    }
+
+    for (int i = 0; i < Config::GameConfig::TERRAIN_PROP_COUNT; ++i) {
+        const auto& prop = Config::GameConfig::TERRAIN_PROPS[i];
+        if (prop.stage != stage) continue;
+
+        const qreal worldX = stageStart + stageLength * prop.stageRatio;
+        rects.emplace_back(
+            worldX - prop.colliderWidth / 2.0,
+            prop.y - prop.colliderHeight / 2.0,
+            prop.colliderWidth,
+            prop.colliderHeight
         );
     }
 
     return rects;
 }
 
+void GameManager::recordVisibleEnemyDiscoveries()
+{
+    auto recordIfVisible = [this](Enemy* enemy) {
+        if (!enemy || !enemy->alive) return;
+        const QRectF screenRect = enemy->collider().translated(-cameraX, 0);
+        if (!screenRect.intersects(QRectF(0, Config::GameConfig::TOP_BORDER,
+                                          1280,
+                                          Config::GameConfig::BOTTOM_BORDER -
+                                              Config::GameConfig::TOP_BORDER))) return;
+
+        int id = -1;
+        const char* name = "";
+        if (dynamic_cast<Shark*>(enemy)) {
+            id = 0;
+            name = "Shark";
+        }
+        else if (dynamic_cast<Swordfish*>(enemy)) {
+            id = 1;
+            name = "Swordfish";
+        }
+        else if (dynamic_cast<Octopus*>(enemy)) {
+            id = 2;
+            name = "Octopus";
+        }
+        else if (dynamic_cast<ElectricRay*>(enemy)) {
+            id = 3;
+            name = "Electric Ray";
+        }
+        else if (dynamic_cast<PoisonJellyfish*>(enemy)) {
+            id = 4;
+            name = "Poison Jellyfish";
+        }
+
+        if (id >= 0 && !m_enemyDiscoveryRecorded[id]) {
+            fileManager.markEnemyDiscovered(id, name);
+            m_enemyDiscoveryRecorded[id] = true;
+        }
+    };
+
+    for (Shark* enemy : sharks) recordIfVisible(enemy);
+    for (Swordfish* enemy : swordfishes) recordIfVisible(enemy);
+    for (Octopus* enemy : octopuses) recordIfVisible(enemy);
+    for (Enemy* enemy : specialEnemies) recordIfVisible(enemy);
+}
+
 void GameManager::resolveEntitySolids()
 {
     std::vector<SolidBody> bodies;
-    bodies.reserve(fish.size() + sharks.size() + swordfishes.size() + octopuses.size() + 1);
+    bodies.reserve(fish.size() + sharks.size() + swordfishes.size() +
+                   octopuses.size() + specialEnemies.size() + 1);
 
     for (auto* f : fish) {
         if (!f || f->caught || f->escaped) continue;
@@ -553,6 +623,10 @@ void GameManager::resolveEntitySolids()
     for (auto* o : octopuses) {
         if (!o || !o->alive) continue;
         bodies.push_back({nullptr, o, 0.95});
+    }
+    for (auto* e : specialEnemies) {
+        if (!e || !e->alive) continue;
+        bodies.push_back({nullptr, e, 1.0});
     }
     if (boss && boss->alive) {
         bodies.push_back({nullptr, boss, 3.2});
@@ -707,11 +781,13 @@ void GameManager::clearStageEntities()
     for (auto s : sharks)      delete s;
     for (auto s : swordfishes) delete s;
     for (auto o : octopuses)   delete o;
+    for (auto e : specialEnemies) delete e;
 
     fish.clear();
     sharks.clear();
     swordfishes.clear();
     octopuses.clear();
+    specialEnemies.clear();
 }
 
 void GameManager::resetStageRuntime()
@@ -739,7 +815,9 @@ void GameManager::spawnShark()
     int px = playerX();
     int x = px + 200 + QRandomGenerator::global()->bounded(150);
     int y = 80 + QRandomGenerator::global()->bounded(580);
-    sharks.push_back(new Shark(x, y));
+    Shark* enemy = new Shark(x, y);
+    enemy->applyStageScaling(stage);
+    sharks.push_back(enemy);
 }
 
 void GameManager::spawnSwordfish()
@@ -747,7 +825,9 @@ void GameManager::spawnSwordfish()
     int px = playerX();
     int x = px + 300 + QRandomGenerator::global()->bounded(400);
     int y = 80 + QRandomGenerator::global()->bounded(580);
-    swordfishes.push_back(new Swordfish(x, y));
+    Swordfish* enemy = new Swordfish(x, y);
+    enemy->applyStageScaling(stage);
+    swordfishes.push_back(enemy);
 }
 
 void GameManager::spawnOctopus()
@@ -755,7 +835,33 @@ void GameManager::spawnOctopus()
     int px = playerX();
     int x = px + 300 + QRandomGenerator::global()->bounded(400);
     int y = 80 + QRandomGenerator::global()->bounded(580);
-    octopuses.push_back(new Octopus(x, y));
+    Octopus* enemy = new Octopus(x, y);
+    enemy->applyStageScaling(stage);
+    octopuses.push_back(enemy);
+}
+
+void GameManager::spawnElectricRay()
+{
+    const int x = qMin(
+        Config::GameConfig::RIGHT_BORDER - 120,
+        playerX() + 360 + QRandomGenerator::global()->bounded(520)
+    );
+    const int y = 100 + QRandomGenerator::global()->bounded(540);
+    ElectricRay* enemy = new ElectricRay(x, y);
+    enemy->applyStageScaling(stage);
+    specialEnemies.push_back(enemy);
+}
+
+void GameManager::spawnPoisonJellyfish()
+{
+    const int x = qMin(
+        Config::GameConfig::RIGHT_BORDER - 120,
+        playerX() + 360 + QRandomGenerator::global()->bounded(520)
+    );
+    const int y = 100 + QRandomGenerator::global()->bounded(540);
+    PoisonJellyfish* enemy = new PoisonJellyfish(x, y);
+    enemy->applyStageScaling(stage);
+    specialEnemies.push_back(enemy);
 }
 
 void GameManager::spawnBoss(int stageNum)
@@ -858,25 +964,13 @@ void GameManager::checkCollisions()
         }
     }
 
-    // 墨鱼接触
-    bool visionBlockedByOctopus = false;
-    for (auto o : octopuses) {
-        if (!o->alive || o->isInvisible) continue;
-        if (o->collidesWithPlayer(px, py)) {
-            o->contactTimer++;
-            if (o->contactTimer >= 30)
-                visionBlockedByOctopus = true;
-        }
-        else {
-            o->contactTimer = 0;
-        }
-    }
-    p.visionReduced = visionBlockedByOctopus;
-
     // Boss 逻辑
     if (boss && boss->alive) {
         // 调用 Boss.cpp 内真实的召唤小兵接口
         boss->spawnMinions(sharks);
+        for (Shark* shark : sharks) {
+            if (shark) shark->applyStageScaling(stage);
+        }
     }
 
     // Boss 死亡结算
@@ -980,6 +1074,9 @@ bool GameManager::attackAt(int targetX, int targetY, Weapon* weapon)
         for (auto o : octopuses) {
             applyLineDamage(o);
         }
+        for (auto e : specialEnemies) {
+            applyLineDamage(e);
+        }
 
         if (hitAny) {
             weapon->consumeAttackDurability();
@@ -1033,6 +1130,9 @@ bool GameManager::attackAt(int targetX, int targetY, Weapon* weapon)
         }
         for (auto o : octopuses) {
             considerHitbox(o, o ? o->collider() : QRectF(), false);
+        }
+        for (auto e : specialEnemies) {
+            considerHitbox(e, e ? e->collider() : QRectF(), false);
         }
 
         if (hitEnemy) {
@@ -1108,6 +1208,23 @@ bool GameManager::attackAt(int targetX, int targetY, Weapon* weapon)
     }
 
     // 4. 判定墨鱼
+    if (!isHit) {
+        for (auto e : specialEnemies) {
+            if (!e || !e->alive) continue;
+            if (targetHitsEnemy(e, targetPos, playerPos, range)) {
+                e->takeDamage(damage);
+                applyHitKnockback(e, playerPos, 18.0);
+                if (!e->alive) {
+                    Player::instance().coins += e->dropValue;
+                    killCount++;
+                    recordEnemyDiscovery(fileManager, e);
+                }
+                isHit = true;
+                break;
+            }
+        }
+    }
+
     if (!isHit) {
         for (auto o : octopuses) {
             if (!o->alive) continue;
@@ -1214,6 +1331,7 @@ void GameManager::loadSave()
             spawnFish();
         }
     }
+
 }
 
 bool GameManager::isBossDefeated()
@@ -1260,6 +1378,17 @@ void GameManager::triggerShockWave() {
                 p.coins += o->dropValue;
                 killCount++;
                 recordEnemyDiscovery(fileManager, o);
+            }
+        }
+    }
+    for (auto e : specialEnemies) {
+        if (!e || !e->alive) continue;
+        if (area.intersects(e->collider())) {
+            e->takeDamage(50);
+            if (!e->alive) {
+                p.coins += e->dropValue;
+                killCount++;
+                recordEnemyDiscovery(fileManager, e);
             }
         }
     }

@@ -718,8 +718,8 @@ void drawOpeningBookFrame(QPainter& p, const QPixmap& book, qreal progress)
 }
 }
 
-EncyclopediaDialog::EncyclopediaDialog(QWidget* parent)
-    : QDialog(parent)
+EncyclopediaDialog::EncyclopediaDialog(int currentStage, QWidget* parent)
+    : QDialog(parent), m_currentStage(qBound(1, currentStage, 6))
 {
     setWindowTitle(QStringLiteral("航海图鉴"));
     setFixedSize(1280, 720);
@@ -767,6 +767,10 @@ void EncyclopediaDialog::buildCatalog()
 {
     auto stat = [](const QString& label, const QString& value) {
         return StatLine{ label, value };
+    };
+    const int enemyStage = qBound(1, m_currentStage, 6);
+    auto scaledEnemyValue = [enemyStage](int base, qreal growth) {
+        return QString::number(qRound(base * (1.0 + growth * (enemyStage - 1))));
     };
     auto unknown = [](const QString& id, const QString& tagText = QStringLiteral("未发现")) {
         Entry entry;
@@ -1093,9 +1097,10 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_shark.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_shark.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("鲨鱼")),
-          stat(QStringLiteral("HP"), QStringLiteral("100")),
-          stat(QStringLiteral("攻击"), QStringLiteral("10")),
-          stat(QStringLiteral("速度"), QStringLiteral("2.0")),
+          stat(QStringLiteral("HP"), scaledEnemyValue(100, 0.18)),
+          stat(QStringLiteral("攻击"), scaledEnemyValue(10, 0.13)),
+          stat(QStringLiteral("速度"), QString::number(2.0 * (1.0 + 0.035 * (enemyStage - 1)), 'f', 2)),
+          stat(QStringLiteral("当前关卡"), QStringLiteral("第 %1 关").arg(enemyStage)),
           stat(QStringLiteral("出现关卡"), QStringLiteral("1-1 近海浅滩")),
           stat(QStringLiteral("攻击方式"), QStringLiteral("追踪撕咬")),
           stat(QStringLiteral("击败收益"), QStringLiteral("30"))},
@@ -1105,9 +1110,11 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_swordfish.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_swordfish.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("剑鱼")),
-          stat(QStringLiteral("HP"), QStringLiteral("80")),
-          stat(QStringLiteral("攻击"), QStringLiteral("25")),
-          stat(QStringLiteral("速度"), QStringLiteral("1.5 / 冲刺 8.0")),
+          stat(QStringLiteral("HP"), scaledEnemyValue(80, 0.18)),
+          stat(QStringLiteral("攻击"), scaledEnemyValue(25, 0.13)),
+          stat(QStringLiteral("速度"), QStringLiteral("%1 / 冲刺 8.0")
+              .arg(QString::number(1.5 * (1.0 + 0.035 * (enemyStage - 1)), 'f', 2))),
+          stat(QStringLiteral("当前关卡"), QStringLiteral("第 %1 关").arg(enemyStage)),
           stat(QStringLiteral("出现关卡"), QStringLiteral("外海航道")),
           stat(QStringLiteral("攻击方式"), QStringLiteral("蓄力冲刺")),
           stat(QStringLiteral("击败收益"), QStringLiteral("50"))},
@@ -1117,21 +1124,50 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_octopus.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_octopus.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("墨鱼")),
-          stat(QStringLiteral("HP"), QStringLiteral("60")),
+          stat(QStringLiteral("HP"), scaledEnemyValue(60, 0.18)),
           stat(QStringLiteral("攻击"), QStringLiteral("0")),
-          stat(QStringLiteral("速度"), QStringLiteral("1.2")),
+          stat(QStringLiteral("速度"), QString::number(1.2 * (1.0 + 0.035 * (enemyStage - 1)), 'f', 2)),
+          stat(QStringLiteral("当前关卡"), QStringLiteral("第 %1 关").arg(enemyStage)),
           stat(QStringLiteral("出现关卡"), QStringLiteral("暗礁海域")),
           stat(QStringLiteral("攻击方式"), QStringLiteral("隐身 / 视野遮挡")),
           stat(QStringLiteral("击败收益"), QStringLiteral("40"))},
          QStringLiteral("会周期性隐身并靠近船只。它未必直接造成伤害，但会干扰航线判断。"),
          true, QColor("#2f7a45")},
-        unknown(QStringLiteral("004")),
-        unknown(QStringLiteral("005")),
+        {QStringLiteral("004"), QStringLiteral("电鳐"), QStringLiteral("已发现"),
+         QStringLiteral(":/FishingVoyage/encyclopedia/enemy_electric_ray.png"),
+         QStringLiteral(":/FishingVoyage/encyclopedia/enemy_electric_ray.png"),
+         {stat(QStringLiteral("名称"), QStringLiteral("电鳐")),
+          stat(QStringLiteral("HP"), scaledEnemyValue(120, 0.18)),
+          stat(QStringLiteral("攻击"), scaledEnemyValue(12, 0.13)),
+          stat(QStringLiteral("速度"), QString::number(1.35 * (1.0 + 0.035 * (enemyStage - 1)), 'f', 2)),
+          stat(QStringLiteral("当前关卡"), QStringLiteral("第 %1 关").arg(enemyStage)),
+          stat(QStringLiteral("出现关卡"), QStringLiteral("第 2 关起")),
+          stat(QStringLiteral("攻击方式"), QStringLiteral("蓄电范围脉冲")),
+          stat(QStringLiteral("附加效果"), QStringLiteral("短暂眩晕")),
+          stat(QStringLiteral("击败收益"), scaledEnemyValue(65, 0.15))},
+         QStringLiteral("靠近船只后会停下蓄电，电光环与实际脉冲范围一致。离开光环或利用蓄力时间穿过去。"),
+         true, QColor("#2f7a45")},
+        {QStringLiteral("005"), QStringLiteral("毒刺水母"), QStringLiteral("已发现"),
+         QStringLiteral(":/FishingVoyage/encyclopedia/enemy_poison_jellyfish.png"),
+         QStringLiteral(":/FishingVoyage/encyclopedia/enemy_poison_jellyfish.png"),
+         {stat(QStringLiteral("名称"), QStringLiteral("毒刺水母")),
+          stat(QStringLiteral("HP"), scaledEnemyValue(75, 0.18)),
+          stat(QStringLiteral("攻击"), scaledEnemyValue(5, 0.13)),
+          stat(QStringLiteral("速度"), QString::number(1.0 * (1.0 + 0.035 * (enemyStage - 1)), 'f', 2)),
+          stat(QStringLiteral("当前关卡"), QStringLiteral("第 %1 关").arg(enemyStage)),
+          stat(QStringLiteral("出现关卡"), QStringLiteral("第 3 关起")),
+          stat(QStringLiteral("攻击方式"), QStringLiteral("蓄力触须突刺")),
+          stat(QStringLiteral("附加效果"), QStringLiteral("持续中毒")),
+          stat(QStringLiteral("击败收益"), scaledEnemyValue(55, 0.15))},
+         QStringLiteral("靠近船只后会停下蓄力，随后沿当前朝向伸出有毒触须。攻击有明显前摇，命中后会中毒，水母也会立即后撤。"),
+         true, QColor("#2f7a45")},
         unknown(QStringLiteral("006"))
     };
     setEntryDiscoveryAt(enemy, 0, discoveryLog.isEnemyDiscovered(0));
     setEntryDiscoveryAt(enemy, 1, discoveryLog.isEnemyDiscovered(1));
     setEntryDiscoveryAt(enemy, 2, discoveryLog.isEnemyDiscovered(2));
+    setEntryDiscoveryAt(enemy, 3, discoveryLog.isEnemyDiscovered(3));
+    setEntryDiscoveryAt(enemy, 4, discoveryLog.isEnemyDiscovered(4));
     syncPageCount(enemy);
 
     CategoryPage boss;

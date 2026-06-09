@@ -146,6 +146,27 @@ void ObstacleManager::generateLevel(int level, int reefCount, int whirlpoolCount
                 break;
             }
         }
+        if (!tooClose) {
+            const int propStageStart = GameConfig::stageStartDistance(level);
+            const int propStageEnd = GameConfig::stageConfig(level).targetDistance;
+            const int propStageLength = qMax(1, propStageEnd - propStageStart);
+            const QRectF candidate(x - 75.0, y - 65.0, 150.0, 130.0);
+            for (int i = 0; i < GameConfig::TERRAIN_PROP_COUNT; ++i) {
+                const auto& prop = GameConfig::TERRAIN_PROPS[i];
+                if (prop.stage != level) continue;
+                const qreal propX = propStageStart + propStageLength * prop.stageRatio;
+                const QRectF propRect(
+                    propX - prop.colliderWidth / 2.0,
+                    prop.y - prop.colliderHeight / 2.0,
+                    prop.colliderWidth,
+                    prop.colliderHeight
+                );
+                if (candidate.intersects(propRect.adjusted(-70, -55, 70, 55))) {
+                    tooClose = true;
+                    break;
+                }
+            }
+        }
         if (tooClose) {
             continue;
         }

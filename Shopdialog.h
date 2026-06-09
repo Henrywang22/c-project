@@ -53,6 +53,7 @@ private:
         UpgradeWeaponTier,
         RepairWeapon,
         EmergencyRepair,
+        DiscardBackpackWeapon,
         PrevPage,
         NextPage,
         Close
@@ -153,6 +154,8 @@ private:
     void useFoodFromBackpack();
     void useShipRepairFromBackpack(int tier);
     void useEmergencyWeaponRepairFromBackpack();
+    void discardSelectedBackpackWeapon();
+    int weaponUpgradePrice(const Weapon* weapon, int tier) const;
     int askWeaponIndex(const QString& title, const QString& label, bool allowBroken = true);
     int askReplaceWeaponIndex();
     void selectWeaponFromBackpack(int index);

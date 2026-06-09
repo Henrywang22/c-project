@@ -9,6 +9,7 @@
 #include <cmath>
 
 #include "GameConfig.h"
+#include "GameUiDialog.h"
 #include "Player.h"
 #include "Weapon.h"
 #include "weathersystem.h"
@@ -22,9 +23,11 @@ constexpr QRect kEquipTabRect(250, 236, 190, 44);
 constexpr QRect kItemTabRect(452, 236, 190, 44);
 constexpr QRect kListPanelRect(202, 282, 378, 334);
 constexpr QRect kDetailPanelRect(596, 282, 512, 334);
-constexpr QRect kEquipButtonRect(284, 620, 210, 54);
-constexpr QRect kUseButtonRect(536, 620, 210, 54);
-constexpr QRect kCloseButtonRect(788, 620, 210, 54);
+constexpr QRect kEquipButtonRect(202, 620, 170, 54);
+constexpr QRect kUseButtonRect(386, 620, 170, 54);
+constexpr QRect kSlotButtonRect(570, 620, 170, 54);
+constexpr QRect kDiscardButtonRect(754, 620, 170, 54);
+constexpr QRect kCloseButtonRect(938, 620, 170, 54);
 constexpr QRect kFooterRect(390, 684, 500, 32);
 constexpr int kVisibleRows = 5;
 constexpr int kRowHeight = 62;
@@ -75,10 +78,14 @@ QFont titleFont(int size, int weight = QFont::Bold)
 
 QString weatherName()
 {
-    switch (WeatherSystem::instance().currentWeather()) {
+    WeatherSystem& weather = WeatherSystem::instance();
+    switch (weather.currentWeather()) {
     case WeatherType::SUNNY: return QStringLiteral("晴朗");
     case WeatherType::FOG: return QStringLiteral("雾天");
-    case WeatherType::STORM: return QStringLiteral("风暴");
+    case WeatherType::STORM:
+        return weather.rainLevel() == 1
+            ? QStringLiteral("小雨")
+            : (weather.rainLevel() == 2 ? QStringLiteral("中雨") : QStringLiteral("暴雨"));
     }
     return QStringLiteral("晴朗");
 }
@@ -1022,7 +1029,7 @@ void BackpackDialog::drawEquipmentList(QPainter& p)
             drawRowText(p, row, weaponIcon(QString::fromStdString(w->getTypeCode())),
                         QString::fromStdString(w->getName()),
                         QStringLiteral("耐久 %1  Lv.%2 +%3").arg(weaponDurabilityText(w)).arg(w->getTier()).arg(w->getEnhancementLevel()),
-                        weaponStatusText(i, w), weaponStatusColor(i, w), selected, w->isBroken());
+                        weaponStatusText(i, w), weaponStatusColor(i, w), selected, false);
             addZone(row, Action::SelectEquipment, i);
         } else {
             const QString title = locked ? QStringLiteral("未开放舱位") : QStringLiteral("空槽位");
@@ -1110,6 +1117,9 @@ void BackpackDialog::drawEquipmentDetail(QPainter& p)
     drawStatLine(p, y, QStringLiteral("攻击范围"), QString::number(w->getRange()));
     drawStatLine(p, y, QStringLiteral("耐久"), weaponDurabilityText(w));
     drawStatLine(p, y, QStringLiteral("状态"), weaponStatusText(m_selectedEquipmentIndex, w));
+    const int quickSlot = InventorySystem::instance().quickSlotForWeapon(m_selectedEquipmentIndex);
+    drawStatLine(p, y, QStringLiteral("快捷槽"),
+                 quickSlot >= 0 ? QString::number(quickSlot + 1) : QStringLiteral("未设置"));
 }
 
 void BackpackDialog::drawItemDetail(QPainter& p)
@@ -1165,6 +1175,10 @@ void BackpackDialog::drawActions(QPainter& p)
                    Action::Equip, -1, !w || w->isBroken() || selectedCurrent);
         drawButton(p, kUseButtonRect, m_buttonBlue, QStringLiteral("修理"),
                    Action::Repair, -1, !canRepairSelectedWeapon());
+        drawButton(p, kSlotButtonRect, m_buttonBlue, QStringLiteral("快捷槽"),
+                   Action::AssignSlot, -1, !w);
+        drawButton(p, kDiscardButtonRect, m_buttonRed, QStringLiteral("丢弃"),
+                   Action::Discard, -1, !w || !w->isBroken());
     } else {
         drawButton(p, kEquipButtonRect, m_buttonGreen, QStringLiteral("使用"),
                    Action::Use, -1, !canUseSelectedItem());
@@ -1627,6 +1641,56 @@ void BackpackDialog::handleAction(Action action, int index)
         }
         update();
         return;
+    case Action::AssignSlot: {
+        const Weapon* weapon = selectedWeapon();
+        if (!weapon) return;
+
+        QStringList options;
+        for (int slot = 0; slot < 6; ++slot) {
+            const int weaponIndex = inv.weaponIndexForQuickSlot(slot);
+            const Weapon* assigned =
+                weaponIndex >= 0 && weaponIndex < static_cast<int>(inv.weapons().size())
+                ? inv.weapons()[weaponIndex]
+                : nullptr;
+            options << QStringLiteral("%1号槽  %2")
+                           .arg(slot + 1)
+                           .arg(assigned ? QString::fromStdString(assigned->getName())
+                                         : QStringLiteral("空"));
+        }
+
+        const int slot = GameUi::selectWoodOption(
+            this,
+            QStringLiteral("设置快捷槽"),
+            QStringLiteral("选择该武器要放入的快捷位置"),
+            options
+        );
+        if (slot >= 0 && inv.assignWeaponToQuickSlot(m_selectedEquipmentIndex, slot)) {
+            setStatusMessage(QStringLiteral("已放入 %1 号快捷槽。").arg(slot + 1));
+        }
+        update();
+        return;
+    }
+    case Action::Discard: {
+        const Weapon* weapon = selectedWeapon();
+        if (!weapon || !weapon->isBroken()) {
+            setStatusMessage(QStringLiteral("只有已损坏的武器可以丢弃。"));
+            update();
+            return;
+        }
+
+        const int choice = GameUi::selectWoodOption(
+            this,
+            QStringLiteral("丢弃损坏武器"),
+            QStringLiteral("丢弃后无法找回：%1").arg(QString::fromStdString(weapon->getName())),
+            {QStringLiteral("确认丢弃")}
+        );
+        if (choice == 0 && inv.removeWeapon(m_selectedEquipmentIndex)) {
+            clampSelections();
+            setStatusMessage(QStringLiteral("损坏武器已丢弃。"));
+        }
+        update();
+        return;
+    }
     case Action::Use: {
         const ItemDef* item = selectedItemDef();
         if (!item) return;

@@ -57,6 +57,7 @@ private:
     bool  isFishing = false;
     int   fishClickCount = 0;
     int   fishTimer = 0;
+    qreal calibrationTargetRatio = 0.5;
     int   menuHoverIndex = -1;
     bool  promptButtonHover = false;
     bool  victoryScoreSaved = false;
@@ -113,6 +114,7 @@ private:
     void drawAttackProjectiles(QPainter& p);
     void drawHitFeedbacks(QPainter& p);
     void drawWaves(QPainter& p);
+    void drawWaveNotice(QPainter& p);
     void drawWeatherEffects(QPainter& p);
     void drawHUD(QPainter& p);
     void drawTestModeOverlay(QPainter& p);
@@ -130,6 +132,7 @@ private:
     void resetFishingState(bool releaseTarget = true);
     Config::FishingResult calibrationFishingResult() const;
     qreal calibrationMarkerRatio() const;
+    qreal calibrationTargetCenterRatio() const;
     qreal calibrationWindowSize(bool perfect) const;
     void finishFishing(Config::FishingResult result);
     void spawnGunProjectiles(const QPointF& targetWorld, const Weapon* weapon);
@@ -170,6 +173,8 @@ private:
     QPixmap imgShark;
     QPixmap imgSwordfish;
     QPixmap imgOctopus;
+    QPixmap imgElectricRay;
+    QPixmap imgPoisonJellyfish;
     QPixmap imgBoat;
     QPixmap imgSeaBackground;
     QPixmap imgWaveOverlay;
@@ -177,18 +182,24 @@ private:
     QPixmap imgObstacleWhirlpool;
     QPixmap imgStormLightning;
     QPixmap imgHarpoonProjectile;
+    QPixmap imgOctopusInk;
     QPixmap imgWoodNoticeBoard;
     QPixmap imgWoodNoticeButton;
     QPixmap imgNoticeIconInfo;
     QPixmap imgRainCluster;
+    QPixmap imgRainStreaks;
+    QPixmap imgFogEdgeOverlay;
     QPixmap imgLightningWarningRing;
     QPixmap imgBossWarningRing;
     QPixmap imgBossWarningRect;
     QPixmap imgShockwaveRing;
+    QPixmap imgElectricDischarge;
+    QPixmap imgJellyfishSting;
     QPixmap imgWeaponRangeRing;
     QPixmap imgHitSpark;
     QPixmap imgMuzzleFlash;
     QPixmap imgStageDecor[6];
+    QPixmap imgTerrainProps[12];
     QPixmap imgPlayerMove[5][4];
     QPixmap imgPlayerBoost[5][4];
     QPixmap imgMenuBackground;

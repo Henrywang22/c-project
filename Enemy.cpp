@@ -23,6 +23,53 @@ void Enemy::takeDamage(int damage)
     }
 }
 
+void Enemy::applyKnockback(const QPointF& origin, qreal strength)
+{
+    if (!alive || strength <= 0.0) return;
+
+    QPointF direction = position() - origin;
+    qreal length = std::sqrt(direction.x() * direction.x() + direction.y() * direction.y());
+    if (length <= 0.001) {
+        direction = QPointF(facingX >= 0.0f ? 1.0 : -1.0, 0.0);
+        length = 1.0;
+    }
+
+    const qreal firstStep = strength * 0.30;
+    m_knockbackVelocity = QPointF(
+        direction.x() / length * firstStep,
+        direction.y() / length * firstStep
+    );
+    m_knockbackFrames = 8;
+    advanceKnockback();
+}
+
+void Enemy::applyStageScaling(int stage)
+{
+    stage = qMax(1, stage);
+    if (m_scaledStage == stage) return;
+
+    const qreal hpScale = 1.0 + 0.18 * (stage - 1);
+    const qreal attackScale = 1.0 + 0.13 * (stage - 1);
+    const qreal speedScale = 1.0 + 0.035 * (stage - 1);
+    const qreal rewardScale = 1.0 + 0.15 * (stage - 1);
+    maxHp = qMax(1, qRound(maxHp * hpScale));
+    hp = maxHp;
+    attack = qMax(0, qRound(attack * attackScale));
+    speed = static_cast<float>(speed * speedScale);
+    dropValue = qMax(1, qRound(dropValue * rewardScale));
+    m_scaledStage = stage;
+}
+
+bool Enemy::advanceKnockback()
+{
+    if (m_knockbackFrames <= 0) return false;
+
+    setPosition(position() + m_knockbackVelocity);
+    m_knockbackVelocity *= 0.72;
+    --m_knockbackFrames;
+    return true;
+}
+
 QRectF Enemy::collider() const
 {
     return QRectF(
@@ -62,6 +109,7 @@ Shark::Shark(int x, int y) : Enemy(x, y)
 void Shark::update(Player& player)
 {
     if (!alive) return;
+    if (advanceKnockback()) return;
 
     if (biteCooldown > 0) {
         --biteCooldown;
@@ -207,6 +255,7 @@ Swordfish::Swordfish(int x, int y) : Enemy(x, y)
 void Swordfish::update(Player& player)
 {
     if (!alive) return;
+    if (advanceKnockback()) return;
 
     float dx = (float)(player.worldPos().x() - x);
     float dy = (float)(player.worldPos().y() - y);
@@ -246,27 +295,49 @@ void Swordfish::update(Player& player)
     case WINDUP:
         // 蓄力60帧后冲刺
         windupTimer++;
-        if (windupTimer >= 60) state = CHARGE;
+        if (windupTimer >= 60) {
+            state = CHARGE;
+            chargeTimer = 0;
+        }
         break;
 
     case CHARGE:
         // 高速冲刺
         posX += chargeVx;
         posY += chargeVy;
+        ++chargeTimer;
         if (std::fabs(chargeVx) > 0.01f) facingX = chargeVx < 0.0f ? -1.0f : 1.0f;
         x = (int)posX;
         y = (int)posY;
 
         // 冲出范围后重置
-        if (x < -100 || x > 6000 || y < 0 || y > 800) {
+        const bool reachedWorldEdge =
+            posX <= 0.0f || posX >= Config::GameConfig::RIGHT_BORDER ||
+            posY <= Config::GameConfig::TOP_BORDER ||
+            posY >= Config::GameConfig::BOTTOM_BORDER;
+        if (chargeTimer >= 72 || reachedWorldEdge) {
+            posX = qBound(0.0f, posX, static_cast<float>(Config::GameConfig::RIGHT_BORDER));
+            posY = qBound(static_cast<float>(Config::GameConfig::TOP_BORDER), posY,
+                          static_cast<float>(Config::GameConfig::BOTTOM_BORDER));
+            x = static_cast<int>(posX);
+            y = static_cast<int>(posY);
             state = IDLE;
-            posX = (float)(player.worldPos().x() + 300 + rand() % 200);
-            posY = (float)(80 + rand() % 580);
-            x = (int)posX;
-            y = (int)posY;
+            chargeTimer = 0;
+            patrolVx = chargeVx * 0.18f;
+            patrolVy = chargeVy * 0.18f;
         }
         break;
     }
+}
+
+void Swordfish::takeDamage(int damage)
+{
+    state = IDLE;
+    windupTimer = 0;
+    chargeTimer = 0;
+    chargeVx = 0.0f;
+    chargeVy = 0.0f;
+    Enemy::takeDamage(damage);
 }
 
 bool Swordfish::collidesWithPlayer(int px, int py)
@@ -316,26 +387,85 @@ Octopus::Octopus(int x, int y) : Enemy(x, y)
     dropValue = 40;
     posX = (float)x;
     posY = (float)y;
+    inkCooldownFrames = 90 + rand() % 91;
 }
 
 void Octopus::update(Player& player)
 {
     if (!alive) return;
+    if (advanceKnockback()) return;
 
     invisTimer++;
-
-    // 每300帧切换隐身状态
-    if (invisTimer % 300 == 0) {
-        isInvisible = !isInvisible;
+    if (inkCooldownFrames > 0) {
+        --inkCooldownFrames;
     }
 
-    // 隐身时不移动
-    if (isInvisible) return;
+    if (inkProjectileActive) {
+        inkProjectilePos += inkProjectileVelocity;
+        ++inkProjectileAge;
+        --inkProjectileLife;
 
-    // 可见时缓慢追踪玩家
+        const QRectF projectileRect(
+            inkProjectilePos.x() - 18.0,
+            inkProjectilePos.y() - 13.0,
+            36.0,
+            26.0
+        );
+        if (projectileRect.intersects(player.collider())) {
+            if (player.canTakeDamage()) {
+                player.applyInkBlind(3200);
+            }
+            inkProjectileActive = false;
+            inkCooldownFrames = 250;
+        }
+        else if (inkProjectileLife <= 0 ||
+                 inkProjectilePos.x() < 0 ||
+                 inkProjectilePos.x() > Config::GameConfig::RIGHT_BORDER ||
+                 inkProjectilePos.y() < Config::GameConfig::TOP_BORDER ||
+                 inkProjectilePos.y() > Config::GameConfig::BOTTOM_BORDER) {
+            inkProjectileActive = false;
+            inkCooldownFrames = 210;
+        }
+    }
+
+    if (!inkProjectileActive && inkWindupFrames <= 0) {
+        const int invisPhase = invisTimer % 420;
+        isInvisible = invisPhase >= 300 && invisPhase < 400;
+    }
+
     float dx = (float)(player.worldPos().x() - x);
     float dy = (float)(player.worldPos().y() - y);
     float dist = sqrt(dx * dx + dy * dy);
+
+    if (inkWindupFrames > 0) {
+        isInvisible = false;
+        --inkWindupFrames;
+        if (inkWindupFrames == 0 && dist > 0.001f) {
+            const QPointF direction(dx / dist, dy / dist);
+            inkProjectilePos = position() + direction * 28.0;
+            inkProjectileVelocity = direction * 6.2;
+            inkProjectileLife = 72;
+            inkProjectileAge = 0;
+            inkProjectileActive = true;
+        }
+        return;
+    }
+
+    if (!isInvisible && !inkProjectileActive &&
+        inkCooldownFrames <= 0 && dist >= 105.0f && dist <= 330.0f) {
+        inkWindupFrames = 42;
+        return;
+    }
+
+    if (isInvisible) {
+        if (dist > 190.0f && dist < 420.0f) {
+            posX += speed * 0.45f * dx / dist;
+            posY += speed * 0.45f * dy / dist;
+            x = (int)posX;
+            y = (int)posY;
+        }
+        return;
+    }
 
     if (dist > 0 && dist < 300) {
         const float vx = speed * dx / dist;
@@ -349,11 +479,6 @@ void Octopus::update(Player& player)
 
     if (posY < 60) { posY = 60;  y = (int)posY; }
     if (posY > 700) { posY = 700; y = (int)posY; }
-
-    // 离开玩家后重置接触计时
-    if (!collidesWithPlayer((int)player.worldPos().x(), (int)player.worldPos().y())) {
-        contactTimer = 0;
-    }
 }
 
 bool Octopus::collidesWithPlayer(int px, int py)
@@ -383,6 +508,257 @@ QPointF Octopus::position() const
 }
 
 void Octopus::setPosition(const QPointF& pos)
+{
+    posX = static_cast<float>(pos.x());
+    posY = static_cast<float>(pos.y());
+    x = static_cast<int>(std::round(posX));
+    y = static_cast<int>(std::round(posY));
+}
+
+ElectricRay::ElectricRay(int x, int y) : Enemy(x, y), posX(x), posY(y)
+{
+    hp = maxHp = 120;
+    attack = 12;
+    speed = 1.35f;
+    dropValue = 65;
+    pulseCooldownFrames = 100 + rand() % 100;
+}
+
+void ElectricRay::update(Player& player)
+{
+    if (!alive) return;
+    if (advanceKnockback()) return;
+    if (pulseCooldownFrames > 0) --pulseCooldownFrames;
+    if (pulseVisualFrames > 0) --pulseVisualFrames;
+
+    const QPointF delta = player.worldPos() - position();
+    const qreal dist = std::hypot(delta.x(), delta.y());
+    if (pulseWarningFrames > 0) {
+        --pulseWarningFrames;
+        if (pulseWarningFrames == 0) {
+            pulseVisualFrames = 14;
+            if (dist <= pulseRadius() && player.canTakeDamage()) {
+                player.takeDurabilityDamage(attack);
+                player.applyStun(650);
+            }
+            pulseCooldownFrames = 260;
+        }
+        return;
+    }
+
+    if (pulseCooldownFrames <= 0 && dist <= 210.0) {
+        pulseWarningFrames = 48;
+        if (std::fabs(delta.x()) > 0.01) {
+            facingX = delta.x() < 0.0 ? -1.0f : 1.0f;
+        }
+        return;
+    }
+
+    if (dist > 0.001 && dist < 520.0) {
+        const qreal approach = dist < 155.0 ? -0.45 : 1.0;
+        const qreal vx = delta.x() / dist * speed * approach;
+        const qreal vy = delta.y() / dist * speed * approach;
+        posX += static_cast<float>(vx);
+        posY += static_cast<float>(vy);
+        if (std::fabs(vx) > 0.01) facingX = vx < 0.0 ? -1.0f : 1.0f;
+    }
+    posX = qBound(0.0f, posX, static_cast<float>(Config::GameConfig::RIGHT_BORDER));
+    posY = qBound(static_cast<float>(Config::GameConfig::TOP_BORDER), posY,
+                  static_cast<float>(Config::GameConfig::BOTTOM_BORDER));
+    x = static_cast<int>(std::round(posX));
+    y = static_cast<int>(std::round(posY));
+}
+
+bool ElectricRay::collidesWithPlayer(int px, int py)
+{
+    const QRectF playerRect(
+        px - Config::GameConfig::PLAYER_COLLIDER_WIDTH / 2.0,
+        py - Config::GameConfig::PLAYER_COLLIDER_HEIGHT / 2.0,
+        Config::GameConfig::PLAYER_COLLIDER_WIDTH,
+        Config::GameConfig::PLAYER_COLLIDER_HEIGHT
+    );
+    return collider().intersects(playerRect);
+}
+
+QRectF ElectricRay::collider() const
+{
+    return QRectF(
+        x - Config::GameConfig::ELECTRIC_RAY_COLLIDER_WIDTH / 2.0,
+        y - Config::GameConfig::ELECTRIC_RAY_COLLIDER_HEIGHT / 2.0,
+        Config::GameConfig::ELECTRIC_RAY_COLLIDER_WIDTH,
+        Config::GameConfig::ELECTRIC_RAY_COLLIDER_HEIGHT
+    );
+}
+
+int ElectricRay::pulseAnimationFrame() const
+{
+    if (pulseVisualFrames > 0) {
+        return pulseVisualFrames > 7 ? 2 : 3;
+    }
+    if (pulseWarningFrames > 0) {
+        return pulseWarningFrames > 22 ? 0 : 1;
+    }
+    return 0;
+}
+
+qreal ElectricRay::pulseRadius() const
+{
+    return Config::GameConfig::ELECTRIC_RAY_PULSE_RADIUS;
+}
+
+QPointF ElectricRay::position() const
+{
+    return QPointF(posX, posY);
+}
+
+void ElectricRay::setPosition(const QPointF& pos)
+{
+    posX = static_cast<float>(pos.x());
+    posY = static_cast<float>(pos.y());
+    x = static_cast<int>(std::round(posX));
+    y = static_cast<int>(std::round(posY));
+}
+
+PoisonJellyfish::PoisonJellyfish(int x, int y)
+    : Enemy(x, y), posX(x), posY(y)
+{
+    hp = maxHp = 75;
+    attack = 5;
+    speed = 1.0f;
+    dropValue = 55;
+    driftPhase = static_cast<float>((rand() % 628) / 100.0);
+}
+
+void PoisonJellyfish::update(Player& player)
+{
+    if (!alive) return;
+    if (advanceKnockback()) return;
+    if (poisonCooldownFrames > 0) --poisonCooldownFrames;
+
+    driftPhase += 0.035f;
+    const QPointF delta = player.worldPos() - position();
+    const qreal dist = std::hypot(delta.x(), delta.y());
+
+    if (state == WINDUP) {
+        if (--stateTimer <= 0) {
+            state = STRIKE;
+            stateTimer = 16;
+            stingHit = false;
+        }
+    }
+    else if (state == STRIKE) {
+        const int frame = stingAnimationFrame();
+        if (!stingHit && frame >= 2 && stingCollider().intersects(player.collider())) {
+            if (player.canTakeDamage()) {
+                player.takeDurabilityDamage(attack);
+                player.applyPoison(4200);
+                player.applyRebound(QPointF(facingX * 1.35, 0.0));
+            }
+            stingHit = true;
+        }
+
+        if (--stateTimer <= 0) {
+            state = RETREAT;
+            stateTimer = Config::GameConfig::SHARK_RETREAT_FRAMES;
+            const qreal safeDist = qMax<qreal>(1.0, dist);
+            retreatVelocity = QPointF(
+                -delta.x() / safeDist * speed * Config::GameConfig::SHARK_RETREAT_SPEED_MULTIPLIER,
+                -delta.y() / safeDist * speed * Config::GameConfig::SHARK_RETREAT_SPEED_MULTIPLIER
+            );
+            poisonCooldownFrames = 190;
+        }
+    }
+    else if (state == RETREAT) {
+        posX += static_cast<float>(retreatVelocity.x());
+        posY += static_cast<float>(retreatVelocity.y());
+        if (std::fabs(retreatVelocity.x()) > 0.01) {
+            facingX = retreatVelocity.x() < 0.0 ? -1.0f : 1.0f;
+        }
+        if (--stateTimer <= 0) {
+            state = DRIFT;
+        }
+    }
+    else {
+        if (poisonCooldownFrames <= 0 && dist <= 154.0) {
+            state = WINDUP;
+            stateTimer = 30;
+            if (std::fabs(delta.x()) > 0.01) {
+                facingX = delta.x() < 0.0 ? -1.0f : 1.0f;
+            }
+        }
+        else if (dist > 0.001 && dist < 420.0) {
+            const qreal approach = dist < 112.0 ? -0.32 : 0.78;
+            const qreal vx = delta.x() / dist * speed * approach;
+            const qreal vy = delta.y() / dist * speed * approach;
+            posX += static_cast<float>(vx);
+            posY += static_cast<float>(vy);
+            if (std::fabs(vx) > 0.01) {
+                facingX = vx < 0.0 ? -1.0f : 1.0f;
+            }
+        }
+        posY += std::sin(driftPhase) * 0.34f;
+    }
+
+    posX = qBound(0.0f, posX, static_cast<float>(Config::GameConfig::RIGHT_BORDER));
+    posY = qBound(static_cast<float>(Config::GameConfig::TOP_BORDER), posY,
+                  static_cast<float>(Config::GameConfig::BOTTOM_BORDER));
+    x = static_cast<int>(std::round(posX));
+    y = static_cast<int>(std::round(posY));
+}
+
+bool PoisonJellyfish::collidesWithPlayer(int px, int py)
+{
+    const QRectF playerRect(
+        px - Config::GameConfig::PLAYER_COLLIDER_WIDTH / 2.0,
+        py - Config::GameConfig::PLAYER_COLLIDER_HEIGHT / 2.0,
+        Config::GameConfig::PLAYER_COLLIDER_WIDTH,
+        Config::GameConfig::PLAYER_COLLIDER_HEIGHT
+    );
+    return collider().intersects(playerRect);
+}
+
+QRectF PoisonJellyfish::collider() const
+{
+    return QRectF(
+        x - Config::GameConfig::JELLYFISH_COLLIDER_WIDTH / 2.0,
+        y - Config::GameConfig::JELLYFISH_COLLIDER_HEIGHT / 2.0,
+        Config::GameConfig::JELLYFISH_COLLIDER_WIDTH,
+        Config::GameConfig::JELLYFISH_COLLIDER_HEIGHT
+    );
+}
+
+QRectF PoisonJellyfish::stingCollider() const
+{
+    const qreal bodyHalf = Config::GameConfig::JELLYFISH_COLLIDER_WIDTH / 2.0;
+    const qreal reach = Config::GameConfig::JELLYFISH_STING_REACH;
+    const qreal left = facingX < 0.0f
+        ? x - bodyHalf - reach
+        : x + bodyHalf;
+    return QRectF(
+        left,
+        y - Config::GameConfig::JELLYFISH_STING_HEIGHT / 2.0,
+        reach,
+        Config::GameConfig::JELLYFISH_STING_HEIGHT
+    );
+}
+
+int PoisonJellyfish::stingAnimationFrame() const
+{
+    if (state == WINDUP) {
+        return stateTimer > 14 ? 0 : 1;
+    }
+    if (state == STRIKE) {
+        return qBound(1, (16 - stateTimer) / 4 + 1, 3);
+    }
+    return 0;
+}
+
+QPointF PoisonJellyfish::position() const
+{
+    return QPointF(posX, posY);
+}
+
+void PoisonJellyfish::setPosition(const QPointF& pos)
 {
     posX = static_cast<float>(pos.x());
     posY = static_cast<float>(pos.y());

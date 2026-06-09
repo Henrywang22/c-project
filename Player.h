@@ -52,6 +52,7 @@ public:
     void applyRebound(const QPointF& direction);
     void applySpeedReduction(qreal reduction);
     void resetSpeedReduction();
+    void applyInkBlind(int durationMs);
 
     // ==========================================
     // Boss 联调核心机制接口 (Dash & Shock)
@@ -184,6 +185,10 @@ private:
     int m_poisonDurationMs;
     QElapsedTimer m_poisonTimer;
     QElapsedTimer m_poisonTickTimer;
+
+    bool m_isInkBlinded;
+    int m_inkBlindDurationMs;
+    QElapsedTimer m_inkBlindTimer;
 
     Weapon* m_currentWeapon = nullptr;
 };

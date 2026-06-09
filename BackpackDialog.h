@@ -39,6 +39,8 @@ private:
         Equip,
         Use,
         Repair,
+        AssignSlot,
+        Discard,
         Close
     };
 

@@ -23,6 +23,8 @@ public:
     void spawnShark();
     void spawnSwordfish();
     void spawnOctopus();
+    void spawnElectricRay();
+    void spawnPoisonJellyfish();
     void spawnBoss(int stage);
     void checkCollisions();
     void clearStageEntities();
@@ -47,6 +49,7 @@ public:
     std::vector<Shark*>     sharks;
     std::vector<Swordfish*> swordfishes;
     std::vector<Octopus*>   octopuses;
+    std::vector<Enemy*>     specialEnemies;
     Boss* boss = nullptr;
 
     FileManager fileManager;
@@ -70,8 +73,10 @@ private:
     int stageBossTriggerX() const;
     void applyStageConfig();
     void updateLightningHazard(Player& player);
+    void recordVisibleEnemyDiscoveries();
     void resolveEntitySolids();
     int spawnTimer = 0;
     qreal m_deltaTime = 0.016;
     QElapsedTimer m_attackCooldown;
+    bool m_enemyDiscoveryRecorded[5] = {};
 };

@@ -38,6 +38,10 @@ void InventorySystem::initDefaultWeaponIfNeeded()
     }
 
     if (!m_weapons.empty()) {
+        m_quickWeaponSlots.fill(-1);
+        for (int i = 0; i < static_cast<int>(m_weapons.size()) && i < 6; ++i) {
+            m_quickWeaponSlots[i] = i;
+        }
         m_currentWeaponIndex = static_cast<int>(m_weapons.size()) > 1 ? 1 : 0;
         Player::instance().equipWeapon(m_weapons[m_currentWeaponIndex]);
     }
@@ -96,6 +100,10 @@ bool InventorySystem::useFood(Player& player)
 
 bool InventorySystem::useShipRepairKit(Player& player, int tier)
 {
+    if (player.durability() >= player.maxDurability) {
+        return false;
+    }
+
     if (tier == 1) {
         if (m_shipRepairT1Count <= 0) return false;
         player.restoreDurability(Config::HEAL_REPAIR_T1);
@@ -191,6 +199,13 @@ bool InventorySystem::addWeapon(Weapon* weapon)
     }
 
     m_weapons.push_back(weapon);
+    const int newIndex = static_cast<int>(m_weapons.size()) - 1;
+    for (int slot = 0; slot < 6; ++slot) {
+        if (m_quickWeaponSlots[slot] < 0) {
+            m_quickWeaponSlots[slot] = newIndex;
+            break;
+        }
+    }
 
     if (m_currentWeaponIndex < 0) {
         m_currentWeaponIndex = 0;
@@ -220,6 +235,49 @@ bool InventorySystem::replaceWeapon(int index, Weapon* weapon)
     return true;
 }
 
+bool InventorySystem::removeWeapon(int index)
+{
+    if (index < 0 || index >= static_cast<int>(m_weapons.size())) {
+        return false;
+    }
+
+    Weapon* weapon = m_weapons[index];
+    if (!weapon || !weapon->isBroken()) {
+        return false;
+    }
+
+    const bool removedCurrent = m_currentWeaponIndex == index;
+    delete weapon;
+    m_weapons.erase(m_weapons.begin() + index);
+
+    for (int& slotWeaponIndex : m_quickWeaponSlots) {
+        if (slotWeaponIndex == index) {
+            slotWeaponIndex = -1;
+        }
+        else if (slotWeaponIndex > index) {
+            --slotWeaponIndex;
+        }
+    }
+
+    if (m_currentWeaponIndex > index) {
+        --m_currentWeaponIndex;
+    }
+    else if (removedCurrent) {
+        m_currentWeaponIndex = -1;
+        for (int i = 0; i < static_cast<int>(m_weapons.size()); ++i) {
+            if (m_weapons[i] && !m_weapons[i]->isBroken()) {
+                m_currentWeaponIndex = i;
+                break;
+            }
+        }
+    }
+
+    Player::instance().equipWeapon(
+        m_currentWeaponIndex >= 0 ? m_weapons[m_currentWeaponIndex] : nullptr
+    );
+    return true;
+}
+
 bool InventorySystem::selectWeapon(int index)
 {
     if (index < 0 || index >= static_cast<int>(m_weapons.size())) {
@@ -236,6 +294,28 @@ bool InventorySystem::selectWeapon(int index)
     // 兼容旧接口
     Player::instance().equipWeapon(weapon);
 
+    return true;
+}
+
+bool InventorySystem::selectQuickWeaponSlot(int slotIndex)
+{
+    return selectWeapon(weaponIndexForQuickSlot(slotIndex));
+}
+
+bool InventorySystem::assignWeaponToQuickSlot(int weaponIndex, int slotIndex)
+{
+    if (weaponIndex < 0 || weaponIndex >= static_cast<int>(m_weapons.size()) ||
+        slotIndex < 0 || slotIndex >= 6 || !m_weapons[weaponIndex]) {
+        return false;
+    }
+
+    const int previousSlot = quickSlotForWeapon(weaponIndex);
+    const int displacedWeapon = m_quickWeaponSlots[slotIndex];
+    m_quickWeaponSlots[slotIndex] = weaponIndex;
+
+    if (previousSlot >= 0 && previousSlot != slotIndex) {
+        m_quickWeaponSlots[previousSlot] = displacedWeapon;
+    }
     return true;
 }
 
@@ -270,6 +350,32 @@ int InventorySystem::weaponCount() const
 int InventorySystem::maxWeaponCapacity() const
 {
     return Config::MAX_WEAPON_BACKPACK;
+}
+
+int InventorySystem::weaponIndexForQuickSlot(int slotIndex) const
+{
+    if (slotIndex < 0 || slotIndex >= 6) {
+        return -1;
+    }
+    const int weaponIndex = m_quickWeaponSlots[slotIndex];
+    return weaponIndex >= 0 && weaponIndex < static_cast<int>(m_weapons.size())
+        ? weaponIndex
+        : -1;
+}
+
+int InventorySystem::quickSlotForWeapon(int weaponIndex) const
+{
+    for (int slot = 0; slot < 6; ++slot) {
+        if (m_quickWeaponSlots[slot] == weaponIndex) {
+            return slot;
+        }
+    }
+    return -1;
+}
+
+const std::array<int, 6>& InventorySystem::quickWeaponSlots() const
+{
+    return m_quickWeaponSlots;
 }
 
 const std::vector<Weapon*>& InventorySystem::weapons() const
@@ -338,6 +444,7 @@ void InventorySystem::clearAll()
 
     m_weapons.clear();
     m_currentWeaponIndex = -1;
+    m_quickWeaponSlots.fill(-1);
 
     m_foodCount = 0;
     m_shipRepairT1Count = 0;
@@ -357,6 +464,7 @@ InventorySystem::InventoryLoadData InventorySystem::exportData() const
     data.emergencyWeaponRepairCount = m_emergencyWeaponRepairCount;
 
     data.currentWeaponIndex = m_currentWeaponIndex;
+    data.quickWeaponSlots = m_quickWeaponSlots;
 
     for (const Weapon* weapon : m_weapons) {
         if (!weapon) {
@@ -422,6 +530,29 @@ void InventorySystem::loadFromData(const InventoryLoadData& data)
     if (m_weapons.empty()) {
         initDefaultWeaponIfNeeded();
         return;
+    }
+
+    m_quickWeaponSlots.fill(-1);
+    std::vector<bool> usedWeaponIndices(m_weapons.size(), false);
+    for (int slot = 0; slot < 6; ++slot) {
+        const int weaponIndex = data.quickWeaponSlots[slot];
+        if (weaponIndex < 0 || weaponIndex >= static_cast<int>(m_weapons.size())) {
+            continue;
+        }
+        if (usedWeaponIndices[weaponIndex]) {
+            continue;
+        }
+        m_quickWeaponSlots[slot] = weaponIndex;
+        usedWeaponIndices[weaponIndex] = true;
+    }
+    for (int weaponIndex = 0; weaponIndex < static_cast<int>(m_weapons.size()) && weaponIndex < 6; ++weaponIndex) {
+        if (quickSlotForWeapon(weaponIndex) >= 0) continue;
+        for (int slot = 0; slot < 6; ++slot) {
+            if (m_quickWeaponSlots[slot] < 0) {
+                m_quickWeaponSlots[slot] = weaponIndex;
+                break;
+            }
+        }
     }
 
     if (data.currentWeaponIndex >= 0 &&

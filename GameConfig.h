@@ -270,6 +270,7 @@ namespace Config {
     namespace GameConfig {
         const qreal SHIP_BASE_SPEED = 150.0;
         const qreal SHIP_BOOST_SPEED = 250.0;
+        const qreal SHIP_BOOST_MULTIPLIER = 1.65;
         const int   MAX_STAMINA = 100;
         const int   BOOST_STAMINA_COST_PER_FRAME = 1;
         const int   TOP_BORDER = 60;
@@ -297,6 +298,17 @@ namespace Config {
         const int   OCTOPUS_VISUAL_HEIGHT = 76;
         const int   OCTOPUS_COLLIDER_WIDTH = 54;
         const int   OCTOPUS_COLLIDER_HEIGHT = 54;
+        const int   ELECTRIC_RAY_VISUAL_WIDTH = 124;
+        const int   ELECTRIC_RAY_VISUAL_HEIGHT = 96;
+        const int   ELECTRIC_RAY_COLLIDER_WIDTH = 94;
+        const int   ELECTRIC_RAY_COLLIDER_HEIGHT = 52;
+        const int   ELECTRIC_RAY_PULSE_RADIUS = 112;
+        const int   JELLYFISH_VISUAL_WIDTH = 118;
+        const int   JELLYFISH_VISUAL_HEIGHT = 76;
+        const int   JELLYFISH_COLLIDER_WIDTH = 78;
+        const int   JELLYFISH_COLLIDER_HEIGHT = 52;
+        const int   JELLYFISH_STING_REACH = 112;
+        const int   JELLYFISH_STING_HEIGHT = 58;
         const int   BOSS_COLLIDER_WIDTH = 80;
         const int   BOSS_COLLIDER_HEIGHT = 40;
         const int   TALI_CLONE_COLLIDER_WIDTH = 56;
@@ -314,7 +326,8 @@ namespace Config {
 
         const int   WEATHER_MIN_FRAMES = 1800;
         const int   WEATHER_MAX_FRAMES = 3600;
-        const qreal FOG_VISION_REDUCTION = 0.3;
+        const int   WEATHER_TRANSITION_FRAMES = 180;
+        const qreal FOG_VISION_REDUCTION = 0.48;
         const qreal STORM_FISH_VALUE_BONUS = 1.5;
         const int   STORM_LIGHTNING_DAMAGE = 15;
 
@@ -416,6 +429,103 @@ namespace Config {
         {
             return STAGE_CONFIGS[qBound(0, stage - 1, STAGE_COUNT - 1)];
         }
+
+        struct StageDecorPlacement {
+            int stage;
+            int imageIndex;
+            qreal stageRatio;
+            int y;
+            qreal scale;
+            int colliderWidth;
+            int colliderHeight;
+            int colliderOffsetY;
+            bool mirror;
+        };
+
+        inline const StageDecorPlacement STAGE_DECORS[] = {
+            {1, 0, 0.18, 118, 0.82, 300, 168, 34, false},
+            {1, 0, 0.78, 636, 0.70, 258, 142, -28, true},
+
+            {2, 1, 0.18, 132, 0.90, 332, 176, 30, false},
+            {2, 0, 0.64, 628, 0.62, 230, 126, -24, true},
+
+            {3, 2, 0.20, 612, 0.88, 326, 146, -22, false},
+            {3, 2, 0.68, 126, 0.70, 260, 118, 20, true},
+
+            {4, 3, 0.20, 620, 0.88, 322, 128, -20, false},
+            {4, 2, 0.60, 118, 0.68, 252, 114, 18, true},
+
+            {5, 4, 0.18, 128, 0.86, 316, 148, 22, false},
+            {5, 3, 0.58, 628, 0.72, 264, 108, -18, true},
+            {5, 4, 0.82, 610, 0.64, 236, 112, -18, true},
+
+            {6, 5, 0.16, 130, 0.78, 286, 112, 18, false},
+            {6, 0, 0.42, 618, 0.72, 266, 146, -24, true},
+            {6, 2, 0.68, 132, 0.68, 252, 114, 18, false},
+            {6, 5, 0.86, 604, 0.70, 258, 102, -18, true}
+        };
+
+        inline constexpr int STAGE_DECOR_COUNT =
+            static_cast<int>(sizeof(STAGE_DECORS) / sizeof(STAGE_DECORS[0]));
+
+        struct TerrainPropPlacement {
+            int stage;
+            int imageIndex;
+            qreal stageRatio;
+            int y;
+            qreal scale;
+            int colliderWidth;
+            int colliderHeight;
+            bool mirror;
+        };
+
+        inline const TerrainPropPlacement TERRAIN_PROPS[] = {
+            {1, 1, 0.32, 132, 0.52, 150, 70, false},
+            {1, 5, 0.50, 600, 0.38, 42, 42, false},
+            {1, 0, 0.64, 142, 0.48, 120, 100, true},
+            {1, 9, 0.88, 610, 0.42, 120, 55, false},
+
+            {2, 10, 0.12, 610, 0.48, 100, 95, false},
+            {2, 6, 0.34, 136, 0.48, 140, 90, false},
+            {2, 3, 0.50, 608, 0.44, 120, 75, true},
+            {2, 5, 0.68, 166, 0.34, 38, 38, false},
+            {2, 11, 0.88, 612, 0.42, 80, 80, false},
+
+            {3, 0, 0.10, 146, 0.48, 120, 100, false},
+            {3, 7, 0.28, 606, 0.44, 100, 100, true},
+            {3, 8, 0.44, 142, 0.48, 125, 70, false},
+            {3, 4, 0.62, 604, 0.45, 150, 90, false},
+            {3, 3, 0.80, 146, 0.44, 120, 75, true},
+            {3, 5, 0.91, 584, 0.34, 38, 38, false},
+
+            {4, 4, 0.12, 146, 0.46, 150, 90, true},
+            {4, 0, 0.27, 608, 0.50, 125, 105, false},
+            {4, 6, 0.42, 146, 0.48, 140, 90, true},
+            {4, 7, 0.57, 604, 0.46, 105, 105, false},
+            {4, 9, 0.72, 150, 0.44, 125, 58, true},
+            {4, 8, 0.87, 606, 0.50, 130, 72, false},
+
+            {5, 11, 0.09, 150, 0.44, 84, 84, false},
+            {5, 3, 0.22, 608, 0.48, 128, 80, false},
+            {5, 0, 0.36, 146, 0.52, 132, 108, true},
+            {5, 4, 0.50, 606, 0.48, 155, 94, false},
+            {5, 7, 0.64, 146, 0.48, 110, 108, true},
+            {5, 9, 0.77, 608, 0.46, 132, 60, false},
+            {5, 10, 0.90, 146, 0.50, 105, 100, false},
+
+            {6, 0, 0.08, 608, 0.54, 138, 112, false},
+            {6, 11, 0.18, 146, 0.46, 88, 88, true},
+            {6, 3, 0.30, 608, 0.50, 132, 82, false},
+            {6, 6, 0.42, 146, 0.50, 146, 94, true},
+            {6, 8, 0.54, 608, 0.52, 136, 76, false},
+            {6, 4, 0.66, 146, 0.50, 160, 96, true},
+            {6, 10, 0.78, 608, 0.52, 110, 104, false},
+            {6, 7, 0.88, 146, 0.50, 112, 110, true},
+            {6, 5, 0.94, 374, 0.36, 40, 40, false}
+        };
+
+        inline constexpr int TERRAIN_PROP_COUNT =
+            static_cast<int>(sizeof(TERRAIN_PROPS) / sizeof(TERRAIN_PROPS[0]));
 
         struct StageText {
             const char* name;

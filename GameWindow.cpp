@@ -13,6 +13,7 @@
 #include <QVector2D>
 #include <QPolygon>
 #include <QLinearGradient>
+#include <QRandomGenerator>
 #include <QStringList>
 #include <algorithm>
 #include <cmath>
@@ -375,20 +376,27 @@ GameWindow::GameWindow(QWidget* parent) : QWidget(parent)
     imgShark.load(":/FishingVoyage/enemies/shark.png");
     imgSwordfish.load(":/FishingVoyage/enemies/swordfish.png");
     imgOctopus.load(":/FishingVoyage/enemies/octopus.png");
+    imgElectricRay.load(":/FishingVoyage/enemies/electric_ray.png");
+    imgPoisonJellyfish.load(":/FishingVoyage/enemies/poison_jellyfish.png");
     imgBoat.load(":/FishingVoyage/player/rod_right.png");
     imgObstacleReef.load(":/FishingVoyage/obstacles/reef.png");
     imgWaveOverlay.load(":/FishingVoyage/water/wave_current_overlay.png");
     imgObstacleWhirlpool.load(":/FishingVoyage/obstacles/whirlpool_sheet.png");
     imgStormLightning.load(":/FishingVoyage/weather/storm_lightning_sheet.png");
     imgHarpoonProjectile.load(":/FishingVoyage/projectiles/harpoon.png");
+    imgOctopusInk.load(":/FishingVoyage/projectiles/octopus_ink.png");
     imgWoodNoticeBoard.load(":/FishingVoyage/ui/common/wood_notice_board.png");
     imgWoodNoticeButton.load(":/FishingVoyage/ui/common/wood_notice_button.png");
     imgNoticeIconInfo.load(":/FishingVoyage/ui/common/notice_icon_info.png");
     imgRainCluster.load(":/FishingVoyage/effects/rain_cluster.png");
+    imgRainStreaks.load(":/FishingVoyage/effects/rain_streaks.png");
+    imgFogEdgeOverlay.load(":/FishingVoyage/effects/fog_edge_overlay.png");
     imgLightningWarningRing.load(":/FishingVoyage/effects/lightning_warning_ring.png");
     imgBossWarningRing.load(":/FishingVoyage/effects/boss_warning_ring.png");
     imgBossWarningRect.load(":/FishingVoyage/effects/boss_warning_rect.png");
     imgShockwaveRing.load(":/FishingVoyage/effects/shockwave_ring.png");
+    imgElectricDischarge.load(":/FishingVoyage/effects/electric_discharge.png");
+    imgJellyfishSting.load(":/FishingVoyage/effects/jellyfish_sting.png");
     imgWeaponRangeRing.load(":/FishingVoyage/effects/weapon_range_ring.png");
     imgHitSpark.load(":/FishingVoyage/effects/hit_spark.png");
     imgMuzzleFlash.load(":/FishingVoyage/effects/muzzle_flash.png");
@@ -398,6 +406,18 @@ GameWindow::GameWindow(QWidget* parent) : QWidget(parent)
     imgStageDecor[3].load(":/FishingVoyage/decor/stage4_shipwreck.png");
     imgStageDecor[4].load(":/FishingVoyage/decor/stage5_ruins.png");
     imgStageDecor[5].load(":/FishingVoyage/decor/stage6_shoal.png");
+    imgTerrainProps[0].load(":/FishingVoyage/decor/props/rocks.png");
+    imgTerrainProps[1].load(":/FishingVoyage/decor/props/shoal.png");
+    imgTerrainProps[2].load(":/FishingVoyage/decor/props/palm_islet.png");
+    imgTerrainProps[3].load(":/FishingVoyage/decor/props/coral_outcrop.png");
+    imgTerrainProps[4].load(":/FishingVoyage/decor/props/shipwreck.png");
+    imgTerrainProps[5].load(":/FishingVoyage/decor/props/buoy.png");
+    imgTerrainProps[6].load(":/FishingVoyage/decor/props/broken_dock.png");
+    imgTerrainProps[7].load(":/FishingVoyage/decor/props/stone_arch.png");
+    imgTerrainProps[8].load(":/FishingVoyage/decor/props/reef_patch.png");
+    imgTerrainProps[9].load(":/FishingVoyage/decor/props/driftwood.png");
+    imgTerrainProps[10].load(":/FishingVoyage/decor/props/lighthouse_rock.png");
+    imgTerrainProps[11].load(":/FishingVoyage/decor/props/stone_marker.png");
     const char* weaponKeys[5] = { "rod", "net", "harpoon", "pistol", "shotgun" };
     const char* dirKeys[4] = { "up", "down", "left", "right" };
     for (int wi = 0; wi < 5; ++wi) {
@@ -554,43 +574,12 @@ void GameWindow::drawSea(QPainter& p)
 
 void GameWindow::drawStageDecorations(QPainter& p)
 {
-    struct DecorSpec {
-        int stage;
-        int imageIndex;
-        qreal stageRatio;
-        int y;
-        qreal scale;
-        bool mirror;
-    };
-
-    static const DecorSpec decors[] = {
-        {1, 0, 0.18, 118, 0.82, false},
-        {1, 0, 0.78, 636, 0.70, true},
-
-        {2, 1, 0.18, 132, 0.90, false},
-        {2, 0, 0.64, 628, 0.62, true},
-
-        {3, 2, 0.20, 612, 0.88, false},
-        {3, 2, 0.68, 126, 0.70, true},
-
-        {4, 3, 0.20, 620, 0.88, false},
-        {4, 2, 0.60, 118, 0.68, true},
-
-        {5, 4, 0.18, 128, 0.86, false},
-        {5, 3, 0.58, 628, 0.72, true},
-        {5, 4, 0.82, 610, 0.64, true},
-
-        {6, 5, 0.16, 130, 0.78, false},
-        {6, 0, 0.42, 618, 0.72, true},
-        {6, 2, 0.68, 132, 0.68, false},
-        {6, 5, 0.86, 604, 0.70, true},
-    };
-
     p.save();
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-    for (const DecorSpec& decor : decors) {
+    for (int i = 0; i < Config::GameConfig::STAGE_DECOR_COUNT; ++i) {
+        const auto& decor = Config::GameConfig::STAGE_DECORS[i];
         if (decor.stage != gm->stage) continue;
 
         const QPixmap& pixmap = imgStageDecor[qBound(0, decor.imageIndex, 5)];
@@ -624,6 +613,46 @@ void GameWindow::drawStageDecorations(QPainter& p)
             p.scale(-1, 1);
             QRect mirrored(-target.width() / 2, target.top(), target.width(), target.height());
             p.drawPixmap(mirrored, pixmap, pixmap.rect());
+            p.restore();
+        }
+        else {
+            p.drawPixmap(target, pixmap, pixmap.rect());
+        }
+    }
+
+    for (int i = 0; i < Config::GameConfig::TERRAIN_PROP_COUNT; ++i) {
+        const auto& prop = Config::GameConfig::TERRAIN_PROPS[i];
+        if (prop.stage != gm->stage || prop.imageIndex < 0 || prop.imageIndex >= 12) continue;
+
+        const QPixmap& pixmap = imgTerrainProps[prop.imageIndex];
+        if (pixmap.isNull()) continue;
+
+        const int stageStart = Config::GameConfig::stageStartDistance(prop.stage);
+        const int stageEnd = Config::GameConfig::stageConfig(prop.stage).targetDistance;
+        const int stageLength = qMax(1, stageEnd - stageStart);
+        const int worldX = stageStart + qRound(stageLength * prop.stageRatio);
+        const int screenX = worldX - gm->cameraX;
+        const int targetW = qMax(36, qRound(pixmap.width() * prop.scale));
+        const int targetH = qMax(28, qRound(pixmap.height() * prop.scale));
+        const QRect target(screenX - targetW / 2, prop.y - targetH / 2, targetW, targetH);
+
+        if (target.right() < -80 || target.left() > 1360) continue;
+
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0, 40, 72, 44));
+        p.drawEllipse(QRect(
+            target.left() + target.width() / 8,
+            target.bottom() - qMax(10, target.height() / 5),
+            target.width() * 3 / 4,
+            qMax(8, target.height() / 6)
+        ));
+
+        if (prop.mirror) {
+            p.save();
+            p.translate(target.center().x(), 0);
+            p.scale(-1, 1);
+            p.drawPixmap(QRect(-target.width() / 2, target.top(), target.width(), target.height()),
+                         pixmap, pixmap.rect());
             p.restore();
         }
         else {
@@ -898,12 +927,25 @@ void GameWindow::drawGame(QPainter& p)
     if (overlay.alpha() > 0)
         p.fillRect(0, 0, 1280, 720, overlay);
 
-    if (Player::instance().visionReduced) {
-        p.fillRect(0, 44, 1280, 676, QColor(0, 0, 0, 125));
+    if (Player::instance().visionReduced && !imgOctopusInk.isNull()) {
+        const int frameWidth = imgOctopusInk.width() / 4;
+        const QRect source(frameWidth * 3, 0, frameWidth, imgOctopusInk.height());
+        p.save();
+        p.setOpacity(0.72);
+        p.drawPixmap(QRect(-150, 35, 650, 330), imgOctopusInk, source);
+        p.drawPixmap(QRect(780, 20, 650, 330), imgOctopusInk, source);
+        p.setOpacity(0.58);
+        p.drawPixmap(QRect(-40, 430, 620, 310), imgOctopusInk, source);
+        p.drawPixmap(QRect(700, 420, 620, 320), imgOctopusInk, source);
+        p.setOpacity(0.42);
+        p.drawPixmap(QRect(300, -80, 330, 220), imgOctopusInk, source);
+        p.drawPixmap(QRect(610, 520, 300, 210), imgOctopusInk, source);
+        p.restore();
     }
 
     drawWeatherEffects(p);
     drawHUD(p);
+    drawWaveNotice(p);
     drawFishingHUD(p);
     drawTestModeOverlay(p);
     drawFloatingNotice(p);
@@ -1123,35 +1165,6 @@ void GameWindow::drawWaves(QPainter& p)
             p.fillRect(x + (rightward ? -34 : 16), y + 7, 24, 2, QColor(foam.red(), foam.green(), foam.blue(), warning ? 58 : 76));
         }
 
-        const QRect panel(rightward ? 28 : 1020, 84, 232, 66);
-        if (!imgWoodNoticeButton.isNull()) {
-            p.drawPixmap(panel.adjusted(-16, -16, 16, 14), imgWoodNoticeButton, imgWoodNoticeButton.rect());
-        } else {
-            p.fillRect(panel, QColor(76, 40, 18, warning ? 230 : 205));
-        }
-
-        const QString title = warning
-            ? QStringLiteral("\u6d77\u6d6a\u9884\u8b66")
-            : (rightward ? QStringLiteral("\u987a\u6d6a\u4e2d") : QStringLiteral("\u9006\u6d6a\u4e2d"));
-        const QString detail = warning
-            ? QStringLiteral("%1  %2s").arg(rightward ? QStringLiteral("\u987a\u6d6a") : QStringLiteral("\u9006\u6d6a"))
-                  .arg(QString::number(wave.warningRemainingMs() / 1000.0, 'f', 1))
-            : (rightward ? QStringLiteral("\u822a\u901f\u63d0\u5347") : QStringLiteral("\u822a\u901f\u964d\u4f4e"));
-
-        p.setFont(QFont("Microsoft YaHei", 12, QFont::Bold));
-        p.setPen(QColor(255, 237, 184));
-        p.drawText(panel.adjusted(14, 7, -14, -36), Qt::AlignLeft | Qt::AlignVCenter, title);
-        p.setFont(QFont("Microsoft YaHei", 10, QFont::Bold));
-        p.setPen(QColor(215, 238, 232));
-        p.drawText(panel.adjusted(14, 30, -14, -14), Qt::AlignLeft | Qt::AlignVCenter, detail);
-
-        const QRect bar(panel.left() + 14, panel.bottom() - 12, panel.width() - 28, 5);
-        p.fillRect(bar, QColor(8, 20, 28, 190));
-        const qreal remaining = warning ? (1.0 - progress) : (1.0 - wave.activeProgress());
-        const int fillW = qBound(0, static_cast<int>(bar.width() * remaining), bar.width());
-        p.fillRect(QRect(bar.left(), bar.top(), fillW, bar.height()), accent);
-        p.fillRect(bar.left(), bar.top(), bar.width(), 1, QColor(255, 255, 230, 60));
-
         p.restore();
         return;
     }
@@ -1232,7 +1245,7 @@ void GameWindow::drawWaves(QPainter& p)
         }
     }
 
-    const QRect panel(rightward ? 28 : 1020, 84, 232, 66);
+    const QRect panel(28, 138, 232, 66);
     if (!imgWoodNoticeButton.isNull()) {
         p.drawPixmap(panel.adjusted(-16, -16, 16, 14), imgWoodNoticeButton, imgWoodNoticeButton.rect());
     } else {
@@ -1264,9 +1277,54 @@ void GameWindow::drawWaves(QPainter& p)
     p.restore();
 }
 
+void GameWindow::drawWaveNotice(QPainter& p)
+{
+    WaveSystem& wave = WaveSystem::instance();
+    if (!wave.isWarningActive() && !wave.isWaveActive()) return;
+
+    const bool warning = wave.isWarningActive();
+    const bool rightward = wave.currentDirection() == WaveDirection::RIGHT;
+    const qreal progress = warning ? wave.warningProgress() : wave.activeProgress();
+    const QColor accent = rightward ? QColor(87, 226, 210, 214) : QColor(248, 186, 92, 220);
+    const QRect panel(28, 138, 232, 66);
+
+    p.save();
+    if (!imgWoodNoticeButton.isNull()) {
+        p.drawPixmap(panel.adjusted(-16, -16, 16, 14), imgWoodNoticeButton, imgWoodNoticeButton.rect());
+    } else {
+        p.fillRect(panel, QColor(76, 40, 18, warning ? 230 : 205));
+    }
+
+    const QString title = warning
+        ? QStringLiteral("\u6d77\u6d6a\u9884\u8b66")
+        : (rightward ? QStringLiteral("\u987a\u6d6a\u4e2d") : QStringLiteral("\u9006\u6d6a\u4e2d"));
+    const QString detail = warning
+        ? QStringLiteral("%1  %2s").arg(rightward ? QStringLiteral("\u987a\u6d6a") : QStringLiteral("\u9006\u6d6a"))
+              .arg(QString::number(wave.warningRemainingMs() / 1000.0, 'f', 1))
+        : (rightward ? QStringLiteral("\u822a\u901f\u63d0\u5347") : QStringLiteral("\u822a\u901f\u964d\u4f4e"));
+
+    p.setFont(QFont("Microsoft YaHei", 12, QFont::Bold));
+    p.setPen(QColor(255, 237, 184));
+    p.drawText(panel.adjusted(14, 7, -14, -36), Qt::AlignLeft | Qt::AlignVCenter, title);
+    p.setFont(QFont("Microsoft YaHei", 10, QFont::Bold));
+    p.setPen(QColor(215, 238, 232));
+    p.drawText(panel.adjusted(14, 30, -14, -14), Qt::AlignLeft | Qt::AlignVCenter, detail);
+
+    const QRect bar(panel.left() + 14, panel.bottom() - 12, panel.width() - 28, 5);
+    p.fillRect(bar, QColor(8, 20, 28, 190));
+    const qreal remaining = warning ? (1.0 - progress) : (1.0 - wave.activeProgress());
+    const int fillW = qBound(0, static_cast<int>(bar.width() * remaining), bar.width());
+    p.fillRect(QRect(bar.left(), bar.top(), fillW, bar.height()), accent);
+    p.fillRect(bar.left(), bar.top(), bar.width(), 1, QColor(255, 255, 230, 60));
+    p.restore();
+}
+
 void GameWindow::drawWeatherEffects(QPainter& p)
 {
-    if (WeatherSystem::instance().currentWeather() != WeatherType::STORM) {
+    WeatherSystem& weather = WeatherSystem::instance();
+    const qreal stormIntensity = weather.stormIntensity();
+    const qreal fogIntensity = weather.fogIntensity();
+    if (stormIntensity <= 0.01 && fogIntensity <= 0.01 && !weather.isTransitioning()) {
         return;
     }
 
@@ -1275,19 +1333,61 @@ void GameWindow::drawWeatherEffects(QPainter& p)
     p.save();
     p.setClipRect(0, 0, 1280, 720);
 
-    const int rainOffset = static_cast<int>((now / 24) % 260);
-    if (!imgRainCluster.isNull()) {
-        p.setOpacity(0.44);
-        for (int x = -240; x < 1500; x += 315) {
-            const int stagger = qAbs((x * 31) % 260);
-            for (int y = -360 + rainOffset - stagger; y < 820; y += 275) {
-                p.drawPixmap(QRect(x, y, 300, 245), imgRainCluster, imgRainCluster.rect());
-            }
+    if (stormIntensity > 0.01 && !imgRainStreaks.isNull()) {
+        const int frameCount = 4;
+        const int frameWidth = imgRainStreaks.width() / frameCount;
+        const int frame = static_cast<int>((now / 92) % frameCount);
+        const QRect source(frame * frameWidth, 0, frameWidth, imgRainStreaks.height());
+        const int rainLevel = qMax(1, weather.rainLevel());
+        p.save();
+        p.setOpacity((0.12 + rainLevel * 0.075) * qBound<qreal>(0.2, stormIntensity, 1.0));
+        p.drawPixmap(QRect(0, 0, 1280, 720), imgRainStreaks, source);
+        p.restore();
+    }
+
+    if (stormIntensity > 0.01 && !imgRainCluster.isNull()) {
+        const int frameCount = 4;
+        const int frameWidth = imgRainCluster.width() / frameCount;
+        const qint64 animationTick = now / 105;
+        p.setOpacity(0.34 + stormIntensity * 0.38);
+
+        const int rainLevel = qMax(1, weather.rainLevel());
+        const int baseSites = rainLevel == 1 ? 38 : (rainLevel == 2 ? 60 : 86);
+        const int siteCount = qMax(10, qRound(baseSites * qBound<qreal>(0.22, stormIntensity, 1.0)));
+        const int eventCycle = rainLevel == 1 ? 8 : (rainLevel == 2 ? 7 : 6);
+        p.setOpacity((0.30 + rainLevel * 0.08) + stormIntensity * 0.28);
+
+        const int worldSpacing = rainLevel == 1 ? 34 : (rainLevel == 2 ? 22 : 16);
+        const int firstWorldCell = gm ? (gm->cameraX - 80) / worldSpacing : -3;
+        for (int i = 0; i < siteCount; ++i) {
+            const int worldCell = firstWorldCell + i;
+            const int eventFrame = static_cast<int>(
+                (animationTick + qAbs(worldCell * 3)) % eventCycle);
+            if (eventFrame >= frameCount) continue;
+
+            const int worldX = worldCell * worldSpacing +
+                qAbs((worldCell * 47 + 19) % qMax(1, worldSpacing));
+            const int x = worldX - (gm ? gm->cameraX : 0);
+            if (x < -48 || x > 1328) continue;
+            const int y = 92 + qAbs((worldCell * 113 + 47) % 590);
+            const int width = 26 + qAbs(worldCell % 5) * 4 + rainLevel * 2;
+            const int height = qMax(16, width * 10 / 27);
+            const QRect source(eventFrame * frameWidth, 0, frameWidth, imgRainCluster.height());
+            const QRect target(x - width / 2, y - height / 2, width, height);
+            p.drawPixmap(target, imgRainCluster, source);
         }
         p.setOpacity(1.0);
     }
 
-    if (gm && (gm->lightningWarningActive || gm->lightningStrikeActive)) {
+    if (fogIntensity > 0.01 && !imgFogEdgeOverlay.isNull()) {
+        p.save();
+        p.setOpacity((0.20 + 0.58 * fogIntensity) *
+                     qBound<qreal>(0.0, fogIntensity, 1.0));
+        p.drawPixmap(QRect(0, 0, 1280, 720), imgFogEdgeOverlay);
+        p.restore();
+    }
+
+    if (stormIntensity > 0.85 && gm && (gm->lightningWarningActive || gm->lightningStrikeActive)) {
         const int sx = static_cast<int>(gm->lightningTarget.x()) - gm->cameraX;
         const int sy = static_cast<int>(gm->lightningTarget.y());
         const int radius = gm->lightningStrikeActive ? 90 : 82;
@@ -1303,11 +1403,33 @@ void GameWindow::drawWeatherEffects(QPainter& p)
     }
 
     const int lightningPulse = static_cast<int>((now / 120) % 34);
-    if (!imgStormLightning.isNull() && (lightningPulse < 4 || WeatherSystem::instance().shouldTriggerLightning())) {
+    if (stormIntensity > 0.85 && !imgStormLightning.isNull() &&
+        (lightningPulse < 4 || weather.shouldTriggerLightning())) {
         const int frameCount = 4;
         const int frameWidth = imgStormLightning.width() / frameCount;
         const int frame = qBound(0, lightningPulse, frameCount - 1);
         p.drawPixmap(QRect(0, 0, 1280, 720), imgStormLightning, QRect(frame * frameWidth, 0, frameWidth, imgStormLightning.height()));
+    }
+
+    if (weather.isTransitioning()) {
+        QString prompt;
+        switch (weather.incomingWeather()) {
+        case WeatherType::SUNNY: prompt = QStringLiteral("云层正在散开"); break;
+        case WeatherType::FOG: prompt = QStringLiteral("海雾正在靠近"); break;
+        case WeatherType::STORM: prompt = QStringLiteral("风雨正在逼近"); break;
+        }
+
+        const qreal progress = weather.transitionProgress();
+        const qreal fade = qMin<qreal>(1.0, qMin(progress * 5.0, (1.0 - progress) * 5.0));
+        p.setOpacity(0.42 + 0.48 * fade);
+        const QRect noticeRect(480, 132, 320, 62);
+        if (!imgWoodNoticeButton.isNull()) {
+            p.drawPixmap(noticeRect, imgWoodNoticeButton, imgWoodNoticeButton.rect());
+        }
+        p.setOpacity(1.0);
+        p.setFont(promptFont(17, QFont::Bold));
+        p.setPen(QColor(255, 235, 174));
+        p.drawText(noticeRect.adjusted(24, 0, -24, -4), Qt::AlignCenter, prompt);
     }
 
     p.restore();
@@ -1324,8 +1446,32 @@ void GameWindow::drawBossHazards(QPainter& p)
     for (const auto& h : gm->boss->getHazards()) {
         if (!h.active) continue;
 
+        if (h.type == BossHazardType::BombWarning ||
+            h.type == BossHazardType::BombHitbox) {
+            const int sx = qRound(h.position.x()) - gm->cameraX;
+            const int sy = qRound(h.position.y());
+            const qreal pulse = h.type == BossHazardType::BombWarning
+                ? 1.0 + 0.10 * ((QDateTime::currentMSecsSinceEpoch() / 95) % 3)
+                : 1.32;
+            const qreal diameter = qMax(h.rect.width(), h.rect.height()) * pulse;
+            const QPixmap& effect = h.type == BossHazardType::BombWarning
+                ? imgBossWarningRing
+                : imgShockwaveRing;
+            drawPixmapCentered(
+                p,
+                effect,
+                QPointF(sx, sy),
+                QSizeF(diameter, diameter),
+                h.type == BossHazardType::BombWarning ? 0.76 : 0.94
+            );
+            if (h.type == BossHazardType::BombHitbox && !imgHitSpark.isNull()) {
+                drawPixmapCentered(p, imgHitSpark, QPointF(sx, sy),
+                                   QSizeF(diameter * 0.72, diameter * 0.72), 0.9);
+            }
+            continue;
+        }
+
         const bool warningType =
-            h.type == BossHazardType::BombWarning ||
             h.type == BossHazardType::ElegyWarning ||
             h.type == BossHazardType::CloneExplosionWarning;
         const bool calmType =
@@ -1346,12 +1492,23 @@ void GameWindow::drawBossHazards(QPainter& p)
         else {
             QRectF rect = h.rect;
             rect.translate(-gm->cameraX, 0);
-            if (!imgBossWarningRect.isNull()) {
+            const bool showRectWarning =
+                h.type == BossHazardType::SoulSong ||
+                (h.type == BossHazardType::MouthStrike && h.damage <= 0) ||
+                (h.type == BossHazardType::MeleeHitbox && h.damage <= 0);
+            if (showRectWarning && !imgBossWarningRect.isNull()) {
                 p.save();
-                p.setOpacity(0.82);
+                p.setOpacity(h.type == BossHazardType::SoulSong ? 0.72 : 0.82);
                 p.setRenderHint(QPainter::SmoothPixmapTransform, true);
                 p.drawPixmap(rect.adjusted(-8, -8, 8, 8), imgBossWarningRect, QRectF(imgBossWarningRect.rect()));
                 p.restore();
+            }
+            else if ((h.type == BossHazardType::MouthStrike ||
+                      h.type == BossHazardType::MeleeHitbox) &&
+                     h.damage > 0 && !imgHitSpark.isNull()) {
+                drawPixmapCentered(p, imgHitSpark, rect.center(),
+                                   QSizeF(qMin<qreal>(96.0, rect.width()),
+                                          qMin<qreal>(72.0, rect.height())), 0.9);
             }
         }
     }
@@ -1377,6 +1534,30 @@ void GameWindow::drawSharks(QPainter& p)
             p.drawPixmap(target, pixmap, source);
         }
         return true;
+    };
+    auto drawInkFrame = [&](const QPointF& worldPos, int frame, const QSize& size, bool mirror, qreal opacity) {
+        if (imgOctopusInk.isNull()) return;
+        const int frameCount = 4;
+        const int frameWidth = imgOctopusInk.width() / frameCount;
+        const QRect source(qBound(0, frame, frameCount - 1) * frameWidth, 0,
+                           frameWidth, imgOctopusInk.height());
+        const QRect target(
+            static_cast<int>(worldPos.x()) - gm->cameraX - size.width() / 2,
+            static_cast<int>(worldPos.y()) - size.height() / 2,
+            size.width(),
+            size.height()
+        );
+        p.save();
+        p.setOpacity(opacity);
+        if (mirror) {
+            p.translate(target.right() + 1, target.top());
+            p.scale(-1, 1);
+            p.drawPixmap(QRect(0, 0, target.width(), target.height()), imgOctopusInk, source);
+        }
+        else {
+            p.drawPixmap(target, imgOctopusInk, source);
+        }
+        p.restore();
     };
 
     // 普通鲨鱼
@@ -1422,20 +1603,113 @@ void GameWindow::drawSharks(QPainter& p)
 
     // 墨鱼
     for (auto o : gm->octopuses) {
-        if (!o->alive || o->isInvisible) continue;
+        if (!o->alive) continue;
+        if (o->hasInkProjectile()) {
+            const QPointF velocity = o->inkProjectileDirection();
+            drawInkFrame(o->inkProjectilePosition(), o->inkAnimationFrame(), QSize(56, 34),
+                         velocity.x() < 0.0, 0.96);
+        }
         int screenX = o->x - gm->cameraX;
         if (screenX < -50 || screenX > 1330) continue;
 
         const int octopusW = Config::GameConfig::OCTOPUS_VISUAL_WIDTH;
         const int octopusH = Config::GameConfig::OCTOPUS_VISUAL_HEIGHT;
+        p.save();
+        if (o->isInvisible) p.setOpacity(0.18);
         if (!drawAnimatedEnemy(imgOctopus, QRect(screenX - octopusW / 2, o->y - octopusH / 2, octopusW, octopusH), o->x / 23, o->facingX > 0.0f)) {
             p.setBrush(QColor(150, 0, 150));
             p.setPen(Qt::NoPen);
             p.drawEllipse(screenX - octopusW / 2, o->y - octopusH / 2, octopusW, octopusH);
         }
+        p.restore();
+        if (o->isInkCharging()) {
+            const qreal pulse = 0.72 + 0.18 * ((QDateTime::currentMSecsSinceEpoch() / 90) % 2);
+            drawInkFrame(QPointF(o->x + o->facingX * 24.0f, o->y - 2.0),
+                         0, QSize(38, 30), o->facingX < 0.0f, pulse);
+        }
         p.fillRect(screenX - 18, o->y - octopusH / 2 - 10, 36, 5, QColor(60, 60, 60));
         int bw3 = (int)(36.0f * o->hp / o->maxHp);
         p.fillRect(screenX - 18, o->y - octopusH / 2 - 10, bw3, 5, QColor(220, 50, 50));
+    }
+
+    for (Enemy* enemy : gm->specialEnemies) {
+        if (!enemy || !enemy->alive) continue;
+        const int screenX = enemy->x - gm->cameraX;
+        if (screenX < -90 || screenX > 1370) continue;
+
+        if (ElectricRay* ray = dynamic_cast<ElectricRay*>(enemy)) {
+            if (ray->isPulseCharging() || ray->isPulseVisible()) {
+                const qreal pulseOpacity = ray->isPulseVisible()
+                    ? 0.92
+                    : 0.48 + 0.18 * ((QDateTime::currentMSecsSinceEpoch() / 90) % 2);
+                const qreal diameter = ray->pulseRadius() * 2.0;
+                const int frameCount = 4;
+                const int frameWidth = imgElectricDischarge.width() / frameCount;
+                const int frame = qBound(0, ray->pulseAnimationFrame(), frameCount - 1);
+                if (!imgElectricDischarge.isNull() && frameWidth > 0) {
+                    p.save();
+                    p.setOpacity(pulseOpacity);
+                    p.drawPixmap(
+                        QRectF(screenX - diameter / 2.0, ray->y - diameter / 2.0,
+                               diameter, diameter),
+                        imgElectricDischarge,
+                        QRectF(frame * frameWidth, 0, frameWidth, imgElectricDischarge.height())
+                    );
+                    p.restore();
+                }
+            }
+            const int visualW = Config::GameConfig::ELECTRIC_RAY_VISUAL_WIDTH;
+            const int visualH = Config::GameConfig::ELECTRIC_RAY_VISUAL_HEIGHT;
+            drawAnimatedEnemy(
+                imgElectricRay,
+                QRect(screenX - visualW / 2, ray->y - visualH / 2, visualW, visualH),
+                ray->x / 17,
+                ray->facingX > 0.0f
+            );
+        }
+        else if (PoisonJellyfish* jelly = dynamic_cast<PoisonJellyfish*>(enemy)) {
+            if (jelly->isStingCharging() || jelly->isStingActive()) {
+                const int frameCount = 4;
+                const int frameWidth = imgJellyfishSting.width() / frameCount;
+                const int frame = qBound(0, jelly->stingAnimationFrame(), frameCount - 1);
+                const qreal bodyHalf = Config::GameConfig::JELLYFISH_COLLIDER_WIDTH / 2.0;
+                const qreal reach = Config::GameConfig::JELLYFISH_STING_REACH;
+                const qreal centerX = screenX + jelly->facingX * (bodyHalf + reach / 2.0);
+                if (!imgJellyfishSting.isNull() && frameWidth > 0) {
+                    p.save();
+                    p.setOpacity(jelly->isStingActive() ? 0.96 : 0.72);
+                    p.translate(centerX, jelly->y);
+                    if (jelly->facingX > 0.0f) p.scale(-1.0, 1.0);
+                    p.drawPixmap(
+                        QRectF(-reach / 2.0, -Config::GameConfig::JELLYFISH_STING_HEIGHT / 2.0,
+                               reach, Config::GameConfig::JELLYFISH_STING_HEIGHT),
+                        imgJellyfishSting,
+                        QRectF(frame * frameWidth, 0, frameWidth, imgJellyfishSting.height())
+                    );
+                    p.restore();
+                }
+            }
+            const int visualW = Config::GameConfig::JELLYFISH_VISUAL_WIDTH;
+            const int visualH = Config::GameConfig::JELLYFISH_VISUAL_HEIGHT;
+            drawAnimatedEnemy(
+                imgPoisonJellyfish,
+                QRect(screenX - visualW / 2, jelly->y - visualH / 2, visualW, visualH),
+                jelly->x / 19,
+                jelly->facingX > 0.0f
+            );
+        }
+
+        const int barWidth = 42;
+        const int barY = dynamic_cast<ElectricRay*>(enemy)
+            ? enemy->y - Config::GameConfig::ELECTRIC_RAY_VISUAL_HEIGHT / 2 - 10
+            : enemy->y - Config::GameConfig::JELLYFISH_VISUAL_HEIGHT / 2 - 10;
+        p.fillRect(screenX - barWidth / 2, barY, barWidth, 5,
+                   QColor(50, 42, 52, 210));
+        const int healthWidth = enemy->maxHp > 0
+            ? qBound(0, barWidth * enemy->hp / enemy->maxHp, barWidth)
+            : 0;
+        p.fillRect(screenX - barWidth / 2, barY, healthWidth, 5,
+                   QColor(196, 55, 76));
     }
 
     // Boss
@@ -1916,10 +2190,14 @@ void GameWindow::drawHUD(QPainter& p)
             return empty;
         };
         auto weatherName = []() {
-            switch (WeatherSystem::instance().currentWeather()) {
+            WeatherSystem& weather = WeatherSystem::instance();
+            switch (weather.currentWeather()) {
             case WeatherType::SUNNY: return QString("晴朗");
             case WeatherType::FOG: return QString("大雾");
-            case WeatherType::STORM: return QString("暴风雨");
+            case WeatherType::STORM:
+                return weather.rainLevel() == 1
+                    ? QString("小雨")
+                    : (weather.rainLevel() == 2 ? QString("中雨") : QString("暴雨"));
             }
             return QString("未知");
         };
@@ -1970,9 +2248,22 @@ void GameWindow::drawHUD(QPainter& p)
         QRect equipmentPanel(18, 548, 145, 150);
         p.drawPixmap(equipmentPanel, imgHudEquipmentPanel);
         drawText(QRect(50, 558, 82, 20), "当前装备", 13, QColor(255, 225, 150));
-        drawPixmapFit(weaponIcon(currentWeapon), QRect(48, 595, 84, 72));
         const QString weaponName = currentWeapon ? QString::fromStdString(currentWeapon->getName()) : QString("无");
-        drawText(QRect(33, 665, 114, 22), weaponName, 13, QColor(70, 35, 12));
+        QFont equipmentNameFont("Microsoft YaHei");
+        equipmentNameFont.setPixelSize(11);
+        equipmentNameFont.setWeight(QFont::Bold);
+        const QString visibleWeaponName = QFontMetrics(equipmentNameFont)
+            .elidedText(weaponName, Qt::ElideRight, 112);
+        drawText(QRect(33, 578, 114, 18), visibleWeaponName, 11, QColor(255, 235, 178));
+        drawPixmapFit(weaponIcon(currentWeapon), QRect(50, 596, 80, 52));
+        const QString durabilityText = !currentWeapon
+            ? QStringLiteral("耐久 --")
+            : (currentWeapon->isInfiniteDurability()
+                ? QStringLiteral("耐久 无限")
+                : QStringLiteral("耐久 %1/%2")
+                    .arg(currentWeapon->getCurrentDur())
+                    .arg(currentWeapon->getMaxDur()));
+        drawText(QRect(31, 648, 118, 18), durabilityText, 10, QColor(245, 214, 145));
 
         QRect minimapPanel(1072, 105, 185, 168);
         p.drawPixmap(minimapPanel, imgHudMinimapPanel);
@@ -2054,17 +2345,28 @@ void GameWindow::drawHUD(QPainter& p)
         };
         HotbarEntry entries[6] = {};
         const auto& weapons = inv.weapons();
-        for (int i = 0; i < 3 && i < static_cast<int>(weapons.size()); ++i) {
-            if (!weapons[i]) continue;
-            const QPixmap& icon = weaponIcon(weapons[i]);
-            entries[i] = { &icon, -1, i == inv.currentWeaponIndex(), weapons[i]->isBroken() };
+        for (int slot = 0; slot < 6; ++slot) {
+            const int weaponIndex = inv.weaponIndexForQuickSlot(slot);
+            if (weaponIndex < 0 || weaponIndex >= static_cast<int>(weapons.size()) || !weapons[weaponIndex]) {
+                continue;
+            }
+            const QPixmap& icon = weaponIcon(weapons[weaponIndex]);
+            entries[slot] = {
+                &icon,
+                -1,
+                weaponIndex == inv.currentWeaponIndex(),
+                weapons[weaponIndex]->isBroken()
+            };
         }
 
-        int nextItemSlot = 3;
+        int nextItemSlot = 0;
         auto addItemSlot = [&](InventoryItemType type, const QPixmap& icon) {
-            if (nextItemSlot >= 6) return;
             const int count = inv.getItemCount(type);
             if (count <= 0) return;
+            while (nextItemSlot < 6 && entries[nextItemSlot].icon) {
+                ++nextItemSlot;
+            }
+            if (nextItemSlot >= 6) return;
             entries[nextItemSlot++] = { &icon, count, false, false };
         };
         addItemSlot(InventoryItemType::Food, imgIconItemFood);
@@ -2344,7 +2646,8 @@ void GameWindow::drawFishingHUD(QPainter& p)
             p.fillRect(ruler.adjusted(4, 4, -4, -4), QColor(174, 112, 49));
             const int normalHalf = static_cast<int>(ruler.width() * calibrationWindowSize(false));
             const int perfectHalf = static_cast<int>(ruler.width() * calibrationWindowSize(true));
-            const int centerX = ruler.left() + ruler.width() / 2;
+            const int centerX = ruler.left() + static_cast<int>(
+                ruler.width() * calibrationTargetCenterRatio());
             p.fillRect(centerX - normalHalf, ruler.top() + 3, normalHalf * 2, ruler.height() - 6, QColor(224, 180, 62));
             p.fillRect(centerX - perfectHalf, ruler.top() + 3, perfectHalf * 2, ruler.height() - 6, QColor(75, 197, 78));
             for (int x = ruler.left() + 12; x < ruler.right(); x += 18) {
@@ -2673,7 +2976,8 @@ void GameWindow::drawFishingHUD(QPainter& p)
 
         const int normalHalf = static_cast<int>(ruler.width() * calibrationWindowSize(false));
         const int perfectHalf = static_cast<int>(ruler.width() * calibrationWindowSize(true));
-        const int centerX = ruler.left() + ruler.width() / 2;
+        const int centerX = ruler.left() + static_cast<int>(
+            ruler.width() * calibrationTargetCenterRatio());
         p.fillRect(centerX - normalHalf, ruler.top() + 8, normalHalf * 2, ruler.height() - 16, QColor(232, 189, 69));
         p.fillRect(centerX - perfectHalf, ruler.top() + 8, perfectHalf * 2, ruler.height() - 16, QColor(78, 203, 82));
         p.fillRect(centerX - perfectHalf, ruler.top() + 8, perfectHalf * 2, 5, QColor(202, 255, 156, 120));
@@ -2807,22 +3111,30 @@ void GameWindow::openBackpack()
 
 void GameWindow::openEncyclopedia()
 {
-    EncyclopediaDialog dlg(this);
+    EncyclopediaDialog dlg(gm ? gm->stage : 1, this);
     dlg.exec();
 }
 
 bool GameWindow::useQuickItemSlot(int hotbarIndex)
 {
-    if (hotbarIndex < 3 || hotbarIndex > 5) {
+    if (hotbarIndex < 0 || hotbarIndex > 5) {
         return false;
     }
 
     InventorySystem& inv = InventorySystem::instance();
-    QVector<InventoryItemType> visibleItems;
+    if (inv.weaponIndexForQuickSlot(hotbarIndex) >= 0) {
+        return false;
+    }
+
+    int itemSlots[6] = { -1, -1, -1, -1, -1, -1 };
+    int nextEmptySlot = 0;
     auto addVisibleItem = [&](InventoryItemType type) {
-        if (inv.getItemCount(type) > 0) {
-            visibleItems.append(type);
+        if (inv.getItemCount(type) <= 0) return;
+        while (nextEmptySlot < 6 && inv.weaponIndexForQuickSlot(nextEmptySlot) >= 0) {
+            ++nextEmptySlot;
         }
+        if (nextEmptySlot >= 6) return;
+        itemSlots[nextEmptySlot++] = static_cast<int>(type);
     };
 
     addVisibleItem(InventoryItemType::Food);
@@ -2831,13 +3143,12 @@ bool GameWindow::useQuickItemSlot(int hotbarIndex)
     addVisibleItem(InventoryItemType::ShipRepairT3);
     addVisibleItem(InventoryItemType::EmergencyWeaponRepair);
 
-    const int itemIndex = hotbarIndex - 3;
-    if (itemIndex < 0 || itemIndex >= visibleItems.size()) {
+    if (itemSlots[hotbarIndex] < 0) {
         return false;
     }
 
     bool used = false;
-    switch (visibleItems[itemIndex]) {
+    switch (static_cast<InventoryItemType>(itemSlots[hotbarIndex])) {
     case InventoryItemType::Food:
         used = inv.useFood(Player::instance());
         break;
@@ -3128,6 +3439,7 @@ void GameWindow::resetFishingState(bool releaseTarget)
     targetFish = nullptr;
     fishClickCount = 0;
     fishTimer = 0;
+    calibrationTargetRatio = 0.5;
 }
 
 qreal GameWindow::calibrationMarkerRatio() const
@@ -3136,9 +3448,40 @@ qreal GameWindow::calibrationMarkerRatio() const
         return 0.5;
     }
 
-    const int sweepFrames = qMax(60, targetFish->catchTimeLimit / 2);
+    int sweepFrames = 112;
+    switch (targetFish->type) {
+    case Fish::SARDINE:
+    case Fish::ANCHOVY:
+        sweepFrames = 112;
+        break;
+    case Fish::CLOWNFISH:
+    case Fish::TUNA:
+        sweepFrames = 96;
+        break;
+    case Fish::MACKEREL:
+    case Fish::SEA_BREAM:
+        sweepFrames = 82;
+        break;
+    case Fish::DEEPSEAEEL:
+    case Fish::LANTERNFISH:
+    case Fish::GROUPER:
+        sweepFrames = 64;
+        break;
+    case Fish::SWORDFISH_FISH:
+    case Fish::KOI:
+        sweepFrames = 50;
+        break;
+    case Fish::CRYSTAL_FISH:
+        sweepFrames = 42;
+        break;
+    }
     const qreal phase = static_cast<qreal>(fishTimer % sweepFrames) / sweepFrames;
     return phase <= 0.5 ? phase * 2.0 : (1.0 - phase) * 2.0;
+}
+
+qreal GameWindow::calibrationTargetCenterRatio() const
+{
+    return qBound<qreal>(0.12, calibrationTargetRatio, 0.88);
 }
 
 qreal GameWindow::calibrationWindowSize(bool perfect) const
@@ -3193,7 +3536,8 @@ qreal GameWindow::calibrationWindowSize(bool perfect) const
 
 Config::FishingResult GameWindow::calibrationFishingResult() const
 {
-    const qreal distance = qAbs(calibrationMarkerRatio() - 0.5);
+    const qreal distance = qAbs(
+        calibrationMarkerRatio() - calibrationTargetCenterRatio());
     if (distance <= calibrationWindowSize(true)) {
         return Config::FishingResult::Perfect;
     }
@@ -3230,9 +3574,18 @@ void GameWindow::finishFishing(Config::FishingResult result)
             weapon->consumeFishingDurability(Config::FishingResult::Fail);
             notifyWeaponBrokenIfNeeded(weapon, wasBroken);
         }
-        targetFish->vx *= 3;
-        targetFish->vy *= 3;
-        targetFish->escaped = true;
+        QPointF fleeDir = targetFish->position() - Player::instance().worldPos();
+        qreal fleeLength = std::hypot(fleeDir.x(), fleeDir.y());
+        if (fleeLength < 0.001) {
+            fleeDir = QPointF(1.0, 0.0);
+            fleeLength = 1.0;
+        }
+        const qreal fleeSpeed = dynamic_cast<RareFish*>(targetFish) ? 4.2 : 3.0;
+        targetFish->vx = static_cast<float>(fleeDir.x() / fleeLength * fleeSpeed);
+        targetFish->vy = static_cast<float>(fleeDir.y() / fleeLength * fleeSpeed);
+        targetFish->fleeing = true;
+        targetFish->fleeCooldown = 150;
+        targetFish->lifeTimer = 0;
         resetFishingState(true);
         return;
     }
@@ -3454,15 +3807,14 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
         case Qt::Key_1:
         case Qt::Key_2:
         case Qt::Key_3:
-            if (!isFishing) {
-                InventorySystem::instance().selectWeapon(event->key() - Qt::Key_1);
-            }
-            break;
         case Qt::Key_4:
         case Qt::Key_5:
         case Qt::Key_6:
             if (!isFishing) {
-                useQuickItemSlot(event->key() - Qt::Key_1);
+                const int slot = event->key() - Qt::Key_1;
+                if (!InventorySystem::instance().selectQuickWeaponSlot(slot)) {
+                    useQuickItemSlot(slot);
+                }
             }
             break;
         case Qt::Key_Escape:
@@ -3551,7 +3903,7 @@ void GameWindow::mousePressEvent(QMouseEvent* event)
             update();
         }
         else if (buttonIndex == 3) {
-            state = STATE_INTRO;
+            GameUi::showOperationGuide(this);
             menuHoverIndex = -1;
             setCursor(Qt::ArrowCursor);
             update();
@@ -3631,6 +3983,10 @@ void GameWindow::mousePressEvent(QMouseEvent* event)
             isFishing = true;
             fishClickCount = 0;
             fishTimer = 0;
+            const qreal normalHalf = calibrationWindowSize(false);
+            const qreal margin = qBound<qreal>(0.12, normalHalf + 0.035, 0.34);
+            calibrationTargetRatio = margin +
+                QRandomGenerator::global()->generateDouble() * (1.0 - margin * 2.0);
             return;
         }
     }

@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <string>
+#include <array>
 #include "Weapon.h"
 #include "GameConfig.h"
 
@@ -57,6 +58,7 @@ public:
         int emergencyWeaponRepairCount = 0;
 
         int currentWeaponIndex = -1;
+        std::array<int, 6> quickWeaponSlots = { -1, -1, -1, -1, -1, -1 };
 
         std::vector<WeaponLoadData> weapons;
     };
@@ -95,14 +97,20 @@ public:
     bool canAddWeapon() const;
     bool addWeapon(Weapon* weapon);
     bool replaceWeapon(int index, Weapon* weapon);
+    bool removeWeapon(int index);
 
     bool selectWeapon(int index);
+    bool selectQuickWeaponSlot(int slotIndex);
+    bool assignWeaponToQuickSlot(int weaponIndex, int slotIndex);
     Weapon* currentWeapon();
     const Weapon* currentWeapon() const;
 
     int currentWeaponIndex() const;
     int weaponCount() const;
     int maxWeaponCapacity() const;
+    int weaponIndexForQuickSlot(int slotIndex) const;
+    int quickSlotForWeapon(int weaponIndex) const;
+    const std::array<int, 6>& quickWeaponSlots() const;
 
     const std::vector<Weapon*>& weapons() const;
 
@@ -124,6 +132,7 @@ private:
 private:
     std::vector<Weapon*> m_weapons;
     int m_currentWeaponIndex = -1;
+    std::array<int, 6> m_quickWeaponSlots = { -1, -1, -1, -1, -1, -1 };
 
     int m_foodCount = 0;
     int m_shipRepairT1Count = 0;

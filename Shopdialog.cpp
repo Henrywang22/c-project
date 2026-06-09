@@ -559,6 +559,14 @@ void ShopDialog::drawWeaponUpgradePage(QPainter& p)
                        stats, uiFont(11, QFont::Bold), QColor(54, 31, 12), Qt::AlignLeft | Qt::AlignTop);
     }
 
+    const Weapon* selectedWeapon =
+        !weapons.empty() && m_selectedWeaponIndex >= 0 &&
+        m_selectedWeaponIndex < static_cast<int>(weapons.size())
+        ? weapons[m_selectedWeaponIndex]
+        : nullptr;
+    const int tier1Price = weaponUpgradePrice(selectedWeapon, 1);
+    const int tier2Price = weaponUpgradePrice(selectedWeapon, 2);
+
     drawActionButton(p, QRect(kContentRect.left() + 238, kContentRect.bottom() - 104, 104, 42),
                      QStringLiteral("强化 I"), m_buttonGreen, ZoneAction::UpgradeWeaponTier, m_selectedWeaponIndex, 1,
                      weapons.empty());
@@ -569,8 +577,8 @@ void ShopDialog::drawWeaponUpgradePage(QPainter& p)
                      QStringLiteral("修复"), m_buttonGold, ZoneAction::RepairWeapon, m_selectedWeaponIndex, 0,
                      weapons.empty());
 
-    drawPrice(p, QRect(kContentRect.left() + 238, kContentRect.bottom() - 150, 96, 34), Config::PRICE_UPG_WEAPON_T1);
-    drawPrice(p, QRect(kContentRect.left() + 364, kContentRect.bottom() - 150, 96, 34), Config::PRICE_UPG_WEAPON_T2);
+    drawPrice(p, QRect(kContentRect.left() + 238, kContentRect.bottom() - 150, 96, 34), tier1Price);
+    drawPrice(p, QRect(kContentRect.left() + 364, kContentRect.bottom() - 150, 96, 34), tier2Price);
 }
 
 void ShopDialog::drawShipUpgradePage(QPainter& p)
@@ -634,39 +642,55 @@ void ShopDialog::drawBackpackPage(QPainter& p)
     for (int i = 0; i < static_cast<int>(weapons.size()); ++i) {
         const Weapon* w = weapons[i];
         if (!w) continue;
+        const QString weaponStatus = w->isBroken()
+            ? QStringLiteral("已损坏")
+            : (i == inv.currentWeaponIndex() ? QStringLiteral("已装备") : QStringLiteral("可装备"));
         drawRow(p, QRect(kContentRect.left() + 18, y, 220, 58),
                 QString::fromStdString(w->getName()),
                 QStringLiteral("耐久 %1/%2  +%3  范围%4").arg(w->getCurrentDur()).arg(w->getMaxDur()).arg(w->getEnhancementLevel()).arg(w->getRange()),
-                i == inv.currentWeaponIndex() ? QStringLiteral("已装备") : QStringLiteral("可装备"),
+                weaponStatus,
                 weaponIcon(QString::fromStdString(w->getTypeCode())),
-                i == inv.currentWeaponIndex(), w->isBroken(), ZoneAction::SelectBackpackWeapon, i);
+                i == m_selectedWeaponIndex, false, ZoneAction::SelectBackpackWeapon, i);
         y += 62;
     }
 
-    QRect itemPanel(kContentRect.left() + 258, kContentRect.top() + 78, 212, 188);
+    QRect itemPanel(kContentRect.left() + 258, kContentRect.top() + 78, 212, 142);
     drawPanelText(p, itemPanel, QStringLiteral("道具背包"),
-                  QStringLiteral("干粮：%1\n初级修理包：%2\n中级修理包：%3\n高级修理包：%4\n紧急装备修理：%5")
+                  QStringLiteral("干粮：%1\n初级船体修理包：%2\n中级船体修理包：%3\n高级船体修理包：%4\n紧急装备修理：%5")
                   .arg(inv.getItemCount(InventoryItemType::Food))
                   .arg(inv.getItemCount(InventoryItemType::ShipRepairT1))
                   .arg(inv.getItemCount(InventoryItemType::ShipRepairT2))
                   .arg(inv.getItemCount(InventoryItemType::ShipRepairT3))
                   .arg(inv.getItemCount(InventoryItemType::EmergencyWeaponRepair)));
 
+    const bool shipAtFullDurability =
+        Player::instance().durability() >= Player::instance().maxDurability;
     drawActionButton(p, QRect(kContentRect.left() + 272, kContentRect.bottom() - 94, 92, 38),
                      QStringLiteral("用干粮"), m_buttonBlue, ZoneAction::UseItem, 0,
                      static_cast<int>(InventoryItemType::Food), inv.getItemCount(InventoryItemType::Food) <= 0);
     drawActionButton(p, QRect(kContentRect.left() + 376, kContentRect.bottom() - 94, 92, 38),
-                     QStringLiteral("初级修理"), m_buttonBlue, ZoneAction::UseItem, 1,
-                     static_cast<int>(InventoryItemType::ShipRepairT1), inv.getItemCount(InventoryItemType::ShipRepairT1) <= 0);
+                     QStringLiteral("初级船修"), m_buttonBlue, ZoneAction::UseItem, 1,
+                     static_cast<int>(InventoryItemType::ShipRepairT1),
+                     shipAtFullDurability || inv.getItemCount(InventoryItemType::ShipRepairT1) <= 0);
     drawActionButton(p, QRect(kContentRect.left() + 272, kContentRect.bottom() - 48, 92, 38),
-                     QStringLiteral("中级修理"), m_buttonBlue, ZoneAction::UseItem, 2,
-                     static_cast<int>(InventoryItemType::ShipRepairT2), inv.getItemCount(InventoryItemType::ShipRepairT2) <= 0);
+                     QStringLiteral("中级船修"), m_buttonBlue, ZoneAction::UseItem, 2,
+                     static_cast<int>(InventoryItemType::ShipRepairT2),
+                     shipAtFullDurability || inv.getItemCount(InventoryItemType::ShipRepairT2) <= 0);
     drawActionButton(p, QRect(kContentRect.left() + 376, kContentRect.bottom() - 48, 92, 38),
-                     QStringLiteral("高级修理"), m_buttonBlue, ZoneAction::UseItem, 3,
-                     static_cast<int>(InventoryItemType::ShipRepairT3), inv.getItemCount(InventoryItemType::ShipRepairT3) <= 0);
+                     QStringLiteral("高级船修"), m_buttonBlue, ZoneAction::UseItem, 3,
+                     static_cast<int>(InventoryItemType::ShipRepairT3),
+                     shipAtFullDurability || inv.getItemCount(InventoryItemType::ShipRepairT3) <= 0);
     drawActionButton(p, QRect(kContentRect.left() + 272, kContentRect.bottom() - 140, 196, 38),
-                     QStringLiteral("紧急装备修理"), m_buttonGold, ZoneAction::EmergencyRepair, m_selectedWeaponIndex,
+                     QStringLiteral("修理所选装备"), m_buttonGold, ZoneAction::EmergencyRepair, m_selectedWeaponIndex,
                      0, inv.getItemCount(InventoryItemType::EmergencyWeaponRepair) <= 0 || weapons.empty());
+    const bool canDiscard =
+        m_selectedWeaponIndex >= 0 &&
+        m_selectedWeaponIndex < static_cast<int>(weapons.size()) &&
+        weapons[m_selectedWeaponIndex] &&
+        weapons[m_selectedWeaponIndex]->isBroken();
+    drawActionButton(p, QRect(kContentRect.left() + 272, kContentRect.bottom() - 186, 196, 38),
+                     QStringLiteral("丢弃损坏装备"), m_buttonRed,
+                     ZoneAction::DiscardBackpackWeapon, m_selectedWeaponIndex, 0, !canDiscard);
 }
 
 void ShopDialog::drawRightPanel(QPainter& p)
@@ -1045,6 +1069,10 @@ void ShopDialog::handleZone(const ClickZone& zone)
     case ZoneAction::EmergencyRepair:
         useEmergencyWeaponRepairFromBackpack();
         break;
+    case ZoneAction::DiscardBackpackWeapon:
+        m_selectedWeaponIndex = zone.index;
+        discardSelectedBackpackWeapon();
+        break;
     case ZoneAction::PrevPage:
         if (m_page > 0) --m_page;
         update();
@@ -1196,6 +1224,11 @@ void ShopDialog::buyWeaponUpgrade(int tier)
     QString weaponName = QStringLiteral("装备");
     if (index >= 0 && index < static_cast<int>(weapons.size()) && weapons[index]) {
         weaponName = QString::fromStdString(weapons[index]->getName());
+        price = weaponUpgradePrice(weapons[index], tier);
+    }
+    if (player.coins < price) {
+        showInsufficientCoinsNotice(price);
+        return;
     }
     player.coins -= price;
     InventorySystem::instance().upgradeWeapon(index, damageBoost, durabilityBoost);
@@ -1205,6 +1238,49 @@ void ShopDialog::buyWeaponUpgrade(int tier)
                    QStringLiteral("%1 强化完成。\n花费 %2 金币。")
                    .arg(weaponName)
                    .arg(price));
+}
+
+int ShopDialog::weaponUpgradePrice(const Weapon* weapon, int tier) const
+{
+    int basePrice = Config::PRICE_UPG_WEAPON_T1;
+    if (tier == 2) basePrice = Config::PRICE_UPG_WEAPON_T2;
+    else if (tier == 3) basePrice = Config::PRICE_UPG_WEAPON_T3;
+
+    const int level = weapon ? qMax(0, weapon->getEnhancementLevel()) : 0;
+    const qreal multiplier = 1.0 + level * 0.32 + level * level * 0.035;
+    return qMax(basePrice, qRound(basePrice * multiplier / 10.0) * 10);
+}
+
+void ShopDialog::discardSelectedBackpackWeapon()
+{
+    InventorySystem& inv = InventorySystem::instance();
+    const auto& weapons = inv.weapons();
+    if (m_selectedWeaponIndex < 0 ||
+        m_selectedWeaponIndex >= static_cast<int>(weapons.size()) ||
+        !weapons[m_selectedWeaponIndex] ||
+        !weapons[m_selectedWeaponIndex]->isBroken()) {
+        showShopNotice(QStringLiteral("无法丢弃"),
+                       QStringLiteral("只有已经损坏的装备可以从船舱背包丢弃。"));
+        return;
+    }
+
+    const QString weaponName =
+        QString::fromStdString(weapons[m_selectedWeaponIndex]->getName());
+    const int choice = GameUi::selectWoodOption(
+        this,
+        QStringLiteral("丢弃损坏装备"),
+        QStringLiteral("丢弃后无法找回：%1").arg(weaponName),
+        {QStringLiteral("确认丢弃")}
+    );
+    if (choice == 0 && inv.removeWeapon(m_selectedWeaponIndex)) {
+        m_selectedWeaponIndex = qMax(
+            0,
+            qMin(m_selectedWeaponIndex, inv.weaponCount() - 1)
+        );
+        refreshBackpackUI();
+        showShopNotice(QStringLiteral("已丢弃"),
+                       QStringLiteral("%1 已从船舱背包移除。").arg(weaponName));
+    }
 }
 
 void ShopDialog::buyShopWeaponRepair()
@@ -1249,7 +1325,14 @@ void ShopDialog::useFoodFromBackpack()
 
 void ShopDialog::useShipRepairFromBackpack(int tier)
 {
-    if (!InventorySystem::instance().useShipRepairKit(Player::instance(), tier)) {
+    Player& player = Player::instance();
+    if (player.durability() >= player.maxDurability) {
+        GameUi::showWoodMessage(this, QStringLiteral("无需修理"),
+                                QStringLiteral("船体耐久已经是满值，修理包没有被消耗。"));
+        return;
+    }
+
+    if (!InventorySystem::instance().useShipRepairKit(player, tier)) {
         GameUi::showWoodMessage(this, QStringLiteral("使用失败"), QStringLiteral("没有对应等级的船体修理包。"));
     }
     refreshBackpackUI();
@@ -1311,11 +1394,21 @@ int ShopDialog::askReplaceWeaponIndex()
 
 void ShopDialog::selectWeaponFromBackpack(int index)
 {
+    const auto& weapons = InventorySystem::instance().weapons();
+    if (index < 0 || index >= static_cast<int>(weapons.size()) || !weapons[index]) {
+        return;
+    }
+
+    m_selectedWeaponIndex = index;
+    if (weapons[index]->isBroken()) {
+        refreshBackpackUI();
+        return;
+    }
+
     if (!InventorySystem::instance().selectWeapon(index)) {
         GameUi::showWoodMessage(this, QStringLiteral("切换失败"), QStringLiteral("该装备已损坏或无法装备。"));
         return;
     }
-    m_selectedWeaponIndex = index;
     refreshBackpackUI();
 }
 

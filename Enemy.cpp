@@ -43,15 +43,39 @@ void Enemy::applyKnockback(const QPointF& origin, qreal strength)
     advanceKnockback();
 }
 
+void Enemy::applyStun(int durationMs)
+{
+    if (!alive || durationMs <= 0) return;
+    m_stunFrames = qMax(m_stunFrames, qMax(1, durationMs / 16));
+}
+
+void Enemy::applySlow(int durationMs, qreal movementMultiplier)
+{
+    if (!alive || durationMs <= 0) return;
+    m_slowFrames = qMax(m_slowFrames, qMax(1, durationMs / 16));
+    m_slowMultiplier = qMin(m_slowMultiplier,
+                            qBound<qreal>(0.2, movementMultiplier, 1.0));
+}
+
+bool Enemy::isStunned() const
+{
+    return m_stunFrames > 0;
+}
+
+bool Enemy::isSlowed() const
+{
+    return m_slowFrames > 0;
+}
+
 void Enemy::applyStageScaling(int stage)
 {
     stage = qMax(1, stage);
     if (m_scaledStage == stage) return;
 
-    const qreal hpScale = 1.0 + 0.18 * (stage - 1);
-    const qreal attackScale = 1.0 + 0.13 * (stage - 1);
-    const qreal speedScale = 1.0 + 0.035 * (stage - 1);
-    const qreal rewardScale = 1.0 + 0.15 * (stage - 1);
+    const qreal hpScale = 1.0 + 0.13 * (stage - 1);
+    const qreal attackScale = 1.0 + 0.10 * (stage - 1);
+    const qreal speedScale = 1.0 + 0.025 * (stage - 1);
+    const qreal rewardScale = 1.0 + 0.14 * (stage - 1);
     maxHp = qMax(1, qRound(maxHp * hpScale));
     hp = maxHp;
     attack = qMax(0, qRound(attack * attackScale));
@@ -62,12 +86,29 @@ void Enemy::applyStageScaling(int stage)
 
 bool Enemy::advanceKnockback()
 {
-    if (m_knockbackFrames <= 0) return false;
+    if (m_knockbackFrames > 0) {
+        setPosition(position() + m_knockbackVelocity);
+        m_knockbackVelocity *= 0.72;
+        --m_knockbackFrames;
+        return true;
+    }
 
-    setPosition(position() + m_knockbackVelocity);
-    m_knockbackVelocity *= 0.72;
-    --m_knockbackFrames;
-    return true;
+    if (m_stunFrames > 0) {
+        --m_stunFrames;
+        return true;
+    }
+
+    if (m_slowFrames > 0) {
+        --m_slowFrames;
+        ++m_slowPhase;
+        const bool skipMovement = m_slowMultiplier <= 0.42
+            ? (m_slowPhase % 3 != 0)
+            : (m_slowPhase % 2 == 0);
+        if (m_slowFrames == 0) m_slowMultiplier = 1.0;
+        if (skipMovement) return true;
+    }
+
+    return false;
 }
 
 QRectF Enemy::collider() const
@@ -119,7 +160,7 @@ void Shark::update(Player& player)
         --retreatTimer;
         posX += retreatVx;
         posY += retreatVy;
-        if (std::fabs(retreatVx) > 0.01f) facingX = retreatVx < 0.0f ? -1.0f : 1.0f;
+        if (std::fabs(retreatVx) > 0.30f) facingX = retreatVx < 0.0f ? -1.0f : 1.0f;
         x = (int)posX;
         y = (int)posY;
 
@@ -145,7 +186,7 @@ void Shark::update(Player& player)
         const float vy = speed * dy / dist;
         posX += vx;
         posY += vy;
-        if (std::fabs(vx) > 0.01f) facingX = vx < 0.0f ? -1.0f : 1.0f;
+        if (std::fabs(vx) > 0.30f) facingX = vx < 0.0f ? -1.0f : 1.0f;
         x = (int)posX;
         y = (int)posY;
     }
@@ -249,7 +290,7 @@ Swordfish::Swordfish(int x, int y) : Enemy(x, y)
     float angle = (rand() % 360) * 3.14159f / 180.0f;
     patrolVx = cos(angle) * speed;
     patrolVy = sin(angle) * speed;
-    if (std::fabs(patrolVx) > 0.01f) facingX = patrolVx < 0.0f ? -1.0f : 1.0f;
+    if (std::fabs(patrolVx) > 0.30f) facingX = patrolVx < 0.0f ? -1.0f : 1.0f;
 }
 
 void Swordfish::update(Player& player)
@@ -267,7 +308,7 @@ void Swordfish::update(Player& player)
         patrolTimer++;
         posX += patrolVx;
         posY += patrolVy;
-        if (std::fabs(patrolVx) > 0.01f) facingX = patrolVx < 0.0f ? -1.0f : 1.0f;
+        if (std::fabs(patrolVx) > 0.30f) facingX = patrolVx < 0.0f ? -1.0f : 1.0f;
         x = (int)posX;
         y = (int)posY;
 
@@ -276,7 +317,7 @@ void Swordfish::update(Player& player)
             float angle = (rand() % 360) * 3.14159f / 180.0f;
             patrolVx = cos(angle) * speed;
             patrolVy = sin(angle) * speed;
-            if (std::fabs(patrolVx) > 0.01f) facingX = patrolVx < 0.0f ? -1.0f : 1.0f;
+            if (std::fabs(patrolVx) > 0.30f) facingX = patrolVx < 0.0f ? -1.0f : 1.0f;
         }
 
         // 发现玩家（距离小于200）时进入蓄力状态
@@ -285,7 +326,7 @@ void Swordfish::update(Player& player)
             windupTimer = 0;
             chargeVx = dx / dist * 8.0f;
             chargeVy = dy / dist * 8.0f;
-            if (std::fabs(chargeVx) > 0.01f) facingX = chargeVx < 0.0f ? -1.0f : 1.0f;
+            if (std::fabs(chargeVx) > 0.30f) facingX = chargeVx < 0.0f ? -1.0f : 1.0f;
         }
 
         if (posY < 60) { posY = 60;  patrolVy = abs(patrolVy); }
@@ -306,7 +347,7 @@ void Swordfish::update(Player& player)
         posX += chargeVx;
         posY += chargeVy;
         ++chargeTimer;
-        if (std::fabs(chargeVx) > 0.01f) facingX = chargeVx < 0.0f ? -1.0f : 1.0f;
+        if (std::fabs(chargeVx) > 0.30f) facingX = chargeVx < 0.0f ? -1.0f : 1.0f;
         x = (int)posX;
         y = (int)posY;
 
@@ -472,7 +513,7 @@ void Octopus::update(Player& player)
         const float vy = speed * dy / dist;
         posX += vx;
         posY += vy;
-        if (std::fabs(vx) > 0.01f) facingX = vx < 0.0f ? -1.0f : 1.0f;
+        if (std::fabs(vx) > 0.30f) facingX = vx < 0.0f ? -1.0f : 1.0f;
         x = (int)posX;
         y = (int)posY;
     }
@@ -548,7 +589,7 @@ void ElectricRay::update(Player& player)
 
     if (pulseCooldownFrames <= 0 && dist <= 210.0) {
         pulseWarningFrames = 48;
-        if (std::fabs(delta.x()) > 0.01) {
+        if (std::fabs(delta.x()) > 42.0) {
             facingX = delta.x() < 0.0 ? -1.0f : 1.0f;
         }
         return;
@@ -560,7 +601,7 @@ void ElectricRay::update(Player& player)
         const qreal vy = delta.y() / dist * speed * approach;
         posX += static_cast<float>(vx);
         posY += static_cast<float>(vy);
-        if (std::fabs(vx) > 0.01) facingX = vx < 0.0 ? -1.0f : 1.0f;
+        if (std::fabs(vx) > 0.30) facingX = vx < 0.0 ? -1.0f : 1.0f;
     }
     posX = qBound(0.0f, posX, static_cast<float>(Config::GameConfig::RIGHT_BORDER));
     posY = qBound(static_cast<float>(Config::GameConfig::TOP_BORDER), posY,
@@ -593,7 +634,7 @@ QRectF ElectricRay::collider() const
 int ElectricRay::pulseAnimationFrame() const
 {
     if (pulseVisualFrames > 0) {
-        return pulseVisualFrames > 7 ? 2 : 3;
+        return 2;
     }
     if (pulseWarningFrames > 0) {
         return pulseWarningFrames > 22 ? 0 : 1;
@@ -642,7 +683,7 @@ void PoisonJellyfish::update(Player& player)
     if (state == WINDUP) {
         if (--stateTimer <= 0) {
             state = STRIKE;
-            stateTimer = 16;
+            stateTimer = 26;
             stingHit = false;
         }
     }
@@ -671,7 +712,7 @@ void PoisonJellyfish::update(Player& player)
     else if (state == RETREAT) {
         posX += static_cast<float>(retreatVelocity.x());
         posY += static_cast<float>(retreatVelocity.y());
-        if (std::fabs(retreatVelocity.x()) > 0.01) {
+        if (std::fabs(retreatVelocity.x()) > 0.30) {
             facingX = retreatVelocity.x() < 0.0 ? -1.0f : 1.0f;
         }
         if (--stateTimer <= 0) {
@@ -682,7 +723,7 @@ void PoisonJellyfish::update(Player& player)
         if (poisonCooldownFrames <= 0 && dist <= 154.0) {
             state = WINDUP;
             stateTimer = 30;
-            if (std::fabs(delta.x()) > 0.01) {
+            if (std::fabs(delta.x()) > 36.0) {
                 facingX = delta.x() < 0.0 ? -1.0f : 1.0f;
             }
         }
@@ -692,7 +733,7 @@ void PoisonJellyfish::update(Player& player)
             const qreal vy = delta.y() / dist * speed * approach;
             posX += static_cast<float>(vx);
             posY += static_cast<float>(vy);
-            if (std::fabs(vx) > 0.01) {
+            if (std::fabs(vx) > 0.30) {
                 facingX = vx < 0.0 ? -1.0f : 1.0f;
             }
         }
@@ -748,7 +789,7 @@ int PoisonJellyfish::stingAnimationFrame() const
         return stateTimer > 14 ? 0 : 1;
     }
     if (state == STRIKE) {
-        return qBound(1, (16 - stateTimer) / 4 + 1, 3);
+        return qBound(1, (26 - stateTimer) / 7 + 1, 3);
     }
     return 0;
 }

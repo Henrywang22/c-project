@@ -29,6 +29,10 @@ public:
     QRectF collider() const;
     QPointF position() const;
     void setPosition(const QPointF& pos);
+    void applyStun(int durationMs);
+    void applySlow(int durationMs, qreal movementMultiplier);
+    bool isStunned() const { return stunFrames > 0; }
+    qreal statusMovementMultiplier() const;
 
     int x, y;
     float vx, vy;
@@ -45,11 +49,16 @@ public:
     int maxLife;
     bool fleeing = false;
     int fleeCooldown = 0;
+    float facingX = 1.0f;
 
 protected:
     float posX, posY;
     int moveTimer = 0;
+    int stunFrames = 0;
+    int slowFrames = 0;
+    qreal slowMultiplier = 1.0;
     void changeDirection();
+    bool tickStatusEffects();
 };
 
 class CommonFish : public Fish {

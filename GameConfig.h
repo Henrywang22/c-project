@@ -223,30 +223,29 @@ namespace Config {
     const int PRICE_UPG_STAMINA_T3 = 450;
     const int VAL_UPG_STAMINA_T3 = 100;
 
-    const int PRICE_UPG_WEAPON_T1 = 80;
+    const int PRICE_UPG_WEAPON_T1 = 100;
     const int VAL_UPG_WPN_DMG_T1 = 5;
-    const int VAL_UPG_WPN_DUR_T1 = 10;
+    const int VAL_UPG_WPN_DUR_T1 = 8;
 
-    const int PRICE_UPG_WEAPON_T2 = 180;
-    const int VAL_UPG_WPN_DMG_T2 = 15;
-    const int VAL_UPG_WPN_DUR_T2 = 25;
+    const int PRICE_UPG_WEAPON_T2 = 240;
+    const int VAL_UPG_WPN_DMG_T2 = 12;
+    const int VAL_UPG_WPN_DUR_T2 = 18;
 
-    const int PRICE_UPG_WEAPON_T3 = 400;
-    const int VAL_UPG_WPN_DMG_T3 = 40;
-    const int VAL_UPG_WPN_DUR_T3 = 50;
+    const int PRICE_UPG_WEAPON_T3 = 520;
+    const int VAL_UPG_WPN_DMG_T3 = 24;
+    const int VAL_UPG_WPN_DUR_T3 = 35;
+    const int MAX_WEAPON_ENHANCEMENT_LEVEL = 6;
 
     // ==========================================
     // 7. 排行榜综合得分权重
     // ==========================================
 
-    const int SCORE_STAGE_WEIGHT = 1000;
-    const int SCORE_FISH_VALUE_WEIGHT = 2;
-    const int SCORE_FISH_COUNT_WEIGHT = 50;
-    const int SCORE_KILL_WEIGHT = 100;
-    const int SCORE_COIN_WEIGHT = 1;
-    const int SCORE_DURABILITY_WEIGHT = 5;
-    const int SCORE_STAMINA_WEIGHT = 3;
-    const int SCORE_TIME_PENALTY = 2;
+    const int SCORE_STAGE_MAX = 3000;
+    const int SCORE_TIME_MAX = 2200;
+    const int SCORE_FISH_COUNT_MAX = 1800;
+    const int SCORE_FISH_VALUE_MAX = 900;
+    const int SCORE_KILL_MAX = 1700;
+    const int SCORE_SURVIVAL_MAX = 400;
 
     // ==========================================
     // 8. 文字消息
@@ -275,8 +274,8 @@ namespace Config {
         const int   BOOST_STAMINA_COST_PER_FRAME = 1;
         const int   TOP_BORDER = 60;
         const int   BOTTOM_BORDER = 700;
-        const int   RIGHT_BORDER = 33000;
-        const int   STAGE_COUNT = 6;
+        const int   RIGHT_BORDER = 47000;
+        const int   STAGE_COUNT = 9;
         const int   STAGE_LENGTH = 2000;
         const int   FINAL_BOSS_TRIGGER_BUFFER = 500;
         const int   BOSS_EDGE_BUFFER = 320;
@@ -360,6 +359,10 @@ namespace Config {
             int swordfishSpawnInterval;
             int octopusCap;
             int octopusSpawnInterval;
+            int electricRayCap;
+            int electricRaySpawnInterval;
+            int jellyfishCap;
+            int jellyfishSpawnInterval;
 
             int reefCount;
             int whirlpoolCount;
@@ -377,52 +380,49 @@ namespace Config {
         };
 
         inline const StageConfig STAGE_CONFIGS[STAGE_COUNT] = {
-            // 1. 近海试航：捕鱼、移动、少量威胁，无 Boss。
+            // 1-3：逐步教学鱼群、追击敌人和环境危险。
             {4200, false,
-             16, 22, 95, 60, 40, 0, 0,
-             1, 780, 0, 0, 0, 0,
-             6, 0,
-             1900, 70, 30,
-             100, 0, 0, 3600, 5400, 0},
+             14, 20, 105, 70, 30, 0, 0,
+             1, 900, 0, 0, 0, 0, 0, 0, 0, 0,
+             5, 0, 1900, 72, 28, 100, 0, 0, 3600, 5400, 0},
+            {8900, false,
+             16, 22, 100, 55, 40, 5, 0,
+             1, 820, 1, 1250, 0, 0, 0, 0, 0, 0,
+             6, 0, 1700, 66, 34, 85, 15, 0, 3200, 5000, 0},
+            {14000, false,
+             17, 23, 96, 40, 45, 12, 3,
+             2, 760, 1, 1050, 1, 1500, 1, 1500, 0, 0,
+             7, 1, 1450, 58, 42, 70, 25, 5, 2800, 4600, 700},
 
-            // 2. 外海遭遇：第一次 Boss 考试，压力仍然温和。
-            {9000, false,
-             18, 24, 90, 35, 50, 15, 0,
-             2, 650, 1, 1100, 0, 0,
-             7, 1,
-             1500, 60, 40,
-             80, 20, 0, 2700, 4500, 0},
+            // 4：五头鲨关卡；密度暂缓，重点转向 Boss 机制。
+            {19400, true,
+             18, 24, 92, 30, 40, 22, 8,
+             2, 700, 1, 950, 1, 1350, 1, 1300, 0, 0,
+             7, 1, 1250, 54, 46, 60, 30, 10, 2500, 4300, 620},
 
-            // 3. 暗流航段：环境和机动考验，无正式 Boss。
-            {14200, true,
-             18, 25, 85, 20, 45, 25, 10,
-             2, 560, 1, 850, 1, 1300,
-             8, 2,
-             1200, 50, 50,
-             55, 35, 10, 2200, 3900, 520},
+            // 5-8：逐级引入水母、鳐鱼、稀有鱼、逆浪和暴风雨。
+            {24600, false,
+             19, 25, 88, 25, 38, 27, 10,
+             2, 650, 2, 900, 1, 1200, 1, 1100, 1, 1500,
+             8, 2, 1100, 50, 50, 50, 35, 15, 2300, 4000, 560},
+            {29800, false,
+             20, 26, 84, 20, 35, 30, 15,
+             2, 600, 2, 820, 1, 1050, 1, 1000, 1, 1300,
+             8, 2, 980, 47, 53, 40, 35, 25, 2100, 3800, 500},
+            {35100, false,
+             20, 27, 80, 16, 30, 34, 20,
+             3, 560, 2, 760, 2, 980, 2, 900, 1, 1120,
+             9, 3, 860, 43, 57, 35, 35, 30, 1900, 3500, 450},
+            {40500, false,
+             21, 28, 76, 12, 27, 36, 25,
+             3, 520, 2, 700, 2, 900, 2, 820, 2, 1000,
+             10, 3, 760, 40, 60, 25, 35, 40, 1750, 3300, 400},
 
-            // 4. 深海裂谷：敌人、障碍、塔里海怪组合考验。
-            {19800, false,
-             20, 27, 80, 15, 35, 35, 15,
-             2, 500, 2, 760, 1, 980,
-             9, 2,
-             1000, 45, 55,
-             40, 35, 25, 1900, 3500, 460},
-
-            // 5. 塞壬海域：最终压迫，暴风雨和逆浪权重更高。
-            {25800, false,
-             22, 29, 75, 10, 25, 40, 25,
-             3, 440, 2, 650, 2, 860,
-             10, 3,
-             850, 40, 60,
-             25, 30, 45, 1700, 3200, 390},
-
-            {32200, true,
-             24, 32, 70, 5, 20, 40, 35,
-             3, 390, 3, 560, 2, 700,
-             12, 4,
-             700, 35, 65,
-             15, 25, 60, 1500, 3000, 330}
+            // 9：塞壬终局。保持可读的敌群上限，把压力留给技能组合。
+            {46200, true,
+             22, 29, 74, 8, 22, 38, 32,
+             3, 480, 3, 650, 2, 820, 2, 760, 2, 900,
+             11, 4, 680, 36, 64, 18, 28, 54, 1600, 3100, 350}
         };
 
         inline const StageConfig& stageConfig(int stage)
@@ -462,7 +462,20 @@ namespace Config {
             {6, 5, 0.16, 130, 0.78, 286, 112, 18, false},
             {6, 0, 0.42, 618, 0.72, 266, 146, -24, true},
             {6, 2, 0.68, 132, 0.68, 252, 114, 18, false},
-            {6, 5, 0.86, 604, 0.70, 258, 102, -18, true}
+            {6, 5, 0.86, 604, 0.70, 258, 102, -18, true},
+
+            {7, 4, 0.14, 126, 0.80, 294, 138, 20, false},
+            {7, 5, 0.48, 616, 0.74, 272, 108, -20, true},
+            {7, 3, 0.80, 132, 0.68, 250, 102, 18, false},
+
+            {8, 5, 0.12, 612, 0.78, 286, 112, -18, true},
+            {8, 4, 0.44, 126, 0.82, 302, 142, 22, false},
+            {8, 2, 0.76, 618, 0.70, 258, 116, -20, true},
+
+            {9, 5, 0.10, 128, 0.82, 300, 118, 20, false},
+            {9, 4, 0.38, 616, 0.80, 294, 138, -20, true},
+            {9, 3, 0.66, 126, 0.74, 272, 112, 20, false},
+            {9, 5, 0.88, 604, 0.78, 286, 114, -18, true}
         };
 
         inline constexpr int STAGE_DECOR_COUNT =
@@ -521,7 +534,32 @@ namespace Config {
             {6, 4, 0.66, 146, 0.50, 160, 96, true},
             {6, 10, 0.78, 608, 0.52, 110, 104, false},
             {6, 7, 0.88, 146, 0.50, 112, 110, true},
-            {6, 5, 0.94, 374, 0.36, 40, 40, false}
+            {6, 5, 0.94, 374, 0.36, 40, 40, false},
+
+            {7, 11, 0.10, 146, 0.48, 90, 90, false},
+            {7, 4, 0.24, 606, 0.50, 158, 96, true},
+            {7, 6, 0.39, 146, 0.52, 150, 96, false},
+            {7, 8, 0.55, 606, 0.52, 138, 78, true},
+            {7, 7, 0.71, 146, 0.50, 114, 112, false},
+            {7, 10, 0.88, 606, 0.52, 112, 106, true},
+
+            {8, 0, 0.08, 606, 0.55, 140, 114, true},
+            {8, 3, 0.20, 146, 0.52, 136, 84, false},
+            {8, 7, 0.34, 606, 0.52, 116, 114, true},
+            {8, 4, 0.48, 146, 0.54, 166, 100, false},
+            {8, 8, 0.63, 606, 0.54, 140, 80, true},
+            {8, 6, 0.78, 146, 0.52, 150, 96, false},
+            {8, 11, 0.91, 604, 0.48, 92, 92, true},
+
+            {9, 11, 0.07, 146, 0.50, 94, 94, false},
+            {9, 0, 0.18, 606, 0.56, 144, 116, true},
+            {9, 6, 0.30, 146, 0.54, 154, 98, false},
+            {9, 4, 0.42, 606, 0.56, 170, 102, true},
+            {9, 7, 0.54, 146, 0.54, 120, 116, false},
+            {9, 8, 0.66, 606, 0.56, 144, 82, true},
+            {9, 10, 0.78, 146, 0.54, 116, 110, false},
+            {9, 3, 0.89, 606, 0.54, 140, 86, true},
+            {9, 5, 0.95, 374, 0.38, 42, 42, false}
         };
 
         inline constexpr int TERRAIN_PROP_COUNT =
@@ -534,24 +572,15 @@ namespace Config {
         };
 
         inline const StageText STAGE_TEXTS[STAGE_COUNT] = {
-            {u8"\u8fd1\u5cb8\u7ec3\u4e60\u6d77\u57df",
-             u8"\u4ece\u6e2f\u53e3\u5916\u4fa7\u51fa\u822a\uff0c\u719f\u6089\u6355\u9c7c\u4e0e\u907f\u969c\u8282\u594f\u3002",
-             u8"\u6e2f\u53e3\u5916\u4fa7\u822a\u7ebf\u6062\u590d\u5b89\u5168\u3002"},
-            {u8"\u5916\u6d77\u906d\u9047",
-             u8"\u79bb\u5f00\u6d45\u6d77\u4fdd\u62a4\uff0c\u5f00\u59cb\u5e94\u5bf9\u6b63\u9762\u5a01\u80c1\u3002",
-             u8"\u5916\u6d77\u822a\u7ebf\u7684\u7b2c\u4e00\u6b21\u5371\u673a\u5df2\u89e3\u9664\u3002"},
-            {u8"\u6697\u6d41\u822a\u6bb5",
-             u8"\u6d77\u6d41\u5f00\u59cb\u53d8\u5f97\u53cd\u590d\uff0c\u9c7c\u7fa4\u548c\u654c\u4eba\u66f4\u96be\u9884\u5224\u3002",
-             u8"\u6697\u6d41\u533a\u5df2\u7ecf\u88ab\u7a7f\u8d8a\uff0c\u8239\u961f\u638c\u63e1\u4e86\u65b0\u7684\u822a\u7ebf\u3002"},
-            {u8"\u6df1\u6d77\u88c2\u8c37",
-             u8"\u6697\u7901\u4e0e\u6f29\u6da1\u5bc6\u96c6\uff0c\u9700\u8981\u540c\u65f6\u5904\u7406\u822a\u884c\u548c\u6218\u6597\u538b\u529b\u3002",
-             u8"\u6df1\u6d77\u88c2\u8c37\u6682\u65f6\u5f52\u4e8e\u5e73\u9759\u3002"},
-            {u8"\u585e\u58ec\u6d77\u57df",
-             u8"\u66b4\u98ce\u96e8\u4e0e\u9006\u6d6a\u4ea4\u9519\uff0c\u524d\u65b9\u662f\u7ec8\u6d77\u95e8\u7684\u5916\u5708\u9632\u7ebf\u3002",
-             u8"\u585e\u58ec\u7684\u8ff7\u96fe\u6563\u53bb\uff0c\u7ec8\u6d77\u95e8\u5df2\u7ecf\u5728\u524d\u65b9\u663e\u5f62\u3002"},
-            {u8"\u7ec8\u6d77\u95e8",
-             u8"\u6700\u540e\u7684\u957f\u7ebf\u822a\u6bb5\uff0c\u654c\u7fa4\u3001\u9006\u6d6a\u4e0e Boss \u4e00\u8d77\u538b\u4e0a\u6765\u3002",
-             u8"\u7ec8\u6d77\u95e8\u88ab\u6253\u5f00\uff0c\u6e14\u9014\u822a\u7ebf\u5b8c\u6574\u8fde\u901a\u3002"}
+            {u8"近岸练习海域", u8"熟悉捕鱼、移动与礁石，建立基础航行节奏。", u8"近岸航线恢复安全。"},
+            {u8"外海遭遇", u8"鲨鱼和剑鱼开始共同出没，注意保留船体耐久。", u8"外海第一段航线已经打通。"},
+            {u8"暗流航段", u8"鳐鱼、章鱼与暗流加入战场，观察预警再行动。", u8"船队穿过了反复无常的暗流。"},
+            {u8"五首猎场", u8"守命五头鲨封锁航道，击败它才能继续远航。", u8"五头鲨的围猎被彻底瓦解。"},
+            {u8"深海裂谷", u8"水母与稀有鱼出现，收益提高，风险也同步上升。", u8"深海裂谷暂时归于平静。"},
+            {u8"迷雾沉沟", u8"雾、雷雨和漩涡交替出现，航线选择更加重要。", u8"沉沟中的安全水道已经标记。"},
+            {u8"风暴前沿", u8"高密度敌群与逆浪考验装备、走位和补给规划。", u8"风暴前沿被成功穿越。"},
+            {u8"塞壬外环", u8"珍稀鱼群藏在危险海况中，为终战完成最后准备。", u8"塞壬外环的迷雾开始消散。"},
+            {u8"终海门", u8"塞壬守在航线尽头，光波、哀歌与共鸣柱同时苏醒。", u8"终海门被打开，渔途航线完整连通。"}
         };
 
         inline const StageText& stageText(int stage)

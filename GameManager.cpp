@@ -58,6 +58,20 @@ bool lineIntersectsRect(const QLineF& line, const QRectF& rect)
     return false;
 }
 
+bool bossHazardHitsRect(const BossHazard& hazard, const QRectF& rect)
+{
+    if (hazard.type == BossHazardType::SoulSong && !hazard.target.isNull()) {
+        const qreal padding = qMax<qreal>(0.0, hazard.radius);
+        return lineIntersectsRect(QLineF(hazard.position, hazard.target),
+                                  rect.adjusted(-padding, -padding, padding, padding));
+    }
+    if (hazard.radius > 0.0) {
+        return distanceSquared(closestPointInRect(rect, hazard.position), hazard.position)
+            <= hazard.radius * hazard.radius;
+    }
+    return !hazard.rect.isEmpty() && hazard.rect.intersects(rect);
+}
+
 QPointF clampedAttackEnd(const QPointF& origin, const QPointF& target, qreal range)
 {
     const qreal dx = target.x() - origin.x();
@@ -159,6 +173,39 @@ void recordBossDiscovery(FileManager& fileManager, BossKind kind)
         fileManager.markBossDiscovered(2, "Siren");
         break;
     }
+}
+
+std::vector<QRectF> bossGeneratedSolidRects(const Boss* boss)
+{
+    std::vector<QRectF> solids;
+    if (!boss || !boss->alive) return solids;
+
+    auto addUniqueSolid = [&](const QRectF& rect) {
+        for (const QRectF& existing : solids) {
+            if (QLineF(existing.center(), rect.center()).length() < 10.0)
+                return;
+        }
+        solids.push_back(rect);
+    };
+
+    for (const BossHazard& hazard : boss->getHazards()) {
+        if (!hazard.active) continue;
+        if (hazard.type == BossHazardType::ReefHitbox && !hazard.rect.isEmpty()) {
+            addUniqueSolid(hazard.rect);
+        }
+        else if (hazard.type == BossHazardType::ResonancePillar) {
+            const QPointF c = hazard.position;
+            const bool destroyed = hazard.visualStage >= 10;
+            const bool bursting = hazard.visualStage >= 4;
+            const qreal w = destroyed ? 76.0 : (bursting ? 90.0 : 94.0);
+            const qreal h = destroyed ? 48.0 : (bursting ? 84.0 : 104.0);
+            const qreal yOffset = destroyed ? 22.0 : 4.0;
+            addUniqueSolid(QRectF(c.x() - w / 2.0,
+                                  c.y() + yOffset - h / 2.0,
+                                  w, h));
+        }
+    }
+    return solids;
 }
 
 struct SolidBody {
@@ -379,6 +426,20 @@ void GameManager::update()
     WaveSystem::instance().update(m_deltaTime);
     WeatherSystem::instance().update(m_deltaTime);
     p.update(m_deltaTime);
+
+    // A boss encounter belongs to the current stage.  Do not let movement,
+    // waves or dash carry the player beyond later stage finish lines while the
+    // encounter is still active.
+    if (bossSpawned && boss && boss->alive) {
+        const qreal encounterRight = std::min<qreal>(
+            Config::GameConfig::RIGHT_BORDER,
+            Config::GameConfig::stageConfig(stage).targetDistance + 140.0);
+        if (p.worldPos().x() > encounterRight) {
+            QPointF pos = p.worldPos();
+            pos.setX(encounterRight);
+            p.setWorldPos(pos);
+        }
+    }
     updateLightningHazard(p);
 
     if (p.isDead()) { gameOver = true; return; }
@@ -423,6 +484,7 @@ void GameManager::update()
     for (auto e : specialEnemies) e->update(p);
 
     const auto terrain = terrainColliders();
+    const auto bossSolids = bossGeneratedSolidRects(boss);
     auto nudgeEnemyAroundSolids = [&](Enemy* enemy) {
         if (!enemy || !enemy->alive) return;
         for (auto* obstacle : ObstacleManager::instance().obstacles()) {
@@ -433,6 +495,9 @@ void GameManager::update()
         for (const QRectF& terrainRect : terrain) {
             applyEnemyAvoidanceNudge(enemy, terrainRect, p.worldPos());
         }
+        for (const QRectF& bossSolid : bossSolids) {
+            applyEnemyAvoidanceNudge(enemy, bossSolid, p.worldPos());
+        }
     };
     for (auto s : sharks)      nudgeEnemyAroundSolids(s);
     for (auto s : swordfishes) nudgeEnemyAroundSolids(s);
@@ -440,7 +505,10 @@ void GameManager::update()
     for (auto e : specialEnemies) nudgeEnemyAroundSolids(e);
 
     // 接入 B 模块真实接口，仅传入 p
-    if (boss && boss->alive) boss->update(p);
+    if (boss && boss->alive) {
+        boss->update(p);
+        applyBossEffectsToCreatures();
+    }
 
     cameraX = px - 640;
     if (cameraX < 0) cameraX = 0;
@@ -477,19 +545,14 @@ void GameManager::update()
             if (dynamic_cast<ElectricRay*>(enemy)) ++rayCount;
             else if (dynamic_cast<PoisonJellyfish*>(enemy)) ++jellyCount;
         }
-        static const int rayCaps[] = {0, 0, 1, 1, 2, 2, 3};
-        static const int rayIntervals[] = {0, 0, 980, 840, 700, 610, 520};
-        static const int jellyCaps[] = {0, 0, 0, 1, 1, 2, 3};
-        static const int jellyIntervals[] = {0, 0, 0, 1040, 860, 690, 570};
-        const int stageIndex = qBound(1, stage, Config::GameConfig::STAGE_COUNT);
-        if (rayCaps[stageIndex] > 0 &&
-            spawnTimer % rayIntervals[stageIndex] == 0 &&
-            rayCount < rayCaps[stageIndex]) {
+        if (cfg.electricRayCap > 0 && cfg.electricRaySpawnInterval > 0 &&
+            spawnTimer % cfg.electricRaySpawnInterval == 0 &&
+            rayCount < cfg.electricRayCap) {
             spawnElectricRay();
         }
-        if (jellyCaps[stageIndex] > 0 &&
-            spawnTimer % jellyIntervals[stageIndex] == 0 &&
-            jellyCount < jellyCaps[stageIndex]) {
+        if (cfg.jellyfishCap > 0 && cfg.jellyfishSpawnInterval > 0 &&
+            spawnTimer % cfg.jellyfishSpawnInterval == 0 &&
+            jellyCount < cfg.jellyfishCap) {
             spawnPoisonJellyfish();
         }
     }
@@ -636,6 +699,7 @@ void GameManager::resolveEntitySolids()
 
     const auto& obstacles = ObstacleManager::instance().obstacles();
     const auto terrain = terrainColliders();
+    const auto bossSolids = bossGeneratedSolidRects(boss);
     for (int iteration = 0; iteration < 4; ++iteration) {
         for (const auto& body : bodies) {
             setSolidPosition(body, clampedSolidPosition(body, solidPosition(body)));
@@ -645,6 +709,9 @@ void GameManager::resolveEntitySolids()
             }
             for (const QRectF& terrainRect : terrain) {
                 separateSolidFromObstacle(body, terrainRect);
+            }
+            for (const QRectF& bossSolid : bossSolids) {
+                separateSolidFromObstacle(body, bossSolid);
             }
         }
 
@@ -672,6 +739,61 @@ void GameManager::applyStageConfig()
         cfg.weatherMaxFrames,
         cfg.lightningChanceDenominator
     );
+}
+
+void GameManager::applyBossEffectsToCreatures()
+{
+    if (!boss || !boss->alive || boss->kind != BossKind::Siren) return;
+
+    auto forEachEnemy = [&](const auto& fn) {
+        for (Shark* e : sharks) if (e && e->alive) fn(e);
+        for (Swordfish* e : swordfishes) if (e && e->alive) fn(e);
+        for (Octopus* e : octopuses) if (e && e->alive) fn(e);
+        for (Enemy* e : specialEnemies) if (e && e->alive) fn(e);
+    };
+
+    for (const BossHazard& hazard : boss->getHazards()) {
+        if (!hazard.active) continue;
+
+        if (hazard.type == BossHazardType::SoulSong &&
+            hazard.damage > 0 && hazard.elapsedMs <= 24.0) {
+            for (Fish* f : fish) {
+                if (f && !f->caught && !f->escaped &&
+                    bossHazardHitsRect(hazard, f->collider())) {
+                    f->applyStun(2400);
+                }
+            }
+            forEachEnemy([&](Enemy* e) {
+                if (bossHazardHitsRect(hazard, e->collider()))
+                    e->applyStun(2100);
+            });
+        }
+        else if (hazard.type == BossHazardType::SeaweedZone) {
+            for (Fish* f : fish) {
+                if (f && !f->caught && !f->escaped &&
+                    bossHazardHitsRect(hazard, f->collider())) {
+                    f->applySlow(150, 0.34);
+                }
+            }
+            forEachEnemy([&](Enemy* e) {
+                if (bossHazardHitsRect(hazard, e->collider()))
+                    e->applySlow(150, 0.38);
+            });
+        }
+        else if (hazard.type == BossHazardType::ElegyWarning &&
+                 hazard.visualStage >= 1 && hazard.visualStage <= 3) {
+            for (Fish* f : fish) {
+                if (f && !f->caught && !f->escaped &&
+                    bossHazardHitsRect(hazard, f->collider())) {
+                    f->applySlow(150, 0.52);
+                }
+            }
+            forEachEnemy([&](Enemy* e) {
+                if (bossHazardHitsRect(hazard, e->collider()))
+                    e->applySlow(150, 0.55);
+            });
+        }
+    }
 }
 
 void GameManager::updateLightningHazard(Player& player)
@@ -793,9 +915,24 @@ void GameManager::clearStageEntities()
 void GameManager::resetStageRuntime()
 {
     clearStageEntities();
+
+    // Boss fights may end after the player has drifted beyond one or more
+    // later checkpoints.  A new stage always begins at its own entrance.
+    Player& player = Player::instance();
+    QPointF stageStartPos = player.worldPos();
+    stageStartPos.setX(Config::GameConfig::stageStartDistance(stage) + 60.0);
+    stageStartPos.setY(std::clamp(
+        stageStartPos.y(),
+        static_cast<qreal>(Config::GameConfig::TOP_BORDER),
+        static_cast<qreal>(Config::GameConfig::BOTTOM_BORDER)));
+    player.setWorldPos(stageStartPos);
+    player.distance = qRound(stageStartPos.x());
+
     spawnTimer = 0;
     bossSpawned = false;
     stageClear = false;
+    bossClearDelayMs = 0;
+    bossRewardSettled = false;
     gameOver = false;
     victory = false;
     lightningWarningActive = false;
@@ -877,38 +1014,26 @@ void GameManager::spawnBoss(int stageNum)
         static_cast<qreal>(Config::GameConfig::RIGHT_BORDER - Config::GameConfig::BOSS_EDGE_BUFFER)
     );
     QPointF spawnPos(spawnX, 360);
-    if (stageNum >= 6)
+    if (stageNum >= 9)
         boss = new SirenBoss(spawnPos.x(), spawnPos.y());
     else
         boss = new FiveHeadSharkBoss(spawnPos.x(), spawnPos.y());
 
     if (!boss) return;
+    bossClearDelayMs = 0;
+    bossRewardSettled = false;
 
-    if (stageNum == 1) {
-        boss->hp = 900;
-        boss->maxHp = 900;
-        boss->dropValue = 350;
+    if (stageNum == 4) {
+        boss->hp = 2400;
+        boss->maxHp = 2400;
+        boss->dropValue = 800;
     }
-    else if (stageNum == 2) {
-        boss->hp = 1400;
-        boss->maxHp = 1400;
-        boss->dropValue = 500;
+    else if (stageNum >= 9) {
+        boss->hp = 3400;
+        boss->maxHp = 3400;
+        boss->dropValue = 1500;
     }
-    else if (stageNum == 3) {
-        boss->hp = 1600;
-        boss->maxHp = 1600;
-        boss->dropValue = 700;
-    }
-    else if (stageNum == 4) {
-        boss->hp = 2100;
-        boss->maxHp = 2100;
-        boss->dropValue = 900;
-    }
-    else if (stageNum >= 6) {
-        boss->hp = 2600;
-        boss->maxHp = 2600;
-        boss->dropValue = 1200;
-    }
+    recordBossDiscovery(fileManager, boss->kind);
 }
 
 void GameManager::checkCollisions()
@@ -935,6 +1060,18 @@ void GameManager::checkCollisions()
     }
 
     // 普通鲨鱼
+    auto separatePlayerFromEnemy = [&](Enemy* enemy) {
+        if (!enemy || !enemy->alive) return;
+        const QPointF push = minimumSeparationVector(p.collider(), enemy->collider());
+        if (!push.isNull()) {
+            p.setWorldPos(p.worldPos() + push);
+        }
+    };
+    for (auto* enemy : sharks) separatePlayerFromEnemy(enemy);
+    for (auto* enemy : swordfishes) separatePlayerFromEnemy(enemy);
+    for (auto* enemy : octopuses) separatePlayerFromEnemy(enemy);
+    for (auto* enemy : specialEnemies) separatePlayerFromEnemy(enemy);
+
     for (auto s : sharks) {
         if (!s->alive) continue;
         if (s->biteCollider().intersects(p.collider())) {
@@ -966,6 +1103,10 @@ void GameManager::checkCollisions()
 
     // Boss 逻辑
     if (boss && boss->alive) {
+        const QPointF push = minimumSeparationVector(p.collider(), boss->collider());
+        if (!push.isNull()) {
+            p.setWorldPos(p.worldPos() + push);
+        }
         // 调用 Boss.cpp 内真实的召唤小兵接口
         boss->spawnMinions(sharks);
         for (Shark* shark : sharks) {
@@ -975,10 +1116,22 @@ void GameManager::checkCollisions()
 
     // Boss 死亡结算
     if (boss && !boss->alive && !stageClear) {
-        p.coins += boss->dropValue;
-        killCount++;
-        recordBossDiscovery(fileManager, boss->kind);
-        stageClear = true;
+        if (!bossRewardSettled) {
+            p.coins += boss->dropValue;
+            killCount++;
+            recordBossDiscovery(fileManager, boss->kind);
+            if (boss->kind == BossKind::Siren) {
+                p.clearMaxStaminaPenalty();
+                p.restoreStaminaToFull();
+            }
+            bossRewardSettled = true;
+            bossClearDelayMs = 2600;
+        }
+        else {
+            bossClearDelayMs = std::max(0, bossClearDelayMs - 16);
+            if (bossClearDelayMs <= 0)
+                stageClear = true;
+        }
     }
 }
 
@@ -1315,6 +1468,8 @@ void GameManager::loadSave()
         spawnTimer = 0;
         bossSpawned = false;
         stageClear = false;
+        bossClearDelayMs = 0;
+        bossRewardSettled = false;
         gameOver = false;
         victory = false;
         cameraX = std::max(0, playerX() - 640);
@@ -1347,54 +1502,67 @@ void GameManager::triggerShockWave() {
 
     QRectF area = p.shockArea();
 
+    for (auto f : fish) {
+        if (!f || f->caught || f->escaped) continue;
+        if (!area.intersects(f->collider())) continue;
+
+        f->applyStun(2200);
+        f->fleeing = false;
+        f->fleeCooldown = 0;
+    }
+
     // 对小怪造成范围伤害
     for (auto s : sharks) {
         if (!s->alive) continue;
         if (area.intersects(s->collider())) {
-            s->takeDamage(50);
-            if (!s->alive) {
-                p.coins += s->dropValue;
-                killCount++;
-                recordEnemyDiscovery(fileManager, s);
-            }
+            s->applyStun(2200);
         }
     }
     for (auto s : swordfishes) {
         if (!s->alive) continue;
         if (area.intersects(s->collider())) {
-            s->takeDamage(50);
-            if (!s->alive) {
-                p.coins += s->dropValue;
-                killCount++;
-                recordEnemyDiscovery(fileManager, s);
-            }
+            s->applyStun(2200);
         }
     }
     for (auto o : octopuses) {
         if (!o->alive) continue;
         if (area.intersects(o->collider())) {
-            o->takeDamage(50);
-            if (!o->alive) {
-                p.coins += o->dropValue;
-                killCount++;
-                recordEnemyDiscovery(fileManager, o);
-            }
+            o->applyStun(2200);
         }
     }
     for (auto e : specialEnemies) {
         if (!e || !e->alive) continue;
         if (area.intersects(e->collider())) {
-            e->takeDamage(50);
-            if (!e->alive) {
-                p.coins += e->dropValue;
-                killCount++;
-                recordEnemyDiscovery(fileManager, e);
-            }
+            e->applyStun(2200);
         }
     }
 
     // 眩晕Boss
-    if (boss && boss->alive && area.intersects(boss->collider())) {
-        boss->applyShockStun(3000);
+    if (boss && boss->alive) {
+        bool shockBoss = area.intersects(boss->collider());
+
+        QPointF secondaryPos;
+        int secondaryHp = 0;
+        int secondaryMaxHp = 0;
+        if (boss->getSecondaryTarget(secondaryPos, secondaryHp, secondaryMaxHp)) {
+            QRectF secondaryRect(
+                secondaryPos.x() - Config::GameConfig::TALI_CLONE_COLLIDER_WIDTH / 2.0,
+                secondaryPos.y() - Config::GameConfig::TALI_CLONE_COLLIDER_HEIGHT / 2.0,
+                Config::GameConfig::TALI_CLONE_COLLIDER_WIDTH,
+                Config::GameConfig::TALI_CLONE_COLLIDER_HEIGHT
+            );
+            shockBoss = shockBoss || area.intersects(secondaryRect);
+        }
+
+        QPointF companionPos;
+        bool companionStunned = false;
+        if (boss->getCompanionVisual(companionPos, companionStunned)) {
+            QRectF companionRect(companionPos.x() - 48.0, companionPos.y() - 48.0, 96.0, 96.0);
+            shockBoss = shockBoss || area.intersects(companionRect);
+        }
+
+        if (shockBoss) {
+            boss->applyShockStun(3200);
+        }
     }
 }

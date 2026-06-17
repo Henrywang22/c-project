@@ -154,6 +154,10 @@ bool Weapon::consumeDurability(int amount)
 void Weapon::upgradeStats(int dmgBoost, int durBoost)
 {
     damage += dmgBoost;
+    // 强化后攻击/捕获距离略微变长，让装备成长不只体现在伤害数值上。
+    // 增幅保持克制，避免高强化后把近战武器变成远程武器。
+    const int rangeBoost = qBound(1, dmgBoost / 8, 4);
+    range += rangeBoost;
     int proportionalDurability = currentDurability;
     if (!isInfiniteDurability()) {
         const int oldMaxDurability = qMax(1, maxDurability);

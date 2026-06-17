@@ -35,22 +35,23 @@ void Player::reset() {
     m_reboundActive = false;
     m_reboundDurationMs = 180;
     m_speedReduction = 0;
+    m_damageFlashMs = 0;
     clearInputState();
     m_facingDirection = 3;
 
     // Dash 初始化
     m_isDashing = false;
     m_dashCooldownMs = 1500;
-    m_dashDurationMs = 200;
+    m_dashDurationMs = 180;
     m_dashDirection = QPointF(1, 0);
     m_dashCooldown.start();
 
     // Shock 初始化
     m_isShockActive = false;
-    m_shockCharges = 2; // 每局暂定2次救场
-    m_shockCooldownMs = 5000;
-    m_shockDurationMs = 800;
-    m_shockCooldown.start();
+    m_shockReady = true;
+    m_shockRechargeMs = 10000;
+    m_shockDurationMs = 620;
+    m_shockRechargeTimer.invalidate();
 
     // Debuff 初始化
     m_isInputReversed = false;
@@ -59,6 +60,7 @@ void Player::reset() {
     m_isInkBlinded = false;
 
     coins = 0;
+    testModeInfiniteCoins = false;
     fishCaught = 0;
     fishTotalValue = 0;
     distance = 0;
@@ -95,8 +97,11 @@ void Player::restoreSavedProgress(
     m_reboundActive = false;
     m_reboundDurationMs = 180;
     m_speedReduction = 0;
+    m_damageFlashMs = 0;
     m_isDashing = false;
     m_isShockActive = false;
+    m_shockReady = true;
+    m_shockRechargeTimer.invalidate();
     m_isInputReversed = false;
     m_noRangedAttack = false;
     m_isPoisoned = false;
@@ -148,6 +153,7 @@ void Player::update(qreal deltaTime) {
 
     if (m_isStunned && m_stunTimer.elapsed() >= m_stunDuration)
         m_isStunned = false;
+    m_damageFlashMs = qMax(0, m_damageFlashMs - qRound(deltaTime * 1000.0));
 
     updateMovement(deltaTime);
     checkBorder();
@@ -163,6 +169,10 @@ void Player::updateDebuffs() {
     // Shock 倒计时
     if (m_isShockActive && m_shockTimer.elapsed() >= m_shockDurationMs) {
         m_isShockActive = false;
+    }
+    if (!m_shockReady && m_shockRechargeTimer.isValid() &&
+        m_shockRechargeTimer.elapsed() >= m_shockRechargeMs) {
+        m_shockReady = true;
     }
 
     // 键位反转 倒计时
@@ -203,7 +213,9 @@ void Player::updateDebuffs() {
 void Player::updateMovement(qreal deltaTime) {
     // 如果处于Dash中，无视眩晕、不受减速影响，极高速强行位移
     if (m_isDashing) {
-        qreal dashSpeed = m_baseSpeed * 10.0;
+        const qreal extraFromShipSpeed =
+            qBound<qreal>(0.0, (m_baseSpeed - Config::GameConfig::SHIP_BASE_SPEED) * 0.7, 120.0);
+        qreal dashSpeed = 680.0 + extraFromShipSpeed;
         m_worldPos += m_dashDirection * dashSpeed * deltaTime;
         return;
     }
@@ -300,7 +312,13 @@ void Player::takeDurabilityDamage(int damage) {
     if (!canTakeDamage()) return;
 
     m_durability = qMax(0, m_durability - damage);
+    m_damageFlashMs = 360;
     if (m_durability <= 0) { m_isDead = true; emit playerDied(); }
+}
+
+qreal Player::damageFlashRatio() const
+{
+    return qBound(0.0, static_cast<qreal>(m_damageFlashMs) / 360.0, 1.0);
 }
 
 void Player::applyStun(int durationMs) {
@@ -377,23 +395,37 @@ void Player::triggerDash() {
 }
 
 bool Player::canShock() const {
-    if (m_isShockActive || m_isDead) return false;
-    if (m_shockCharges <= 0) return false;
-    if (m_shockCooldown.elapsed() < m_shockCooldownMs) return false;
-    return true;
+    return m_shockReady && !m_isShockActive && !m_isDead && !m_isStunned;
 }
 
 void Player::triggerShock() {
     if (!canShock()) return;
 
-    m_shockCharges--;
+    m_shockReady = false;
     m_isShockActive = true;
     m_shockTimer.restart();
-    m_shockCooldown.restart();
+    m_shockRechargeTimer.restart();
 }
 
 bool Player::isShockActive() const {
     return m_isShockActive;
+}
+
+qreal Player::shockChargeRatio() const {
+    if (m_shockReady) return 1.0;
+    if (!m_shockRechargeTimer.isValid() || m_shockRechargeMs <= 0) return 0.0;
+    return qBound<qreal>(0.0,
+        static_cast<qreal>(m_shockRechargeTimer.elapsed()) / m_shockRechargeMs,
+        1.0);
+}
+
+qreal Player::shockEffectProgress() const {
+    if (!m_isShockActive || !m_shockTimer.isValid() || m_shockDurationMs <= 0) {
+        return 0.0;
+    }
+    return qBound<qreal>(0.0,
+        static_cast<qreal>(m_shockTimer.elapsed()) / m_shockDurationMs,
+        1.0);
 }
 
 QRectF Player::shockArea() const {

@@ -15,13 +15,30 @@ enum class BossHazardType {
     BombWarning,
     BombHitbox,
     MeleeHitbox,
+    SummonMarker,
     MouthStrike,
     EyeSector,
     CloneExplosionWarning,
     SoulSong,
     ElegyWarning,
     SeaweedZone,
-    ReefHitbox
+    ReefHitbox,
+    ResonancePillar,
+    ResonanceBacklash
+};
+
+enum class BossVisualAction {
+    Idle,
+    Bite,
+    Cast,
+    Summon,
+    Hit,
+    PhaseTransition,
+    SoulSongWindup,
+    SoulSong,
+    ElegyWindup,
+    Elegy,
+    Death
 };
 
 struct BossHazard {
@@ -33,6 +50,8 @@ struct BossHazard {
     qreal elapsedMs = 0.0;
     int damage = 0;
     bool active = true;
+    int visualStage = 0;
+    QPointF target;
 };
 
 struct BossSpawnRequest {
@@ -55,9 +74,14 @@ public:
     virtual void forceReleasePlayer();
     virtual bool isInvulnerable() const { return invulnerable; }
     virtual bool getSecondaryTarget(QPointF& outPos, int& outHp, int& outMaxHp) const;
+    virtual bool getCompanionVisual(QPointF& outPos, bool& outStunned) const;
 
     void spawnMinions(std::vector<Shark*>& sharks);
     const std::vector<BossHazard>& getHazards() const { return hazards; }
+    BossVisualAction visualAction() const { return visualActionValue; }
+    qreal visualActionProgress() const;
+    bool isDying() const { return dying; }
+    bool isStunnedByShock() const { return stunRemainingMs > 0; }
 
     BossKind kind;
     State state = PHASE1;
@@ -70,6 +94,8 @@ protected:
     void addHazard(const BossHazard& hazard);
     void requestSharkSpawn(const QPointF& position);
     int scaledDamage(int baseDamage) const;
+    void setVisualAction(BossVisualAction action, int durationMs);
+    void startDeathAnimation();
     QPointF position() const { return QPointF(x, y); }
     bool stunned() const { return stunRemainingMs > 0; }
 
@@ -77,6 +103,11 @@ protected:
     bool enraged = false;
     bool holdingPlayer = false;
     int stunRemainingMs = 0;
+    bool dying = false;
+    int deathRemainingMs = 0;
+    BossVisualAction visualActionValue = BossVisualAction::Idle;
+    int visualActionDurationMs = 0;
+    int visualActionRemainingMs = 0;
     std::vector<BossHazard> hazards;
     std::vector<BossSpawnRequest> sharkSpawnRequests;
 };
@@ -85,23 +116,31 @@ class FiveHeadSharkBoss : public Boss {
 public:
     FiveHeadSharkBoss(int x, int y);
     bool collidesWithPlayer(int px, int py) override;
+    QRectF collider() const override;
 
 protected:
     void updateBoss(Player& player) override;
 
 private:
-    void updatePatrol();
+    void updatePatrol(Player& player);
     void updateMelee(Player& player);
-    void updateSummon();
+    void updateSummon(Player& player);
     void updateBombardment(Player& player);
 
     int patrolDir = 1;
-    int summonTimerMs = 5000;
-    int bombardmentTimerMs = 15000;
+    int summonTimerMs = 4200;
+    int bombardmentTimerMs = 9000;
     int bombardmentCastMs = 0;
     int meleeCooldownMs = 0;
     int meleeWindupMs = 0;
     int meleeRecoveryMs = 0;
+    int contactCooldownMs = 0;
+    QPointF lastPlayerPos;
+    QPointF estimatedPlayerVelocity;
+    bool hasLastPlayerPos = false;
+    bool phase1SummonUsed = false;
+    bool phase2SummonUsed = false;
+    bool phase2SummonPrimed = false;
     std::vector<QRectF> pendingBombRects;
 };
 
@@ -143,8 +182,11 @@ private:
 class SirenBoss : public Boss {
 public:
     SirenBoss(int x, int y);
+    QRectF collider() const override;
     bool canBeHitAt(int targetX, int targetY) const override;
     void takeDamage(int damage) override;
+    void applyShockStun(int durationMs) override;
+    bool getCompanionVisual(QPointF& outPos, bool& outStunned) const override;
 
 protected:
     void updateBoss(Player& player) override;
@@ -156,22 +198,51 @@ private:
     void updatePhantom(Player& player);
     void updateElegy(Player& player);
     void updateEndlessReturn(Player& player);
+    void updateResonancePillars(Player& player);
+    void updateMovement(Player& player);
+    QPointF tridentTipWorld() const;
+    bool chargeResonancePillar(int index);
+    bool chargeResonancePillarFromLine(const QPointF& from, const QPointF& to,
+                                       qreal halfWidth, qreal* outPillarT = nullptr);
+    void chargeResonancePillarsFromElegy(Player& player, qreal radius);
+    void resolveResonancePillarCollision(Player& player);
     void applyNaturalDecay();
-    void checkStaminaCheckpoints(Player& player);
+    void restorePhaseCheckpoint(Player& player);
 
     bool phantomSpawned = false;
     QPointF phantomPos;
+    QPointF lastPlayerPos;
+    QPointF estimatedPlayerVelocity;
+    bool hasLastPlayerPos = false;
     int phantomStunMs = 0;
-    bool checkpoint75Used = false;
-    bool checkpoint50Used = false;
-    bool checkpoint25Used = false;
-    int soulSongTimerMs = 20000;
+    int phaseTransitionMs = 0;
+    int soulSongTimerMs = 6500;
     int soulSongCastMs = 0;
-    int elegyTimerMs = 30000;
+    int soulSongCastDurationMs = 0;
+    int soulSongBeamCount = 0;
+    QPointF soulSongStarts[6];
+    QPointF soulSongTargets[6];
+    int elegyTimerMs = 10500;
     int elegyCastMs = 0;
+    int elegyPulseMs = 0;
+    int elegyTickMs = 0;
+    int elegyExposureMs = 0;
+    int elegyHoldMs = 0;
+    QPointF elegyCenter;
     int endlessReturnTimerMs = 20000;
     int naturalDecayTimerMs = 0;
-    int poisonRemainingMs = 0;
+    int phaseMotionTimerMs = 0;
     int phantomContactTickMs = 0;
     int seaweedTickMs = 0;
+    int seaweedFieldTimerMs = 4600;
+    int reefContactCooldownMs = 0;
+    int resonanceVisualRefreshMs = 0;
+    bool resonancePillarsPlaced = false;
+    QPointF resonancePillarPositions[3];
+    int resonancePillarCharges[3] = {0, 0, 0};
+    int resonancePillarBurstMs[3] = {0, 0, 0};
+    bool resonancePillarDestroyed[3] = {false, false, false};
+    bool elegyResonanceTriggered[3] = {false, false, false};
+    bool elegySucceeded = false;
+    bool staminaCheckpointUsed[3] = {false, false, false};
 };

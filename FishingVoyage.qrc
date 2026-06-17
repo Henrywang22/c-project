@@ -85,6 +85,7 @@
         <file alias="ui/common/wood_notice_board.png">assets/ui_common/wood_notice_board.png</file>
         <file alias="ui/common/wood_notice_button.png">assets/ui_common/wood_notice_button.png</file>
         <file alias="ui/common/notice_icon_info.png">assets/ui_common/notice_icon_info.png</file>
+        <file alias="ui/final/final_victory_board.png">assets/ui_final/final_victory_board.png</file>
         <file alias="projectiles/harpoon.png">assets/projectiles/harpoon_projectile.png</file>
         <file alias="projectiles/octopus_ink.png">assets/projectiles/octopus_ink_sheet.png</file>
         <file alias="effects/rain_cluster.png">assets/ui_effects/rain_splash_sheet.png</file>
@@ -244,5 +245,33 @@
         <file alias="ui/backpack/deco_rope.png">ui图/生成素材/背包UI/backpack_deco_rope.png</file>
         <file alias="ui/backpack/deco_anchor.png">ui图/生成素材/背包UI/backpack_deco_anchor.png</file>
         <file alias="ui/backpack/deco_lantern.png">ui图/生成素材/背包UI/backpack_deco_lantern.png</file>
+
+        <file alias="boss/five_head_shark/idle.png">assets/boss_generated/five_head_shark/idle/sprite_sheet.png</file>
+        <file alias="boss/five_head_shark/bite.png">assets/boss_generated/five_head_shark/bite/sprite_sheet.png</file>
+        <file alias="boss/five_head_shark/cast.png">assets/boss_generated/five_head_shark/cast/sprite_sheet.png</file>
+        <file alias="boss/five_head_shark/bombardment.png">assets/boss_generated/five_head_shark/bombardment/sprite_sheet.png</file>
+        <file alias="boss/five_head_shark/summon_water.png">assets/boss_generated/five_head_shark/summon_water/sprite_sheet.png</file>
+        <file alias="boss/five_head_shark/hit.png">assets/boss_generated/five_head_shark/hit_reaction/sprite_sheet.png</file>
+        <file alias="boss/five_head_shark/death.png">assets/boss_generated/five_head_shark/death/sprite_sheet.png</file>
+
+        <file alias="boss/siren/idle.png">assets/boss_generated/siren/idle/sprite_sheet.png</file>
+        <file alias="boss/siren/phase_transition.png">assets/boss_generated/siren/phase_transition/sprite_sheet.png</file>
+        <file alias="boss/siren/soul_song_windup.png">assets/boss_generated/siren/soul_song_windup/sprite_sheet.png</file>
+        <file alias="boss/siren/soul_song.png">assets/boss_generated/siren/soul_song/sprite_sheet.png</file>
+        <file alias="boss/siren/soul_song_warning_beam.png">assets/boss_generated/siren/soul_song_warning_beam/sprite_sheet.png</file>
+        <file alias="boss/siren/soul_song_beam.png">assets/boss_generated/siren/soul_song_beam/sprite_sheet.png</file>
+        <file alias="boss/siren/elegy_windup.png">assets/boss_generated/siren/elegy_windup/sprite_sheet.png</file>
+        <file alias="boss/siren/elegy_wave.png">assets/boss_generated/siren/elegy_wave/sprite_sheet.png</file>
+        <file alias="boss/siren/elegy_pull.png">assets/boss_generated/siren/elegy_pull/sprite_sheet.png</file>
+        <file alias="boss/siren/seaweed_zone.png">assets/boss_generated/siren/seaweed_zone/sprite_sheet.png</file>
+        <file alias="boss/siren/reef_emerge.png">assets/boss_generated/siren/reef_emerge/sprite_sheet.png</file>
+        <file alias="boss/siren/phantom_idle.png">assets/boss_generated/siren/phantom_idle/sprite_sheet.png</file>
+        <file alias="boss/siren/phantom_move.png">assets/boss_generated/siren/phantom_move/sprite_sheet.png</file>
+        <file alias="boss/siren/phantom_stun.png">assets/boss_generated/siren/phantom_stun_dissolve/sprite_sheet.png</file>
+        <file alias="boss/siren/immunity.png">assets/boss_generated/siren/immunity_feedback/sprite_sheet.png</file>
+        <file alias="boss/siren/resonance_pillar.png">assets/boss_generated/siren/resonance_pillar/sprite_sheet.png</file>
+        <file alias="boss/siren/focus_meter.png">assets/boss_generated/siren/focus_meter/sprite_sheet.png</file>
+        <file alias="boss/siren/death.png">assets/boss_generated/siren/death/sprite_sheet.png</file>
+        <file alias="boss/common/encounter_warning.png">assets/boss_generated/common/encounter_warning.png</file>
     </qresource>
 </RCC>

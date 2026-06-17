@@ -32,6 +32,13 @@ constexpr QRect kFooterRect(390, 684, 500, 32);
 constexpr int kVisibleRows = 5;
 constexpr int kRowHeight = 62;
 
+QString coinDisplayText(const Player& player)
+{
+    return player.testModeInfiniteCoins
+        ? QStringLiteral("\u221e")
+        : QString::number(player.coins);
+}
+
 QString firstAvailableFont(const QStringList& candidates)
 {
     const QStringList families = QFontDatabase::families();
@@ -900,7 +907,7 @@ void BackpackDialog::drawTopStatus(QPainter& p)
     QVector<Cell> cells = {
         {QStringLiteral("耐久"), QString("%1/%2").arg(pl.durability()).arg(pl.maxDurability), QColor(220, 66, 58), pl.durability(), pl.maxDurability, &m_iconHeart, true},
         {QStringLiteral("体力"), QString("%1/%2").arg(pl.stamina()).arg(pl.maxStamina), QColor(52, 124, 232), pl.stamina(), pl.maxStamina, &m_iconLightning, true},
-        {QStringLiteral("金币"), QString::number(pl.coins), QColor(235, 173, 42), 1, 1, &m_iconCoin, false},
+        {QStringLiteral("金币"), coinDisplayText(pl), QColor(235, 173, 42), 1, 1, &m_iconCoin, false},
         {QStringLiteral("鱼获"), QString("%1/25").arg(pl.fishCaught), QColor(90, 178, 220), pl.fishCaught, 25, &m_iconFish, true},
         {QStringLiteral("天气"), weatherName(), QColor(255, 211, 64), 1, 1, &m_iconSun, false}
     };
@@ -970,7 +977,7 @@ void BackpackDialog::drawInfoStrip(QPainter& p)
 
     drawPixmapFit(p, m_iconCoin, QRect(kInfoRect.left() + 54, kInfoRect.top() + 6, 24, 24));
     drawTextShadow(p, QRect(kInfoRect.left() + 82, kInfoRect.top() + 5, 150, 24),
-                   QStringLiteral("金币：%1").arg(pl.coins), uiFont(12, QFont::Bold),
+                   QStringLiteral("金币：%1").arg(coinDisplayText(pl)), uiFont(12, QFont::Bold),
                    QColor(75, 43, 16), Qt::AlignLeft | Qt::AlignVCenter);
     drawTextShadow(p, QRect(kInfoRect.left() + 252, kInfoRect.top() + 5, 230, 24),
                    QStringLiteral("舱位：装备 %1/%2  道具 %3")
@@ -1107,8 +1114,8 @@ void BackpackDialog::drawEquipmentDetail(QPainter& p)
                    QString::fromStdString(w->getName()), titleFont(16, QFont::Bold),
                    QColor(73, 43, 16), Qt::AlignLeft | Qt::AlignVCenter);
     drawStatLine(p, y, QStringLiteral("类型"), weaponRoleText(w));
-    drawStatLine(p, y, QStringLiteral("等级"), QStringLiteral("Lv.%1").arg(w->getTier()));
-    drawStatLine(p, y, QStringLiteral("强化"), QStringLiteral("+%1").arg(w->getEnhancementLevel()));
+    drawStatLine(p, y, QStringLiteral("装备品阶"), QStringLiteral("T%1（固定）").arg(w->getTier()));
+    drawStatLine(p, y, QStringLiteral("强化等级"), QStringLiteral("+%1").arg(w->getEnhancementLevel()));
     drawStatLine(p, y, QStringLiteral("用途"), w->canFish() && w->canAttack() ? QStringLiteral("捕鱼 / 攻击")
                                                     : w->canFish() ? QStringLiteral("捕鱼")
                                                                    : QStringLiteral("攻击"));

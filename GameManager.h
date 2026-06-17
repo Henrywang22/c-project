@@ -73,9 +73,12 @@ private:
     int stageBossTriggerX() const;
     void applyStageConfig();
     void updateLightningHazard(Player& player);
+    void applyBossEffectsToCreatures();
     void recordVisibleEnemyDiscoveries();
     void resolveEntitySolids();
     int spawnTimer = 0;
+    int bossClearDelayMs = 0;
+    bool bossRewardSettled = false;
     qreal m_deltaTime = 0.016;
     QElapsedTimer m_attackCooldown;
     bool m_enemyDiscoveryRecorded[5] = {};

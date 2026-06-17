@@ -60,8 +60,13 @@ private:
     qreal calibrationTargetRatio = 0.5;
     int   menuHoverIndex = -1;
     bool  promptButtonHover = false;
+    bool  pauseMainMenuHover = false;
+    int   victoryButtonHover = -1;
     bool  victoryScoreSaved = false;
     bool  testModeEnabled = false;
+    bool  bossEncounterShown = false;
+    int   bossEncounterRemainingMs = 0;
+    BossKind encounterBossKind = BossKind::FiveHeadShark;
 
     enum class AttackProjectileKind {
         Bullet,
@@ -110,6 +115,7 @@ private:
     void drawObstacles(QPainter& p);
     void drawSharks(QPainter& p);
     void drawBossHazards(QPainter& p);
+    void drawShockWaveEffect(QPainter& p);
     void drawPlayer(QPainter& p);
     void drawAttackProjectiles(QPainter& p);
     void drawHitFeedbacks(QPainter& p);
@@ -119,6 +125,7 @@ private:
     void drawHUD(QPainter& p);
     void drawTestModeOverlay(QPainter& p);
     void drawFloatingNotice(QPainter& p);
+    void drawBossEncounterNotice(QPainter& p);
     void drawFishingHUD(QPainter& p);
     void drawPaused(QPainter& p);
     void drawDefeat(QPainter& p);
@@ -156,6 +163,11 @@ private:
     QRect menuButtonRect(int index) const;
     int menuButtonAt(const QPoint& pos) const;
     QRect stagePromptButtonRect() const;
+    QRect pauseMainMenuButtonRect() const;
+    QRect victoryButtonRect(int index) const;
+    int victoryButtonAt(const QPoint& pos) const;
+    void returnToMainMenu();
+    void resetRunAndReturnToMenu();
 
     // 图片资源
     QPixmap imgSardine;
@@ -186,6 +198,7 @@ private:
     QPixmap imgWoodNoticeBoard;
     QPixmap imgWoodNoticeButton;
     QPixmap imgNoticeIconInfo;
+    QPixmap imgFinalVictoryBoard;
     QPixmap imgRainCluster;
     QPixmap imgRainStreaks;
     QPixmap imgFogEdgeOverlay;
@@ -198,6 +211,32 @@ private:
     QPixmap imgWeaponRangeRing;
     QPixmap imgHitSpark;
     QPixmap imgMuzzleFlash;
+    QPixmap imgFiveHeadIdle;
+    QPixmap imgFiveHeadBite;
+    QPixmap imgFiveHeadCast;
+    QPixmap imgFiveHeadBombardment;
+    QPixmap imgFiveHeadSummonWater;
+    QPixmap imgFiveHeadHit;
+    QPixmap imgFiveHeadDeath;
+    QPixmap imgSirenIdle;
+    QPixmap imgSirenPhaseTransition;
+    QPixmap imgSirenSoulSongWindup;
+    QPixmap imgSirenSoulSong;
+    QPixmap imgSirenSoulSongWarningBeam;
+    QPixmap imgSirenSoulSongBeam;
+    QPixmap imgSirenElegyWindup;
+    QPixmap imgSirenElegyWave;
+    QPixmap imgSirenElegyPull;
+    QPixmap imgSirenSeaweed;
+    QPixmap imgSirenReef;
+    QPixmap imgSirenPhantomIdle;
+    QPixmap imgSirenPhantomMove;
+    QPixmap imgSirenPhantomStun;
+    QPixmap imgSirenImmunity;
+    QPixmap imgSirenResonancePillar;
+    QPixmap imgSirenFocusMeter;
+    QPixmap imgSirenDeath;
+    QPixmap imgBossEncounterWarning;
     QPixmap imgStageDecor[6];
     QPixmap imgTerrainProps[12];
     QPixmap imgPlayerMove[5][4];

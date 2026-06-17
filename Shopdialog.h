@@ -138,6 +138,9 @@ private:
     const ClickZone* zoneAt(const QPoint& pos) const;
     bool isHovered(const QRect& rect) const;
     bool hasNotice() const;
+    bool hasEnoughCoins(int price) const;
+    void spendCoins(int price);
+    QString coinDisplayText() const;
     void showShopNotice(const QString& title, const QString& body);
     void showInsufficientCoinsNotice(int requiredCoins);
     void clearNotice();

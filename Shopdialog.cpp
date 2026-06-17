@@ -355,7 +355,7 @@ void ShopDialog::drawTopStatus(QPainter& p)
     QVector<StatusCell> cells = {
         {QStringLiteral("耐久"), QString("%1/%2").arg(pl.durability()).arg(pl.maxDurability), QColor(220, 66, 58), pl.durability(), pl.maxDurability},
         {QStringLiteral("体力"), QString("%1/%2").arg(pl.stamina()).arg(pl.maxStamina), QColor(52, 124, 232), pl.stamina(), pl.maxStamina},
-        {QStringLiteral("金币"), QString::number(pl.coins), QColor(235, 173, 42), 1, 1},
+        {QStringLiteral("金币"), coinDisplayText(), QColor(235, 173, 42), 1, 1},
         {QStringLiteral("鱼获"), QString::number(pl.fishCaught), QColor(90, 178, 220), pl.fishCaught, qMax(1, pl.fishCaught)},
         {QStringLiteral("天气"), weatherName(), QColor(255, 211, 64), 1, 1}
     };
@@ -471,7 +471,7 @@ void ShopDialog::drawEquipmentPage(QPainter& p)
         if (sample->canAttack()) subtitle += QStringLiteral("  伤害 %1").arg(sample->getDamage());
         drawCard(p, QRect(x0 + i * (cardW + gap), y0, cardW, cardH),
                  offer.title, subtitle, offer.description, weaponIcon(offer.type),
-                 sample->getValue(), offer.tagColor, Player::instance().coins < sample->getValue(),
+                 sample->getValue(), offer.tagColor, !hasEnoughCoins(sample->getValue()),
                  ZoneAction::BuyWeapon, idx);
         delete sample;
     }
@@ -507,7 +507,7 @@ void ShopDialog::drawSuppliesPage(QPainter& p)
         drawCard(p, QRect(x0 + i * (cardW + gap), y0, cardW, cardH),
                  offer.title, QStringLiteral("当前拥有：%1").arg(owned), offer.description,
                  offer.icon ? *offer.icon : QPixmap(), offer.price, offer.tagColor,
-                 Player::instance().coins < offer.price, ZoneAction::BuySupply, idx);
+                 !hasEnoughCoins(offer.price), ZoneAction::BuySupply, idx);
     }
 
     QRect prev(kContentRect.left() + 142, kContentRect.bottom() - 46, 86, 34);
@@ -532,7 +532,7 @@ void ShopDialog::drawWeaponUpgradePage(QPainter& p)
         if (!w) continue;
         drawRow(p, QRect(kContentRect.left() + 18, y, 204, 58),
                 QString::fromStdString(w->getName()),
-                QStringLiteral("Lv.%1  +%2  %3/%4")
+                QStringLiteral("品阶 T%1  强化 +%2  %3/%4")
                     .arg(w->getTier())
                     .arg(w->getEnhancementLevel())
                     .arg(w->getCurrentDur())
@@ -553,7 +553,7 @@ void ShopDialog::drawWeaponUpgradePage(QPainter& p)
         drawTextShadow(p, QRect(detail.left() + 18, detail.top() + 14, detail.width() - 36, 30),
                        QString::fromStdString(w->getName()), shopTitleFont(18, QFont::Bold), QColor(54, 29, 10), Qt::AlignCenter);
         drawPixmapFit(p, weaponIcon(QString::fromStdString(w->getTypeCode())), QRect(detail.left() + 20, detail.top() + 50, 96, 112));
-        QString stats = QStringLiteral("等级 Lv.%1\n强化 +%2\n伤害 %3\n耐久 %4\n范围 %5\n当前 %6/%7")
+        QString stats = QStringLiteral("品阶 T%1（固定）\n强化 +%2（累计）\n伤害 %3\n耐久 %4\n范围 %5\n当前 %6/%7")
             .arg(w->getTier()).arg(w->getEnhancementLevel()).arg(w->getDamage()).arg(w->getMaxDur()).arg(w->getRange()).arg(w->getCurrentDur()).arg(w->getMaxDur());
         drawTextShadow(p, QRect(detail.left() + 124, detail.top() + 52, detail.width() - 140, 108),
                        stats, uiFont(11, QFont::Bold), QColor(54, 31, 12), Qt::AlignLeft | Qt::AlignTop);
@@ -566,6 +566,17 @@ void ShopDialog::drawWeaponUpgradePage(QPainter& p)
         : nullptr;
     const int tier1Price = weaponUpgradePrice(selectedWeapon, 1);
     const int tier2Price = weaponUpgradePrice(selectedWeapon, 2);
+
+    drawTextShadow(p, QRect(kContentRect.left() + 228, kContentRect.bottom() - 180, 124, 22),
+                   QStringLiteral("I：伤害 +%1 / 耐久 +%2")
+                       .arg(Config::VAL_UPG_WPN_DMG_T1)
+                       .arg(Config::VAL_UPG_WPN_DUR_T1),
+                   uiFont(8, QFont::Bold), QColor(78, 44, 15), Qt::AlignCenter);
+    drawTextShadow(p, QRect(kContentRect.left() + 354, kContentRect.bottom() - 180, 124, 22),
+                   QStringLiteral("II：伤害 +%1 / 耐久 +%2")
+                       .arg(Config::VAL_UPG_WPN_DMG_T2)
+                       .arg(Config::VAL_UPG_WPN_DUR_T2),
+                   uiFont(8, QFont::Bold), QColor(78, 44, 15), Qt::AlignCenter);
 
     drawActionButton(p, QRect(kContentRect.left() + 238, kContentRect.bottom() - 104, 104, 42),
                      QStringLiteral("强化 I"), m_buttonGreen, ZoneAction::UpgradeWeaponTier, m_selectedWeaponIndex, 1,
@@ -720,7 +731,7 @@ void ShopDialog::drawRightPanel(QPainter& p)
         const auto& weapons = inv.weapons();
         if (!weapons.empty() && m_selectedWeaponIndex >= 0 && m_selectedWeaponIndex < static_cast<int>(weapons.size()) && weapons[m_selectedWeaponIndex]) {
             Weapon* w = weapons[m_selectedWeaponIndex];
-            status = QStringLiteral("%1\nLv.%2  强化 +%3\n耐久 %4/%5\n伤害 %6  范围 %7\n强化提升伤害和耐久。")
+            status = QStringLiteral("%1\n品阶 T%2（购买时固定）  强化 +%3\n耐久 %4/%5  伤害 %6  范围 %7\nI：伤害+5/耐久+10；II：伤害+15/耐久+25\n两种强化每次都只让强化等级 +1，不改变品阶。")
                 .arg(QString::fromStdString(w->getName()))
                 .arg(w->getTier()).arg(w->getEnhancementLevel())
                 .arg(w->getCurrentDur()).arg(w->getMaxDur())
@@ -987,6 +998,28 @@ bool ShopDialog::hasNotice() const
     return !m_noticeTitle.isEmpty() || !m_noticeBody.isEmpty();
 }
 
+bool ShopDialog::hasEnoughCoins(int price) const
+{
+    const Player& player = Player::instance();
+    return player.testModeInfiniteCoins || player.coins >= price;
+}
+
+void ShopDialog::spendCoins(int price)
+{
+    Player& player = Player::instance();
+    if (!player.testModeInfiniteCoins) {
+        player.coins -= price;
+    }
+}
+
+QString ShopDialog::coinDisplayText() const
+{
+    const Player& player = Player::instance();
+    return player.testModeInfiniteCoins
+        ? QStringLiteral("\u221e")
+        : QString::number(player.coins);
+}
+
 void ShopDialog::showShopNotice(const QString& title, const QString& body)
 {
     m_noticeTitle = title;
@@ -1108,8 +1141,7 @@ void ShopDialog::resetPage()
 
 void ShopDialog::buyBackpackItem(InventoryItemType type, int price, const QString& displayName)
 {
-    Player& player = Player::instance();
-    if (player.coins < price) {
+    if (!hasEnoughCoins(price)) {
         showInsufficientCoinsNotice(price);
         return;
     }
@@ -1119,7 +1151,7 @@ void ShopDialog::buyBackpackItem(InventoryItemType type, int price, const QStrin
         return;
     }
 
-    player.coins -= price;
+    spendCoins(price);
     InventorySystem::instance().addItem(type, 1);
     updateCoinsLabel();
     refreshBackpackUI();
@@ -1132,10 +1164,9 @@ void ShopDialog::buyBackpackItem(InventoryItemType type, int price, const QStrin
 void ShopDialog::buyWeapon(Weapon* weapon)
 {
     if (!weapon) return;
-    Player& player = Player::instance();
     int price = weapon->getValue();
     const QString weaponName = QString::fromStdString(weapon->getName());
-    if (player.coins < price) {
+    if (!hasEnoughCoins(price)) {
         showInsufficientCoinsNotice(price);
         delete weapon;
         return;
@@ -1143,7 +1174,7 @@ void ShopDialog::buyWeapon(Weapon* weapon)
 
     InventorySystem& inv = InventorySystem::instance();
     if (inv.canAddWeapon()) {
-        player.coins -= price;
+        spendCoins(price);
         inv.addWeapon(weapon);
         m_selectedWeaponIndex = inv.weaponCount() - 1;
         updateCoinsLabel();
@@ -1161,7 +1192,7 @@ void ShopDialog::buyWeapon(Weapon* weapon)
         return;
     }
 
-    player.coins -= price;
+    spendCoins(price);
     inv.replaceWeapon(replaceIndex, weapon);
     m_selectedWeaponIndex = replaceIndex;
     updateCoinsLabel();
@@ -1178,12 +1209,12 @@ void ShopDialog::buyAndUseAttributeUpgrade(Item* item)
     Player& player = Player::instance();
     int price = item->getValue();
     const QString itemName = QString::fromStdString(item->getName());
-    if (player.coins < price) {
+    if (!hasEnoughCoins(price)) {
         showInsufficientCoinsNotice(price);
         return;
     }
 
-    player.coins -= price;
+    spendCoins(price);
     item->use(player);
     updateCoinsLabel();
     refreshBackpackUI();
@@ -1195,7 +1226,6 @@ void ShopDialog::buyAndUseAttributeUpgrade(Item* item)
 
 void ShopDialog::buyWeaponUpgrade(int tier)
 {
-    Player& player = Player::instance();
     int price = Config::PRICE_UPG_WEAPON_T1;
     int damageBoost = Config::VAL_UPG_WPN_DMG_T1;
     int durabilityBoost = Config::VAL_UPG_WPN_DUR_T1;
@@ -1209,7 +1239,7 @@ void ShopDialog::buyWeaponUpgrade(int tier)
         durabilityBoost = Config::VAL_UPG_WPN_DUR_T3;
     }
 
-    if (player.coins < price) {
+    if (!hasEnoughCoins(price)) {
         showInsufficientCoinsNotice(price);
         return;
     }
@@ -1224,19 +1254,33 @@ void ShopDialog::buyWeaponUpgrade(int tier)
     QString weaponName = QStringLiteral("装备");
     if (index >= 0 && index < static_cast<int>(weapons.size()) && weapons[index]) {
         weaponName = QString::fromStdString(weapons[index]->getName());
+        if (weapons[index]->getEnhancementLevel() >= Config::MAX_WEAPON_ENHANCEMENT_LEVEL) {
+            showShopNotice(QStringLiteral("强化已满"),
+                           QStringLiteral("该装备已达到 +%1。更高品阶装备拥有更高基础伤害，强化等级不会改变装备品阶。")
+                               .arg(Config::MAX_WEAPON_ENHANCEMENT_LEVEL));
+            return;
+        }
         price = weaponUpgradePrice(weapons[index], tier);
     }
-    if (player.coins < price) {
+    if (!hasEnoughCoins(price)) {
         showInsufficientCoinsNotice(price);
         return;
     }
-    player.coins -= price;
+    spendCoins(price);
     InventorySystem::instance().upgradeWeapon(index, damageBoost, durabilityBoost);
     updateCoinsLabel();
     refreshBackpackUI();
+    const Weapon* upgradedWeapon =
+        index >= 0 && index < static_cast<int>(InventorySystem::instance().weapons().size())
+        ? InventorySystem::instance().weapons()[index]
+        : nullptr;
     showShopNotice(QStringLiteral("强化成功"),
-                   QStringLiteral("%1 强化完成。\n花费 %2 金币。")
+                   QStringLiteral("%1 已强化至 +%2。\n本次：伤害 +%3、耐久上限 +%4、范围小幅提升；品阶 T%5 不变。\n花费 %6 金币。")
                    .arg(weaponName)
+                   .arg(upgradedWeapon ? upgradedWeapon->getEnhancementLevel() : 0)
+                   .arg(damageBoost)
+                   .arg(durabilityBoost)
+                   .arg(upgradedWeapon ? upgradedWeapon->getTier() : 0)
                    .arg(price));
 }
 
@@ -1285,9 +1329,8 @@ void ShopDialog::discardSelectedBackpackWeapon()
 
 void ShopDialog::buyShopWeaponRepair()
 {
-    Player& player = Player::instance();
     int price = Config::PRICE_SHOP_WEAPON_REPAIR;
-    if (player.coins < price) {
+    if (!hasEnoughCoins(price)) {
         showInsufficientCoinsNotice(price);
         return;
     }
@@ -1305,7 +1348,7 @@ void ShopDialog::buyShopWeaponRepair()
         return;
     }
 
-    player.coins -= price;
+    spendCoins(price);
     InventorySystem::instance().repairWeaponByPercent(index, Config::SHOP_WEAPON_REPAIR_PERCENT);
     updateCoinsLabel();
     refreshBackpackUI();

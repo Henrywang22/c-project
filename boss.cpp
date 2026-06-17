@@ -16,6 +16,11 @@ int clampInt(int value, int low, int high)
     return std::max(low, std::min(value, high));
 }
 
+qreal clampReal(qreal value, qreal low, qreal high)
+{
+    return std::max(low, std::min(value, high));
+}
+
 QPointF stepToward(const QPointF& from, const QPointF& to, qreal amount)
 {
     QPointF delta = to - from;
@@ -34,6 +39,92 @@ bool circleHitsPlayer(const QPointF& center, qreal radius, const Player& player)
 {
     return QLineF(center, player.worldPos()).length() <= radius;
 }
+
+QPointF normalizedOr(const QPointF& value, const QPointF& fallback)
+{
+    const qreal length = std::sqrt(value.x() * value.x() + value.y() * value.y());
+    if (length <= 0.001) return fallback;
+    return QPointF(value.x() / length, value.y() / length);
+}
+
+QRectF beamBounds(const QPointF& from, const QPointF& to, qreal halfWidth)
+{
+    return QRectF(QPointF(std::min(from.x(), to.x()) - halfWidth,
+                         std::min(from.y(), to.y()) - halfWidth),
+                  QPointF(std::max(from.x(), to.x()) + halfWidth,
+                         std::max(from.y(), to.y()) + halfWidth)).normalized();
+}
+
+qreal distancePointToSegment(const QPointF& point, const QPointF& from, const QPointF& to)
+{
+    const QPointF segment = to - from;
+    const qreal lengthSq = segment.x() * segment.x() + segment.y() * segment.y();
+    if (lengthSq <= 0.001)
+        return QLineF(point, from).length();
+
+    const QPointF relative = point - from;
+    const qreal t = clampReal((relative.x() * segment.x() + relative.y() * segment.y()) /
+                                  lengthSq,
+                              0.0, 1.0);
+    const QPointF projected(from.x() + segment.x() * t,
+                            from.y() + segment.y() * t);
+    return QLineF(point, projected).length();
+}
+
+qreal projectionOnSegment(const QPointF& point, const QPointF& from, const QPointF& to)
+{
+    const QPointF segment = to - from;
+    const qreal lengthSq = segment.x() * segment.x() + segment.y() * segment.y();
+    if (lengthSq <= 0.001)
+        return 0.0;
+
+    const QPointF relative = point - from;
+    return clampReal((relative.x() * segment.x() + relative.y() * segment.y()) /
+                         lengthSq,
+                     0.0, 1.0);
+}
+
+bool segmentIntersectsRect(const QPointF& from, const QPointF& to, const QRectF& rect)
+{
+    if (rect.contains(from) || rect.contains(to)) return true;
+
+    QLineF line(from, to);
+    const QLineF edges[4] = {
+        QLineF(rect.topLeft(), rect.topRight()),
+        QLineF(rect.topRight(), rect.bottomRight()),
+        QLineF(rect.bottomRight(), rect.bottomLeft()),
+        QLineF(rect.bottomLeft(), rect.topLeft())
+    };
+    QPointF hit;
+    for (const QLineF& edge : edges) {
+        if (line.intersects(edge, &hit) == QLineF::BoundedIntersection)
+            return true;
+    }
+    return false;
+}
+
+bool segmentHitsPlayer(const QPointF& from, const QPointF& to, qreal halfWidth,
+                       const Player& player)
+{
+    const QRectF rect = player.collider();
+    if (!beamBounds(from, to, halfWidth).intersects(rect))
+        return false;
+    if (segmentIntersectsRect(from, to, rect))
+        return true;
+
+    const QPointF samples[8] = {
+        rect.topLeft(), rect.topRight(), rect.bottomLeft(), rect.bottomRight(),
+        QPointF(rect.center().x(), rect.top()),
+        QPointF(rect.center().x(), rect.bottom()),
+        QPointF(rect.left(), rect.center().y()),
+        QPointF(rect.right(), rect.center().y())
+    };
+    for (const QPointF& sample : samples) {
+        if (distancePointToSegment(sample, from, to) <= halfWidth)
+            return true;
+    }
+    return false;
+}
 }
 
 Boss::Boss(BossKind bossKind, int x, int y, int maxHpValue, int attackValue, int dropValueValue)
@@ -50,7 +141,10 @@ void Boss::update(Player& player)
     if (!alive) return;
     updateTimers();
     updateHazards();
+    if (dying) return;
     enraged = hp <= maxHp / 2;
+    if (kind == BossKind::FiveHeadShark)
+        state = enraged ? PHASE2 : PHASE1;
     if (!stunned()) updateBoss(player);
 }
 
@@ -87,7 +181,9 @@ void Boss::takeDamage(int damage)
     hp -= damage;
     if (hp <= 0) {
         hp = 0;
-        alive = false;
+        startDeathAnimation();
+    } else {
+        setVisualAction(BossVisualAction::Hit, 240);
     }
 }
 
@@ -110,10 +206,24 @@ bool Boss::getSecondaryTarget(QPointF& outPos, int& outHp, int& outMaxHp) const
     return false;
 }
 
+bool Boss::getCompanionVisual(QPointF& outPos, bool& outStunned) const
+{
+    Q_UNUSED(outPos);
+    Q_UNUSED(outStunned);
+    return false;
+}
+
 void Boss::spawnMinions(std::vector<Shark*>& sharks)
 {
+    if (sharkSpawnRequests.empty()) return;
+    const int spawnLimit = kind == BossKind::FiveHeadShark
+        ? static_cast<int>(sharkSpawnRequests.size())
+        : static_cast<int>(sharkSpawnRequests.size());
+    int spawned = 0;
     for (const auto& request : sharkSpawnRequests) {
+        if (spawned >= spawnLimit) break;
         sharks.push_back(new Shark((int)request.position.x(), (int)request.position.y()));
+        ++spawned;
     }
     sharkSpawnRequests.clear();
     minionSpawned = true;
@@ -122,6 +232,16 @@ void Boss::spawnMinions(std::vector<Shark*>& sharks)
 void Boss::updateTimers()
 {
     stunRemainingMs = std::max(0, stunRemainingMs - FrameMs);
+    if (visualActionRemainingMs > 0) {
+        visualActionRemainingMs = std::max(0, visualActionRemainingMs - FrameMs);
+        if (visualActionRemainingMs == 0 && !dying)
+            visualActionValue = BossVisualAction::Idle;
+    }
+    if (dying) {
+        deathRemainingMs = std::max(0, deathRemainingMs - FrameMs);
+        if (deathRemainingMs == 0)
+            alive = false;
+    }
 }
 
 void Boss::updateHazards()
@@ -151,8 +271,38 @@ int Boss::scaledDamage(int baseDamage) const
     return enraged ? int(baseDamage * 1.2f) : baseDamage;
 }
 
+void Boss::setVisualAction(BossVisualAction action, int durationMs)
+{
+    if (dying) return;
+    visualActionValue = action;
+    visualActionDurationMs = std::max(1, durationMs);
+    visualActionRemainingMs = visualActionDurationMs;
+}
+
+qreal Boss::visualActionProgress() const
+{
+    if (visualActionDurationMs <= 0) return 0.0;
+    return std::clamp(
+        1.0 - static_cast<qreal>(visualActionRemainingMs) / visualActionDurationMs,
+        0.0,
+        1.0
+    );
+}
+
+void Boss::startDeathAnimation()
+{
+    if (dying) return;
+    dying = true;
+    invulnerable = true;
+    hazards.clear();
+    visualActionValue = BossVisualAction::Death;
+    visualActionDurationMs = 1760;
+    visualActionRemainingMs = 1760;
+    deathRemainingMs = 1760;
+}
+
 FiveHeadSharkBoss::FiveHeadSharkBoss(int x, int y)
-    : Boss(BossKind::FiveHeadShark, x, y, 2000, 50, 500)
+    : Boss(BossKind::FiveHeadShark, x, y, 2200, 18, 700)
 {
     speed = 2.0f;
 }
@@ -162,17 +312,65 @@ bool FiveHeadSharkBoss::collidesWithPlayer(int px, int py)
     return Boss::collidesWithPlayer(px, py);
 }
 
+QRectF FiveHeadSharkBoss::collider() const
+{
+    return QRectF(x - 170.0, y - 92.0, 340.0, 184.0);
+}
+
 void FiveHeadSharkBoss::updateBoss(Player& player)
 {
-    updatePatrol();
+    const QPointF playerPos = player.worldPos();
+    if (hasLastPlayerPos) {
+        estimatedPlayerVelocity = playerPos - lastPlayerPos;
+    }
+    lastPlayerPos = playerPos;
+    hasLastPlayerPos = true;
+
+    contactCooldownMs = std::max(0, contactCooldownMs - FrameMs);
+    if (collider().intersects(player.collider()) && contactCooldownMs <= 0 &&
+        player.canTakeDamage()) {
+        player.takeDurabilityDamage(scaledDamage(15));
+        player.applyRebound(normalizedOr(player.worldPos() - position(), QPointF(facingX, 0.0)) * 1.4);
+        contactCooldownMs = 900;
+    }
+    const qreal distanceToPlayer = QLineF(position(), playerPos).length();
+    if (distanceToPlayer > 520.0) {
+        bombardmentTimerMs = std::max(0, bombardmentTimerMs - FrameMs);
+    }
+    updatePatrol(player);
     updateMelee(player);
-    updateSummon();
+    updateSummon(player);
     updateBombardment(player);
 }
 
-void FiveHeadSharkBoss::updatePatrol()
+void FiveHeadSharkBoss::updatePatrol(Player& player)
 {
-    y += int(speed * patrolDir);
+    const QPointF playerPos = player.worldPos();
+    const qreal dx = playerPos.x() - x;
+    const qreal dy = playerPos.y() - y;
+    const qreal distance = std::sqrt(dx * dx + dy * dy);
+
+    if (std::abs(dx) > 6.0)
+        facingX = dx > 0.0 ? 1.0f : -1.0f;
+
+    const qreal closingBoost = distance > 520.0 ? 1.28 : 1.0;
+    const qreal maxHorizontalStep = speed * (enraged ? 2.05 : 1.62) * closingBoost;
+    // The solid body keeps the player roughly 200 px from the boss centre.
+    // Stay at a usable bite distance instead of trying to overlap the player.
+    const qreal desiredGap = 218.0;
+    const qreal desiredDx = facingX * desiredGap;
+    const qreal gapError = dx - desiredDx;
+    if (std::abs(gapError) > 34.0) {
+        const qreal step = std::clamp(gapError * 0.022, -maxHorizontalStep, maxHorizontalStep);
+        x += static_cast<int>(std::round(step));
+    }
+
+    const qreal patrolStep = speed * 0.42 * patrolDir;
+    const qreal verticalAggression = distance < 340.0 ? 0.020 : 0.014;
+    const qreal chaseBias = std::clamp(dy * verticalAggression, -speed * 1.18, speed * 1.18);
+    y += static_cast<int>(std::round(patrolStep + chaseBias));
+
+    x = clampInt(x, 125, Config::GameConfig::RIGHT_BORDER - 125);
     if (y <= ArenaTop + 40) {
         y = ArenaTop + 40;
         patrolDir = 1;
@@ -184,40 +382,91 @@ void FiveHeadSharkBoss::updatePatrol()
 
 void FiveHeadSharkBoss::updateMelee(Player& player)
 {
+    const auto biteRect = [&]() {
+        // The old 155 px box ended inside the 170 px body collider, so solid
+        // separation made a bite practically impossible.  This now covers the
+        // visible heads and the forward slash in the supplied animation.
+        const qreal reach = 292.0;
+        const qreal height = 176.0;
+        return facingX > 0.0f
+            ? QRectF(x, y - height / 2.0, reach, height)
+            : QRectF(x - reach, y - height / 2.0, reach, height);
+    };
+
     meleeCooldownMs = std::max(0, meleeCooldownMs - FrameMs);
     meleeRecoveryMs = std::max(0, meleeRecoveryMs - FrameMs);
 
     if (meleeWindupMs > 0) {
         meleeWindupMs -= FrameMs;
+        if (meleeWindupMs > 210) {
+            const QPointF toward = normalizedOr(player.worldPos() - position(), QPointF(facingX, 0.0));
+            x += static_cast<int>(std::round(toward.x() * (enraged ? 2.6 : 2.0)));
+            y += static_cast<int>(std::round(toward.y() * (enraged ? 1.6 : 1.2)));
+            x = clampInt(x, 125, Config::GameConfig::RIGHT_BORDER - 125);
+            y = clampInt(y, ArenaTop + 40, ArenaBottom - 40);
+        }
         if (meleeWindupMs <= 0) {
-            QRectF hitRect(x - 130, y - 42, 130, 84);
-            addHazard({ BossHazardType::MeleeHitbox, hitRect.center(), hitRect, 0, 250, 0, scaledDamage(45), true });
-            if (rectHitsPlayer(hitRect, player))
-                player.takeDurabilityDamage(scaledDamage(45));
+            QRectF hitRect = biteRect();
+            addHazard({ BossHazardType::MeleeHitbox, hitRect.center(), hitRect, 0, 250, 0, scaledDamage(30), true });
+            if (rectHitsPlayer(hitRect, player) && player.canTakeDamage()) {
+                player.takeDurabilityDamage(scaledDamage(30));
+                player.applyRebound(normalizedOr(player.worldPos() - position(), QPointF(facingX, 0.0)) * 3.0);
+            }
             meleeRecoveryMs = 600;
-            meleeCooldownMs = 3000;
+            meleeCooldownMs = enraged ? 2300 : 2850;
         }
         return;
     }
 
     if (meleeCooldownMs > 0 || meleeRecoveryMs > 0) return;
 
-    QRectF triggerRect(x - 150, y - 55, 150, 110);
+    QRectF triggerRect = biteRect();
     if (rectHitsPlayer(triggerRect, player)) {
-        meleeWindupMs = 500;
-        addHazard({ BossHazardType::MeleeHitbox, triggerRect.center(), triggerRect, 0, 500, 0, 0, true });
+        meleeWindupMs = enraged ? 430 : 500;
+        setVisualAction(BossVisualAction::Bite, 1120);
+        addHazard({ BossHazardType::MeleeHitbox, triggerRect.center(), triggerRect, 0,
+                    static_cast<qreal>(meleeWindupMs), 0, 0, true });
     }
 }
 
-void FiveHeadSharkBoss::updateSummon()
+void FiveHeadSharkBoss::updateSummon(Player& player)
 {
+    if (state == PHASE2 && !phase2SummonPrimed) {
+        phase2SummonPrimed = true;
+        summonTimerMs = 1900;
+    }
+
+    bool& phaseSummonUsed = state == PHASE2 ? phase2SummonUsed : phase1SummonUsed;
+    if (phaseSummonUsed) return;
+
     summonTimerMs -= FrameMs;
     if (summonTimerMs > 0) return;
 
-    requestSharkSpawn(QPointF(x - 90, y));
-    requestSharkSpawn(QPointF(x, y - 90));
-    requestSharkSpawn(QPointF(x, y + 90));
-    summonTimerMs = 20000;
+    const QPointF playerPos = player.worldPos();
+    const QPointF retreatDir = normalizedOr(estimatedPlayerVelocity, QPointF(facingX, 0.0));
+    const qreal flankY = playerPos.y() < y ? 120.0 : -120.0;
+    const QPointF side(-retreatDir.y(), retreatDir.x());
+    const QPointF spawnPoints[4] = {
+        QPointF(x + facingX * 130.0, y),
+        QPointF(playerPos.x() + retreatDir.x() * 180.0,
+                clampInt(qRound(playerPos.y() + flankY), ArenaTop + 55, ArenaBottom - 55)),
+        QPointF(playerPos.x() - facingX * 210.0,
+                clampInt(qRound(playerPos.y() - flankY * 0.55), ArenaTop + 55, ArenaBottom - 55)),
+        QPointF(playerPos.x() + side.x() * 245.0,
+                clampInt(qRound(playerPos.y() + side.y() * 245.0), ArenaTop + 55, ArenaBottom - 55))
+    };
+    for (const QPointF& point : spawnPoints) {
+        QPointF clamped(
+            std::clamp(point.x(), 95.0, static_cast<qreal>(Config::GameConfig::RIGHT_BORDER - 95)),
+            std::clamp(point.y(), static_cast<qreal>(ArenaTop + 55), static_cast<qreal>(ArenaBottom - 55))
+        );
+        requestSharkSpawn(clamped);
+        addHazard({ BossHazardType::SummonMarker, clamped,
+                    QRectF(clamped.x() - 56.0, clamped.y() - 56.0, 112.0, 112.0),
+                    0, 1300, 0, 0, true });
+    }
+    setVisualAction(BossVisualAction::Summon, 1200);
+    phaseSummonUsed = true;
     minionSpawned = false;
 }
 
@@ -227,9 +476,9 @@ void FiveHeadSharkBoss::updateBombardment(Player& player)
         bombardmentCastMs -= FrameMs;
         if (bombardmentCastMs <= 0) {
             for (const QRectF& rect : pendingBombRects) {
-                addHazard({ BossHazardType::BombHitbox, rect.center(), rect, 0, 300, 0, scaledDamage(60), true });
+                addHazard({ BossHazardType::BombHitbox, rect.center(), rect, 0, 360, 0, scaledDamage(40), true });
                 if (rectHitsPlayer(rect, player))
-                    player.takeDurabilityDamage(scaledDamage(60));
+                    player.takeDurabilityDamage(scaledDamage(40));
             }
             pendingBombRects.clear();
         }
@@ -240,23 +489,33 @@ void FiveHeadSharkBoss::updateBombardment(Player& player)
     if (bombardmentTimerMs > 0) return;
 
     pendingBombRects.clear();
-    int px = int(player.worldPos().x());
-    int py = int(player.worldPos().y());
-    for (int i = 0; i < 10; ++i) {
-        int bx = px - 350 + std::rand() % 700;
-        int by = clampInt(py - 220 + std::rand() % 440, ArenaTop, ArenaBottom);
-        pendingBombRects.push_back(QRectF(bx - 24, by - 24, 48, 48));
+    QPointF predicted = player.worldPos() + estimatedPlayerVelocity * 18.0;
+    predicted.setX(std::clamp(predicted.x(), 120.0, static_cast<qreal>(Config::GameConfig::RIGHT_BORDER - 120)));
+    predicted.setY(std::clamp(predicted.y(), static_cast<qreal>(ArenaTop + 70), static_cast<qreal>(ArenaBottom - 70)));
+    const QPointF travelDir = normalizedOr(estimatedPlayerVelocity, QPointF(facingX, 0.0));
+    const QPointF perpendicular(-travelDir.y(), travelDir.x());
+    const QPointF tacticalPoints[4] = {
+        predicted,
+        predicted + perpendicular * 135.0,
+        predicted - perpendicular * 135.0,
+        player.worldPos() - travelDir * 190.0
+    };
+    for (const QPointF& point : tacticalPoints) {
+        const int bx = clampInt(qRound(point.x()), 92, Config::GameConfig::RIGHT_BORDER - 92);
+        const int by = clampInt(qRound(point.y()), ArenaTop + 70, ArenaBottom - 70);
+        pendingBombRects.push_back(QRectF(bx - 68, by - 68, 136, 136));
     }
 
-    const int offsets[6][2] = {{-70, -55}, {-70, 55}, {-15, -75}, {-15, 75}, {45, -45}, {45, 45}};
+    const int offsets[4][2] = {{-82, -58}, {-82, 58}, {20, -72}, {20, 72}};
     for (const auto& offset : offsets)
-        pendingBombRects.push_back(QRectF(x + offset[0] - 24, y + offset[1] - 24, 48, 48));
+        pendingBombRects.push_back(QRectF(x + offset[0] - 68, y + offset[1] - 68, 136, 136));
 
     for (const QRectF& rect : pendingBombRects)
         addHazard({ BossHazardType::BombWarning, rect.center(), rect, 0, 1500, 0, 0, true });
 
     bombardmentCastMs = 1500;
-    bombardmentTimerMs = 20000;
+    bombardmentTimerMs = enraged ? 10500 : 13000;
+    setVisualAction(BossVisualAction::Cast, 1500);
 }
 
 TaliMonsterBoss::TaliMonsterBoss(int x, int y)
@@ -470,9 +729,14 @@ void TaliMonsterBoss::finishCloneExplosion(Player& player)
 }
 
 SirenBoss::SirenBoss(int x, int y)
-    : Boss(BossKind::Siren, x, y, 3000, 30, 1200)
+    : Boss(BossKind::Siren, x, y, 3400, 30, 1500)
 {
-    speed = 0.0f;
+    speed = 1.15f;
+}
+
+QRectF SirenBoss::collider() const
+{
+    return QRectF(x - 96.0, y - 132.0, 192.0, 264.0);
 }
 
 bool SirenBoss::canBeHitAt(int targetX, int targetY) const
@@ -483,92 +747,336 @@ bool SirenBoss::canBeHitAt(int targetX, int targetY) const
 
 void SirenBoss::takeDamage(int damage)
 {
-    if (state == PHASE2) return;
+    if (!alive || dying || state == PHASE2 || invulnerable) return;
 
     hp -= damage;
-    if (hp > 0) return;
+    if (hp > 0) {
+        setVisualAction(BossVisualAction::Hit, 240);
+        return;
+    }
 
     state = PHASE2;
-    hp = 3000;
-    maxHp = 3000;
+    hp = 3600;
+    maxHp = 3600;
     invulnerable = true;
     phantomSpawned = false;
+    naturalDecayTimerMs = 0;
+    phaseMotionTimerMs = 0;
+    resonancePillarsPlaced = false;
+    resonanceVisualRefreshMs = 0;
+    for (int i = 0; i < 3; ++i) {
+        resonancePillarCharges[i] = 0;
+        resonancePillarBurstMs[i] = 0;
+        resonancePillarDestroyed[i] = false;
+        elegyResonanceTriggered[i] = false;
+        staminaCheckpointUsed[i] = false;
+    }
+    elegyHoldMs = 0;
+    elegySucceeded = false;
+    soulSongTimerMs = 3600;
+    elegyTimerMs = 7200;
+    phaseTransitionMs = 1280;
+    setVisualAction(BossVisualAction::PhaseTransition, phaseTransitionMs);
+}
+
+void SirenBoss::applyShockStun(int durationMs)
+{
+    Boss::applyShockStun(durationMs);
+    if (phantomSpawned) {
+        phantomStunMs = std::max(phantomStunMs, durationMs + 600);
+    }
+}
+
+bool SirenBoss::getCompanionVisual(QPointF& outPos, bool& outStunned) const
+{
+    if (state != PHASE1 || !phantomSpawned || dying) return false;
+    outPos = phantomPos;
+    outStunned = phantomStunMs > 0;
+    return true;
 }
 
 void SirenBoss::updateBoss(Player& player)
 {
+    const QPointF playerPos = player.worldPos();
+    if (hasLastPlayerPos)
+        estimatedPlayerVelocity = playerPos - lastPlayerPos;
+    lastPlayerPos = playerPos;
+    hasLastPlayerPos = true;
+
+    if (std::abs(playerPos.x() - x) > 8.0)
+        facingX = playerPos.x() >= x ? 1.0f : -1.0f;
+
     if (state == PHASE1) updatePhase1(player);
     else updatePhase2(player);
 }
 
+QPointF SirenBoss::tridentTipWorld() const
+{
+    const qreal tipOffsetX = facingX > 0.0f ? 86.0 : -86.0;
+    return QPointF(x + tipOffsetX, y - 145.0);
+}
+
+void SirenBoss::updateMovement(Player& player)
+{
+    const QPointF playerPos = player.worldPos();
+    const QPointF predictedPlayer = playerPos + estimatedPlayerVelocity *
+        (state == PHASE2 ? 18.0 : 12.0);
+    const QPointF toPlayer = predictedPlayer - position();
+    const qreal distance = QLineF(position(), playerPos).length();
+    const QPointF forward = normalizedOr(toPlayer, QPointF(facingX, 0.0));
+    const QPointF side(-forward.y(), forward.x());
+    const QPointF travel = normalizedOr(estimatedPlayerVelocity, forward);
+    const QPointF travelSide(-travel.y(), travel.x());
+
+    const qreal preferredMin = state == PHASE2 ? 390.0 : 300.0;
+    const qreal preferredMax = state == PHASE2 ? 590.0 : 470.0;
+    QPointF move(0.0, 0.0);
+    if (distance < preferredMin)
+        move -= QPointF(forward.x() * (preferredMin - distance) * 0.018,
+                        forward.y() * (preferredMin - distance) * 0.018);
+    else if (distance > preferredMax)
+        move += QPointF(forward.x() * (distance - preferredMax) * 0.014,
+                        forward.y() * (distance - preferredMax) * 0.014);
+
+    const qreal orbit = std::sin((x + y + phaseMotionTimerMs) * 0.018) *
+                        (state == PHASE2 ? 1.25 : 0.85);
+    move += QPointF(side.x() * orbit, side.y() * orbit);
+    const qreal interceptBias = state == PHASE2 ? 1.05 : 0.62;
+    move += QPointF(travelSide.x() * interceptBias,
+                    travelSide.y() * interceptBias);
+    move.ry() += clampReal((playerPos.y() - y) * 0.006, -0.8, 0.8);
+
+    if (state == PHASE2 && resonancePillarsPlaced) {
+        for (int i = 0; i < 3; ++i) {
+            if (resonancePillarDestroyed[i]) continue;
+            QPointF away = position() - resonancePillarPositions[i];
+            const qreal pillarDistance = std::hypot(away.x(), away.y());
+            if (pillarDistance > 0.001 && pillarDistance < 210.0) {
+                const qreal repulsion = (210.0 - pillarDistance) * 0.018;
+                move += QPointF(away.x() / pillarDistance * repulsion,
+                                away.y() / pillarDistance * repulsion);
+            }
+        }
+    }
+
+    const qreal maxStep = speed * (state == PHASE2 ? 1.62 : 1.22);
+    x += qRound(clampReal(move.x(), -maxStep, maxStep));
+    y += qRound(clampReal(move.y(), -maxStep, maxStep));
+    x = clampInt(x, 150, Config::GameConfig::RIGHT_BORDER - 150);
+    y = clampInt(y, ArenaTop + 125, ArenaBottom - 88);
+}
+
 void SirenBoss::updatePhase1(Player& player)
 {
+    updateMovement(player);
     updateSoulSong(player);
     updatePhantom(player);
 }
 
 void SirenBoss::updatePhase2(Player& player)
 {
+    phantomSpawned = false;
+    if (phaseTransitionMs > 0) {
+        phaseTransitionMs = std::max(0, phaseTransitionMs - FrameMs);
+        return;
+    }
+    phaseMotionTimerMs += FrameMs;
     applyNaturalDecay();
-    checkStaminaCheckpoints(player);
-    updateSoulSong(player);
+    restorePhaseCheckpoint(player);
+    if (dying) return;
+    if (elegyCastMs <= 0)
+        updateMovement(player);
+    else if (std::abs(player.worldPos().x() - x) > 8.0)
+        facingX = player.worldPos().x() >= x ? 1.0f : -1.0f;
+    updateResonancePillars(player);
+    restorePhaseCheckpoint(player);
+    if (elegyCastMs <= 0 && elegyTimerMs > FrameMs)
+        updateSoulSong(player);
+    else
+        soulSongTimerMs = std::max(soulSongTimerMs, 800);
     updateElegy(player);
+    restorePhaseCheckpoint(player);
     updateEndlessReturn(player);
+    resolveResonancePillarCollision(player);
 
-    addHazard({ BossHazardType::SeaweedZone, position(), QRectF(), 90, 100, 0, 10, true });
+    seaweedFieldTimerMs = std::max(0, seaweedFieldTimerMs - FrameMs);
+    if (seaweedFieldTimerMs <= 0) {
+        const QPointF velocityDir = normalizedOr(estimatedPlayerVelocity, QPointF(facingX, 0.0));
+        const QPointF side(-velocityDir.y(), velocityDir.x());
+        const QPointF predicted(player.worldPos().x() + estimatedPlayerVelocity.x() * 16.0,
+                                player.worldPos().y() + estimatedPlayerVelocity.y() * 16.0);
+        const QPointF center(
+            clampReal(predicted.x(), 175.0, Config::GameConfig::RIGHT_BORDER - 175.0),
+            clampReal(predicted.y(), ArenaTop + 100.0, ArenaBottom - 90.0));
+        const QPointF fields[2] = {
+            center,
+            QPointF(clampReal(center.x() + side.x() * 205.0,
+                              175.0, Config::GameConfig::RIGHT_BORDER - 175.0),
+                    clampReal(center.y() + side.y() * 205.0,
+                              ArenaTop + 100.0, ArenaBottom - 90.0))
+        };
+        for (const QPointF& field : fields) {
+            addHazard({ BossHazardType::SeaweedZone, field, QRectF(),
+                        158, 6500, 0, 8, true });
+        }
+        seaweedFieldTimerMs = 6800;
+    }
     seaweedTickMs = std::max(0, seaweedTickMs - FrameMs);
-    if (circleHitsPlayer(position(), 90, player) && seaweedTickMs <= 0) {
-        player.takeDurabilityDamage(8);
-        seaweedTickMs = 1000;
+    for (const BossHazard& hazard : hazards) {
+        if (!hazard.active || hazard.type != BossHazardType::SeaweedZone)
+            continue;
+        if (!circleHitsPlayer(hazard.position, hazard.radius, player))
+            continue;
+        player.applySpeedReduction(0.32);
+        if (seaweedTickMs <= 0) {
+            player.takeDurabilityDamage(hazard.damage);
+            seaweedTickMs = 1000;
+        }
     }
 
-    if (poisonRemainingMs > 0) {
-        poisonRemainingMs -= FrameMs;
-        player.applySpeedReduction(0.5);
-        if (poisonRemainingMs % 1000 < FrameMs)
-            player.takeDurabilityDamage(8);
-        if (poisonRemainingMs <= 0)
-            player.maxStamina = std::max(1, int(player.maxStamina * 0.9f));
+    reefContactCooldownMs = std::max(0, reefContactCooldownMs - FrameMs);
+    for (const BossHazard& hazard : hazards) {
+        if (!hazard.active || hazard.type != BossHazardType::ReefHitbox) continue;
+        if (!hazard.rect.intersects(player.collider())) continue;
+
+        QPointF away = player.worldPos() - hazard.position;
+        qreal length = std::sqrt(away.x() * away.x() + away.y() * away.y());
+        if (length <= 0.001) {
+            away = QPointF(1.0, 0.0);
+            length = 1.0;
+        }
+        player.setWorldPos(player.worldPos() +
+            QPointF(away.x() / length * 4.0, away.y() / length * 4.0));
+        if (reefContactCooldownMs <= 0 && player.canTakeDamage()) {
+            player.takeDurabilityDamage(35);
+            reefContactCooldownMs = 900;
+        }
     }
 }
 
 void SirenBoss::updateSoulSong(Player& player)
 {
     if (soulSongCastMs > 0) {
-        soulSongCastMs -= FrameMs;
+        soulSongCastMs = std::max(0, soulSongCastMs - FrameMs);
         if (soulSongCastMs <= 0) {
-            QPointF target = player.worldPos();
-            QRectF beam(std::min((qreal)x, target.x()) - 25,
-                        std::min((qreal)y, target.y()) - 25,
-                        std::abs(target.x() - x) + 50,
-                        std::abs(target.y() - y) + 50);
-            addHazard({ BossHazardType::SoulSong, beam.center(), beam, 0, 700, 0, 30, true });
-            if (rectHitsPlayer(beam, player))
-                player.takeDurabilityDamage(30);
-            if (phantomSpawned && beam.contains(phantomPos))
+            const qreal maxHalfWidth = state == PHASE2 ? 38.0 : 34.0;
+            bool playerHit = false;
+            bool phantomHit = false;
+            for (int i = 0; i < soulSongBeamCount; ++i) {
+                const QPointF from = soulSongStarts[i];
+                const QPointF to = soulSongTargets[i];
+                addHazard({ BossHazardType::SoulSong, from,
+                            beamBounds(from, to, maxHalfWidth),
+                            maxHalfWidth, 460, 0,
+                            state == PHASE2 ? 34 : 30,
+                            true, i, to });
+
+                qreal pillarT = 2.0;
+                const bool pillarAbsorbed =
+                    state == PHASE2 &&
+                    chargeResonancePillarFromLine(from, to, maxHalfWidth, &pillarT);
+                if (!playerHit &&
+                    segmentHitsPlayer(from, to, maxHalfWidth, player)) {
+                    const qreal playerT =
+                        projectionOnSegment(player.worldPos(), from, to);
+                    if (!pillarAbsorbed || pillarT > playerT + 0.04)
+                        playerHit = true;
+                }
+                if (phantomSpawned &&
+                    distancePointToSegment(phantomPos, from, to) <= maxHalfWidth)
+                    phantomHit = true;
+            }
+
+            if (playerHit) {
+                player.takeDurabilityDamage(state == PHASE2 ? 34 : 30);
+                player.applyInputReverse(15000);
+            }
+            if (phantomHit)
                 phantomStunMs += 5000;
+            setVisualAction(BossVisualAction::SoulSong, 620);
+            soulSongBeamCount = 0;
         }
         return;
     }
 
     soulSongTimerMs -= FrameMs;
     if (soulSongTimerMs <= 0) {
-        soulSongCastMs = 2000;
-        soulSongTimerMs = 20000;
+        soulSongCastDurationMs = state == PHASE2 ? 1900 : 2200;
+        soulSongCastMs = soulSongCastDurationMs;
+        soulSongTimerMs = state == PHASE2 ? 13500 : 16500;
+        soulSongBeamCount = state == PHASE2 ? 5 : 4;
+
+        const QPointF playerPos = player.worldPos();
+        const QPointF pursuit = normalizedOr(
+            estimatedPlayerVelocity,
+            normalizedOr(playerPos - position(), QPointF(facingX, 0.0)));
+        const QPointF side(-pursuit.y(), pursuit.x());
+        QPointF predicted = playerPos + estimatedPlayerVelocity *
+            (state == PHASE2 ? 28.0 : 22.0);
+        predicted.setX(clampReal(predicted.x(), 110.0,
+                                 Config::GameConfig::RIGHT_BORDER - 110.0));
+        predicted.setY(clampReal(predicted.y(), ArenaTop + 70.0,
+                                 ArenaBottom - 70.0));
+
+        const QPointF centers[5] = {
+            predicted,
+            predicted + side * 150.0,
+            predicted - side * 150.0,
+            predicted - pursuit * 185.0,
+            predicted + pursuit * 175.0
+        };
+        const QPointF directions[5] = {
+            side,
+            normalizedOr(pursuit * 0.72 + side * 0.69, side),
+            normalizedOr(pursuit * 0.72 - side * 0.69, side),
+            pursuit,
+            normalizedOr(pursuit * 0.28 + side * 0.96, side)
+        };
+
+        const qreal maxHalfWidth = state == PHASE2 ? 38.0 : 34.0;
+        for (int i = 0; i < soulSongBeamCount; ++i) {
+            QPointF center(
+                clampReal(centers[i].x(), 85.0,
+                          Config::GameConfig::RIGHT_BORDER - 85.0),
+                clampReal(centers[i].y(), ArenaTop + 45.0,
+                          ArenaBottom - 45.0));
+            const QPointF direction = normalizedOr(directions[i], QPointF(1.0, 0.0));
+            QPointF from = center - direction * 760.0;
+            QPointF to = center + direction * 760.0;
+            from.setX(clampReal(from.x(), 35.0,
+                                Config::GameConfig::RIGHT_BORDER - 35.0));
+            from.setY(clampReal(from.y(), ArenaTop + 20.0,
+                                ArenaBottom - 20.0));
+            to.setX(clampReal(to.x(), 35.0,
+                              Config::GameConfig::RIGHT_BORDER - 35.0));
+            to.setY(clampReal(to.y(), ArenaTop + 20.0,
+                              ArenaBottom - 20.0));
+            soulSongStarts[i] = from;
+            soulSongTargets[i] = to;
+            addHazard({ BossHazardType::SoulSong, from,
+                        beamBounds(from, to, maxHalfWidth),
+                        maxHalfWidth,
+                        static_cast<qreal>(soulSongCastDurationMs + 120),
+                        0, 0, true, i, to });
+        }
+        setVisualAction(BossVisualAction::SoulSongWindup, soulSongCastMs);
     }
 }
 
 void SirenBoss::updatePhantom(Player& player)
 {
+    if (state != PHASE1)
+        return;
     if (!phantomSpawned) {
         phantomSpawned = true;
-        phantomPos = QPointF(x - 220, y);
+        phantomPos = QPointF(x - facingX * 220.0, y);
     }
     if (phantomStunMs > 0) {
         phantomStunMs -= FrameMs;
         return;
     }
-    phantomPos = stepToward(phantomPos, player.worldPos(), 2.2);
+    const qreal chaseSpeed = QLineF(phantomPos, player.worldPos()).length() > 260.0 ? 2.55 : 1.95;
+    phantomPos = stepToward(phantomPos, player.worldPos(), chaseSpeed);
     phantomContactTickMs = std::max(0, phantomContactTickMs - FrameMs);
     if (circleHitsPlayer(phantomPos, 36, player) && phantomContactTickMs <= 0) {
         player.takeDurabilityDamage(8);
@@ -578,19 +1086,91 @@ void SirenBoss::updatePhantom(Player& player)
 
 void SirenBoss::updateElegy(Player& player)
 {
+    constexpr int ElegyTotalMs = 5600;
+    constexpr int ElegyWindupMs = 1400;
+    constexpr int ElegyActiveMs = ElegyTotalMs - ElegyWindupMs;
+    constexpr int ElegyHoldRequirementMs = 3000;
+    constexpr qreal ElegyRadius = 365.0;
+
     if (elegyCastMs > 0) {
+        const int previousMs = elegyCastMs;
         elegyCastMs -= FrameMs;
-        player.applySpeedReduction(0.25);
-        if (elegyCastMs <= 0)
-            poisonRemainingMs = 10000;
+        const bool wasWindup = previousMs > ElegyActiveMs;
+        const bool isActive = elegyCastMs <= ElegyActiveMs;
+
+        if (wasWindup && isActive)
+            setVisualAction(BossVisualAction::Elegy, ElegyActiveMs);
+
+        if (isActive) {
+            const int activeElapsed = qBound(0, ElegyActiveMs - std::max(0, elegyCastMs), ElegyActiveMs);
+            const int visualStage = qBound(1, 1 + activeElapsed / 900, 3);
+            elegyPulseMs = std::max(0, elegyPulseMs - FrameMs);
+            if (elegyPulseMs <= 0) {
+                addHazard({ BossHazardType::ElegyWarning, elegyCenter, QRectF(),
+                            ElegyRadius, 900, 0, 1, true, visualStage });
+                elegyPulseMs = 120;
+            }
+
+            const qreal distance = QLineF(elegyCenter, player.worldPos()).length();
+            const bool inRange = distance <= ElegyRadius;
+            if (inRange) {
+                const qreal closeness = qBound<qreal>(0.0, 1.0 - distance / ElegyRadius, 1.0);
+                player.applySpeedReduction(0.34 + closeness * 0.16);
+                const QPointF pulled = stepToward(player.worldPos(), elegyCenter,
+                                                  0.42 + closeness * 0.55);
+                player.setWorldPos(pulled);
+                elegyExposureMs += FrameMs;
+                elegyTickMs = std::max(0, elegyTickMs - FrameMs);
+                if (elegyTickMs <= 0) {
+                    player.takeDurabilityDamage(2);
+                    elegyTickMs = 650;
+                }
+                if (!elegySucceeded && player.isSpaceHeld() && !player.isMoving()) {
+                    elegyHoldMs += FrameMs;
+                    player.applySpeedReduction(0.92);
+                    if (elegyHoldMs >= ElegyHoldRequirementMs) {
+                        elegySucceeded = true;
+                        player.restoreStaminaToFull();
+                        addHazard({ BossHazardType::ElegyWarning, elegyCenter, QRectF(),
+                                    ElegyRadius, 900, 0, 0, true, 4 });
+                    }
+                }
+                else if (!elegySucceeded) {
+                    elegyHoldMs = std::max(0, elegyHoldMs - FrameMs * 2);
+                }
+            }
+            else if (!elegySucceeded) {
+                elegyHoldMs = std::max(0, elegyHoldMs - FrameMs * 2);
+            }
+            if (state == PHASE2)
+                chargeResonancePillarsFromElegy(player, ElegyRadius);
+        }
+
+        if (elegyCastMs <= 0) {
+            if (!elegySucceeded && elegyExposureMs >= 650) {
+                player.applyPoison(10000);
+            }
+            addHazard({ BossHazardType::ElegyWarning, elegyCenter, QRectF(),
+                        ElegyRadius, 1100, 0, 0, true, 4 });
+        }
         return;
     }
 
     elegyTimerMs -= FrameMs;
     if (elegyTimerMs <= 0) {
-        elegyCastMs = 3000;
+        elegyCenter = position();
+        elegyCastMs = ElegyTotalMs;
+        elegyPulseMs = 0;
+        elegyTickMs = 0;
+        elegyExposureMs = 0;
+        elegyHoldMs = 0;
+        elegySucceeded = false;
+        for (bool& triggered : elegyResonanceTriggered)
+            triggered = false;
         elegyTimerMs = 30000;
-        addHazard({ BossHazardType::ElegyWarning, position(), QRectF(), 240, 3000, 0, 0, true });
+        setVisualAction(BossVisualAction::ElegyWindup, ElegyWindupMs);
+        addHazard({ BossHazardType::ElegyWarning, elegyCenter, QRectF(),
+                    ElegyRadius, ElegyWindupMs, 0, 0, true, 0 });
     }
 }
 
@@ -602,15 +1182,197 @@ void SirenBoss::updateEndlessReturn(Player& player)
     int px = int(player.worldPos().x());
     int py = int(player.worldPos().y());
     for (int i = 0; i < 10; ++i) {
-        int rx = px - 260 + std::rand() % 520;
-        int ry = clampInt(py - 180 + std::rand() % 360, ArenaTop, ArenaBottom);
-        QRectF reefRect(rx - 24, ry - 24, 48, 48);
+        const qreal angle = (i / 10.0) * 6.28318530718 + (std::rand() % 35) * 0.01;
+        const qreal distance = 145.0 + (std::rand() % 230);
+        int rx = px + qRound(std::cos(angle) * distance);
+        int ry = py + qRound(std::sin(angle) * distance);
+        rx = clampInt(rx, 95, Config::GameConfig::RIGHT_BORDER - 95);
+        ry = clampInt(ry, ArenaTop + 55, ArenaBottom - 55);
+        QRectF reefRect(rx - 40, ry - 32, 80, 64);
         addHazard({ BossHazardType::ReefHitbox, QPointF(rx, ry), reefRect, 0, 20000, 0, 50, true });
-        if (rectHitsPlayer(reefRect, player))
-            player.takeDurabilityDamage(35);
     }
 
     endlessReturnTimerMs = 20000;
+}
+
+bool SirenBoss::chargeResonancePillar(int index)
+{
+    constexpr int ResonanceShatterMs = 1280;
+    if (index < 0 || index >= 3) return false;
+    if (!resonancePillarsPlaced || resonancePillarDestroyed[index]) return false;
+    if (resonancePillarBurstMs[index] > 0) return false;
+    if (resonancePillarCharges[index] >= 3) return false;
+
+    ++resonancePillarCharges[index];
+    addHazard({ BossHazardType::ResonancePillar, resonancePillarPositions[index],
+                QRectF(), 72, 520, 0, resonancePillarCharges[index],
+                true, resonancePillarCharges[index] });
+
+    if (resonancePillarCharges[index] < 3)
+        return true;
+
+    resonancePillarBurstMs[index] = ResonanceShatterMs;
+    return true;
+}
+
+bool SirenBoss::chargeResonancePillarFromLine(const QPointF& from, const QPointF& to,
+                                              qreal halfWidth, qreal* outPillarT)
+{
+    if (!resonancePillarsPlaced) return false;
+
+    int bestIndex = -1;
+    qreal bestT = 2.0;
+    for (int i = 0; i < 3; ++i) {
+        if (resonancePillarDestroyed[i] ||
+            resonancePillarBurstMs[i] > 0) continue;
+        const QPointF pillarPos = resonancePillarPositions[i];
+        const qreal t = projectionOnSegment(pillarPos, from, to);
+        if (t <= 0.03 || t >= 0.995) continue;
+        const qreal hitDistance = distancePointToSegment(pillarPos, from, to);
+        if (hitDistance > halfWidth + 66.0) continue;
+        if (t < bestT) {
+            bestT = t;
+            bestIndex = i;
+        }
+    }
+
+    if (bestIndex < 0)
+        return false;
+
+    if (outPillarT)
+        *outPillarT = bestT;
+    return chargeResonancePillar(bestIndex);
+}
+
+void SirenBoss::chargeResonancePillarsFromElegy(Player& player, qreal radius)
+{
+    if (!resonancePillarsPlaced) return;
+    if (QLineF(elegyCenter, player.worldPos()).length() > radius)
+        return;
+
+    for (int i = 0; i < 3; ++i) {
+        if (elegyResonanceTriggered[i] ||
+            resonancePillarDestroyed[i] ||
+            resonancePillarBurstMs[i] > 0)
+            continue;
+        const qreal pillarInWave = QLineF(elegyCenter, resonancePillarPositions[i]).length();
+        if (pillarInWave > radius + 72.0)
+            continue;
+        const qreal playerGuideDistance =
+            QLineF(player.worldPos(), resonancePillarPositions[i]).length();
+        if (playerGuideDistance > 145.0)
+            continue;
+
+        elegyResonanceTriggered[i] = true;
+        chargeResonancePillar(i);
+    }
+}
+
+void SirenBoss::resolveResonancePillarCollision(Player& player)
+{
+    if (!resonancePillarsPlaced) return;
+
+    for (int i = 0; i < 3; ++i) {
+        const QPointF pillarPos = resonancePillarPositions[i];
+        const qreal bodyRadius = resonancePillarDestroyed[i] ? 42.0 : 58.0;
+        QPointF away = player.worldPos() - pillarPos;
+        qreal distance = std::sqrt(away.x() * away.x() + away.y() * away.y());
+        const qreal minDistance = bodyRadius + 28.0;
+        if (distance >= minDistance)
+            continue;
+        if (distance <= 0.001) {
+            away = QPointF(1.0, 0.0);
+            distance = 1.0;
+        }
+        const qreal push = minDistance - distance;
+        player.setWorldPos(player.worldPos() +
+            QPointF(away.x() / distance * push, away.y() / distance * push));
+    }
+}
+
+void SirenBoss::updateResonancePillars(Player& player)
+{
+    constexpr int ResonanceShatterMs = 1280;
+    constexpr int ChargeHoldMs = 180;
+    constexpr int ShatterFrameMs = 150;
+    constexpr int FinalShatterFrame = 10;
+
+    if (!resonancePillarsPlaced) {
+        const int leftX = clampInt(x - 220, 95, Config::GameConfig::RIGHT_BORDER - 95);
+        const int rightX = clampInt(x + 220, 95, Config::GameConfig::RIGHT_BORDER - 95);
+        const int upperY = clampInt(y - 160, ArenaTop + 75, ArenaBottom - 75);
+        const int lowerY = clampInt(y + 160, ArenaTop + 75, ArenaBottom - 75);
+        const int midY = clampInt(y, ArenaTop + 75, ArenaBottom - 75);
+        resonancePillarPositions[0] = QPointF(leftX, upperY);
+        resonancePillarPositions[1] = QPointF(leftX, lowerY);
+        resonancePillarPositions[2] = QPointF(rightX, midY);
+        for (int i = 0; i < 3; ++i) {
+            resonancePillarCharges[i] = 0;
+            resonancePillarBurstMs[i] = 0;
+            resonancePillarDestroyed[i] = false;
+            elegyResonanceTriggered[i] = false;
+        }
+        resonancePillarsPlaced = true;
+        resonanceVisualRefreshMs = 0;
+    }
+
+    resonanceVisualRefreshMs = std::max(0, resonanceVisualRefreshMs - FrameMs);
+    for (int i = 0; i < 3; ++i) {
+        if (resonancePillarBurstMs[i] <= 0 ||
+            resonancePillarDestroyed[i])
+            continue;
+
+        resonancePillarBurstMs[i] =
+            std::max(0, resonancePillarBurstMs[i] - FrameMs);
+        if (resonancePillarBurstMs[i] > 0)
+            continue;
+
+        const int resonanceTrueDamage = std::max(1, int(maxHp * 0.12f));
+        resonancePillarDestroyed[i] = true;
+        hp = std::max(0, hp - resonanceTrueDamage);
+        addHazard({ BossHazardType::ResonanceBacklash, position(), QRectF(),
+                    205, 1050, 0, resonanceTrueDamage, true });
+        setVisualAction(BossVisualAction::Hit, 360);
+        if (hp <= 0)
+            startDeathAnimation();
+    }
+
+    for (int i = 0; i < 3; ++i) {
+        const QPointF pillarPos = resonancePillarPositions[i];
+        if (resonanceVisualRefreshMs <= 0) {
+            int visualStage = resonancePillarCharges[i];
+            if (resonancePillarDestroyed[i]) {
+                visualStage = FinalShatterFrame;
+            }
+            else if (resonancePillarBurstMs[i] > 0) {
+                const int elapsed =
+                    ResonanceShatterMs - resonancePillarBurstMs[i];
+                if (elapsed < ChargeHoldMs) {
+                    visualStage = 3;
+                }
+                else {
+                    visualStage = qBound(
+                        4,
+                        4 + (elapsed - ChargeHoldMs) / ShatterFrameMs,
+                        FinalShatterFrame);
+                }
+            }
+            addHazard({ BossHazardType::ResonancePillar, pillarPos, QRectF(), 48,
+                        80, 0,
+                        resonancePillarDestroyed[i] ? -1 : resonancePillarCharges[i],
+                        true, visualStage });
+        }
+
+        if (!resonancePillarDestroyed[i] &&
+            resonancePillarBurstMs[i] <= 0 &&
+            resonancePillarCharges[i] >= 2 &&
+            QLineF(pillarPos, player.worldPos()).length() <= 126.0) {
+            player.applySpeedReduction(0.18);
+        }
+    }
+
+    if (resonanceVisualRefreshMs <= 0)
+        resonanceVisualRefreshMs = 80;
 }
 
 void SirenBoss::applyNaturalDecay()
@@ -618,26 +1380,28 @@ void SirenBoss::applyNaturalDecay()
     naturalDecayTimerMs += FrameMs;
     if (naturalDecayTimerMs < 1000) return;
     naturalDecayTimerMs -= 1000;
-    hp -= 30;
+    hp -= std::max(1, int(maxHp * 0.0075f));
+
+    // 二阶段仍会被歌声反噬缓慢衰弱；共鸣柱爆裂才是主要输出。
+    hp -= std::max(1, int(maxHp * 0.005f));
     if (hp <= 0) {
         hp = 0;
-        alive = false;
+        startDeathAnimation();
     }
 }
 
-void SirenBoss::checkStaminaCheckpoints(Player& player)
+void SirenBoss::restorePhaseCheckpoint(Player& player)
 {
-    float ratio = float(hp) / float(maxHp);
-    if (!checkpoint75Used && ratio <= 0.75f) {
-        checkpoint75Used = true;
-        player.restoreStamina(player.maxStamina);
-    }
-    if (!checkpoint50Used && ratio <= 0.50f) {
-        checkpoint50Used = true;
-        player.restoreStamina(player.maxStamina);
-    }
-    if (!checkpoint25Used && ratio <= 0.25f) {
-        checkpoint25Used = true;
-        player.restoreStamina(player.maxStamina);
+    if (state != PHASE2 || maxHp <= 0 || dying)
+        return;
+
+    const qreal ratio = static_cast<qreal>(hp) / maxHp;
+    const qreal thresholds[3] = {0.75, 0.50, 0.25};
+    for (int i = 0; i < 3; ++i) {
+        if (staminaCheckpointUsed[i] || ratio > thresholds[i])
+            continue;
+        staminaCheckpointUsed[i] = true;
+        player.clearMaxStaminaPenalty();
+        player.restoreStaminaToFull();
     }
 }

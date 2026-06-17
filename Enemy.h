@@ -17,6 +17,10 @@ public:
     virtual void setPosition(const QPointF& pos);
     virtual void takeDamage(int damage);
     void applyKnockback(const QPointF& origin, qreal strength);
+    void applyStun(int durationMs);
+    void applySlow(int durationMs, qreal movementMultiplier);
+    bool isStunned() const;
+    bool isSlowed() const;
     void applyStageScaling(int stage);
 
     int x, y;
@@ -35,6 +39,10 @@ protected:
 private:
     QPointF m_knockbackVelocity;
     int m_knockbackFrames = 0;
+    int m_stunFrames = 0;
+    int m_slowFrames = 0;
+    int m_slowPhase = 0;
+    qreal m_slowMultiplier = 1.0;
     int m_scaledStage = 0;
 };
 

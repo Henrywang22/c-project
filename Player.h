@@ -48,6 +48,8 @@ public:
     // 战斗与生存接口
     bool canTakeDamage() const; // 新增：是否可受伤(Dash期间无敌)
     void takeDurabilityDamage(int damage);
+    bool isDamageFlashing() const { return m_damageFlashMs > 0; }
+    qreal damageFlashRatio() const;
     void applyStun(int durationMs);
     void applyRebound(const QPointF& direction);
     void applySpeedReduction(qreal reduction);
@@ -64,6 +66,8 @@ public:
     bool canShock() const;
     void triggerShock();
     bool isShockActive() const;
+    qreal shockChargeRatio() const;
+    qreal shockEffectProgress() const;
     QRectF shockArea() const;
 
     // ==========================================
@@ -104,6 +108,7 @@ public:
 
     // 游戏进度数据
     int coins = 0;
+    bool testModeInfiniteCoins = false;
     int fishCaught = 0;
     int fishTotalValue = 0;
     int distance = 0;
@@ -147,6 +152,7 @@ private:
     QElapsedTimer m_stunTimer;
     int m_stunDuration;
     qreal m_speedReduction;
+    int m_damageFlashMs;
     bool m_reboundActive;
     QPointF m_reboundDir;
     int m_reboundDurationMs;
@@ -166,11 +172,11 @@ private:
 
     // --- Shock 属性 ---
     bool m_isShockActive;
-    int m_shockCharges;
-    int m_shockCooldownMs;
+    bool m_shockReady;
+    int m_shockRechargeMs;
     int m_shockDurationMs;
     QElapsedTimer m_shockTimer;
-    QElapsedTimer m_shockCooldown;
+    QElapsedTimer m_shockRechargeTimer;
 
     // --- Debuff 属性 ---
     bool m_isInputReversed;

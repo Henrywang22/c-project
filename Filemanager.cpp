@@ -788,21 +788,40 @@ int FileManager::calculateScore(
     int gameSeconds
 ) const
 {
-    int score =
-        stagesCleared * Config::SCORE_STAGE_WEIGHT
-        + fishTotalValue * Config::SCORE_FISH_VALUE_WEIGHT
-        + fishCaught * Config::SCORE_FISH_COUNT_WEIGHT
-        + kills * Config::SCORE_KILL_WEIGHT
-        + coins * Config::SCORE_COIN_WEIGHT
-        + durability * Config::SCORE_DURABILITY_WEIGHT
-        + stamina * Config::SCORE_STAMINA_WEIGHT
-        - gameSeconds * Config::SCORE_TIME_PENALTY;
+    const int cleared = qBound(0, stagesCleared, Config::GameConfig::STAGE_COUNT);
+    const int stageScore = Config::SCORE_STAGE_MAX * cleared /
+        qMax(1, Config::GameConfig::STAGE_COUNT);
 
-    if (score < 0) {
-        score = 0;
-    }
+    const int fastTargetSeconds = qMax(180, cleared * 85);
+    const int slowLimitSeconds = qMax(fastTargetSeconds + 1, cleared * 210);
+    const qreal timeRatio = gameSeconds <= fastTargetSeconds
+        ? 1.0
+        : qBound<qreal>(0.0,
+            1.0 - static_cast<qreal>(gameSeconds - fastTargetSeconds) /
+                (slowLimitSeconds - fastTargetSeconds),
+            1.0);
+    const int timeScore = qRound(Config::SCORE_TIME_MAX * timeRatio);
 
-    return score;
+    const int fishCountTarget = qMax(1, cleared * 5);
+    const int fishValueTarget = qMax(1, cleared * 380);
+    const int killTarget = qMax(1, cleared * 4);
+    const int fishCountScore = qRound(Config::SCORE_FISH_COUNT_MAX *
+        qBound<qreal>(0.0, static_cast<qreal>(fishCaught) / fishCountTarget, 1.0));
+    const int fishValueScore = qRound(Config::SCORE_FISH_VALUE_MAX *
+        qBound<qreal>(0.0, static_cast<qreal>(fishTotalValue) / fishValueTarget, 1.0));
+    const int killScore = qRound(Config::SCORE_KILL_MAX *
+        qBound<qreal>(0.0, static_cast<qreal>(kills) / killTarget, 1.0));
+
+    const qreal hullRatio = qBound<qreal>(0.0, durability / 100.0, 1.0);
+    const qreal staminaRatio = qBound<qreal>(0.0, stamina / 100.0, 1.0);
+    const int survivalScore = qRound(Config::SCORE_SURVIVAL_MAX *
+                                     (hullRatio * 0.7 + staminaRatio * 0.3));
+
+    // Coins are deliberately not scored: fish value and kills already reward
+    // earning them, while spending on upgrades should never lower a grade.
+    (void)coins;
+    return qBound(0, stageScore + timeScore + fishCountScore + fishValueScore +
+                       killScore + survivalScore, 10000);
 }
 
 // ============================================================

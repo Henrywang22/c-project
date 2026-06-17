@@ -89,6 +89,39 @@ void Fish::setPosition(const QPointF& pos)
     y = static_cast<int>(std::round(posY));
 }
 
+void Fish::applyStun(int durationMs)
+{
+    if (caught || escaped || durationMs <= 0) return;
+    stunFrames = qMax(stunFrames, qMax(1, durationMs / 16));
+}
+
+void Fish::applySlow(int durationMs, qreal movementMultiplier)
+{
+    if (caught || escaped || durationMs <= 0) return;
+    slowFrames = qMax(slowFrames, qMax(1, durationMs / 16));
+    slowMultiplier = qMin(slowMultiplier, qBound<qreal>(0.12, movementMultiplier, 1.0));
+}
+
+qreal Fish::statusMovementMultiplier() const
+{
+    return slowFrames > 0 ? slowMultiplier : 1.0;
+}
+
+bool Fish::tickStatusEffects()
+{
+    if (slowFrames > 0) {
+        --slowFrames;
+        if (slowFrames == 0) slowMultiplier = 1.0;
+    }
+    if (stunFrames > 0) {
+        --stunFrames;
+        return true;
+    }
+    if (std::fabs(vx) > 0.22f)
+        facingX = vx < 0.0f ? -1.0f : 1.0f;
+    return false;
+}
+
 // 随机改变游动方向，保持原有速度大小
 void Fish::changeDirection()
 {
@@ -111,10 +144,11 @@ bool Fish::isNearPlayer(int px, int py, int range)
 // 基类默认update（子类会覆盖）
 void Fish::update(int playerX, int playerY)
 {
+    if (tickStatusEffects()) return;
     moveTimer++;
-    const float speedScale = lockedForCatch
+    const float speedScale = (lockedForCatch
         ? static_cast<float>(Config::GameConfig::FISH_LOCKED_SPEED_MULTIPLIER)
-        : 1.0f;
+        : 1.0f) * static_cast<float>(statusMovementMultiplier());
     posX += vx * speedScale;
     posY += vy * speedScale;
     x = (int)std::round(posX);
@@ -148,6 +182,7 @@ CommonFish::CommonFish(int x, int y, Type type) : Fish(x, y, type)
 
 void CommonFish::update(int playerX, int playerY)
 {
+    if (tickStatusEffects()) return;
     moveTimer++;
 
     if (fleeCooldown > 0) fleeCooldown--;
@@ -168,9 +203,9 @@ void CommonFish::update(int playerX, int playerY)
     // 每120帧随机改变方向（不在逃跑时）
     if (moveTimer % 120 == 0 && !fleeing) changeDirection();
 
-    const float speedScale = lockedForCatch
+    const float speedScale = (lockedForCatch
         ? static_cast<float>(Config::GameConfig::FISH_LOCKED_SPEED_MULTIPLIER)
-        : 1.0f;
+        : 1.0f) * static_cast<float>(statusMovementMultiplier());
     posX += vx * speedScale;
     posY += vy * speedScale;
     x = (int)std::round(posX);
@@ -205,6 +240,7 @@ RareFish::RareFish(int x, int y, Type type) : Fish(x, y, type)
 
 void RareFish::update(int playerX, int playerY)
 {
+    if (tickStatusEffects()) return;
     moveTimer++;
 
     if (fleeCooldown > 0) fleeCooldown--;
@@ -225,9 +261,9 @@ void RareFish::update(int playerX, int playerY)
     // 每80帧随机改变方向（更频繁，更难预判）
     if (moveTimer % 80 == 0 && !fleeing) changeDirection();
 
-    const float speedScale = lockedForCatch
+    const float speedScale = (lockedForCatch
         ? static_cast<float>(Config::GameConfig::FISH_LOCKED_SPEED_MULTIPLIER)
-        : 1.0f;
+        : 1.0f) * static_cast<float>(statusMovementMultiplier());
     posX += vx * speedScale;
     posY += vy * speedScale;
     x = (int)std::round(posX);
@@ -283,7 +319,7 @@ DeepSeaEel::DeepSeaEel(int x, int y) : RareFish(x, y, DEEPSEAEEL)
     staminaGain = 5;
     staminaCost = 10;
     catchRequired = 8;
-    catchTimeLimit = 90; // 1.5秒，很紧张
+    catchTimeLimit = 120;
 }
 
 // ============================================================

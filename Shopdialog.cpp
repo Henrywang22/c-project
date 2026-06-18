@@ -1317,10 +1317,9 @@ void ShopDialog::discardSelectedBackpackWeapon()
         {QStringLiteral("确认丢弃")}
     );
     if (choice == 0 && inv.removeWeapon(m_selectedWeaponIndex)) {
-        m_selectedWeaponIndex = qMax(
-            0,
-            qMin(m_selectedWeaponIndex, inv.weaponCount() - 1)
-        );
+        m_selectedWeaponIndex = inv.weaponCount() <= 0
+            ? -1
+            : qBound(0, m_selectedWeaponIndex, inv.weaponCount() - 1);
         refreshBackpackUI();
         showShopNotice(QStringLiteral("已丢弃"),
                        QStringLiteral("%1 已从船舱背包移除。").arg(weaponName));

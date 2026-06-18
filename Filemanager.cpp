@@ -546,7 +546,9 @@ void FileManager::saveGame(const SaveData& data)
     fullSave.core = data;
     fullSave.inventory = makeInventorySaveBlock();
 
-    std::ofstream f("save.dat", std::ios::binary);
+    const char* tempPath = "save.tmp";
+    const char* savePath = "save.dat";
+    std::ofstream f(tempPath, std::ios::binary | std::ios::trunc);
 
     if (!f.is_open()) {
         return;
@@ -554,6 +556,19 @@ void FileManager::saveGame(const SaveData& data)
 
     f.write(reinterpret_cast<const char*>(&header), sizeof(header));
     f.write(reinterpret_cast<const char*>(&fullSave), sizeof(fullSave));
+    f.flush();
+    if (!f.good()) {
+        f.close();
+        std::remove(tempPath);
+        return;
+    }
+    f.close();
+    if (std::rename(tempPath, savePath) != 0) {
+        std::remove(savePath);
+        if (std::rename(tempPath, savePath) != 0) {
+            std::remove(tempPath);
+        }
+    }
 }
 
 // ============================================================
@@ -713,6 +728,7 @@ bool FileManager::hasSave()
 void FileManager::deleteSave()
 {
     std::remove("save.dat");
+    std::remove("save.tmp");
 }
 
 // ============================================================

@@ -20,12 +20,12 @@ WeatherSystem& WeatherSystem::instance() {
 }
 
 void WeatherSystem::update(qreal deltaTime) {
-    Q_UNUSED(deltaTime);
-    m_weatherFrameCount++;
+    const qreal frameStep = qBound<qreal>(0.0, deltaTime * 60.0, 5.0);
+    m_weatherFrameCount += frameStep;
     m_lightningTriggered = false;
 
     if (m_isTransitioning) {
-        m_transitionFrameCount++;
+        m_transitionFrameCount += frameStep;
         if (m_transitionFrameCount >= GameConfig::WEATHER_TRANSITION_FRAMES) {
             m_currentWeather = m_targetWeather;
             m_isTransitioning = false;
@@ -40,9 +40,11 @@ void WeatherSystem::update(qreal deltaTime) {
     }
 
     if (!m_isTransitioning && m_currentWeather == WeatherType::STORM &&
-        m_lightningChanceDenominator > 0 &&
-        QRandomGenerator::global()->bounded(0, m_lightningChanceDenominator) < 1) {
-        m_lightningTriggered = true;
+        m_lightningChanceDenominator > 0) {
+        const qreal chance = qMin<qreal>(1.0, frameStep / m_lightningChanceDenominator);
+        if (QRandomGenerator::global()->generateDouble() < chance) {
+            m_lightningTriggered = true;
+        }
     }
 }
 

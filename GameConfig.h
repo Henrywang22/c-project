@@ -17,7 +17,7 @@ namespace Config {
     // 0. 背包系统
     // ==========================================
 
-    const int MAX_WEAPON_BACKPACK = 99;
+    const int MAX_WEAPON_BACKPACK = 32;
     const int INFINITE_WEAPON_DURABILITY = 999999;
 
     // 当前阶段先视为“不限制物品背包”
@@ -580,7 +580,7 @@ namespace Config {
             {u8"迷雾沉沟", u8"雾、雷雨和漩涡交替出现，航线选择更加重要。", u8"沉沟中的安全水道已经标记。"},
             {u8"风暴前沿", u8"高密度敌群与逆浪考验装备、走位和补给规划。", u8"风暴前沿被成功穿越。"},
             {u8"塞壬外环", u8"珍稀鱼群藏在危险海况中，为终战完成最后准备。", u8"塞壬外环的迷雾开始消散。"},
-            {u8"终海门", u8"塞壬守在航线尽头，光波、哀歌与共鸣柱同时苏醒。", u8"终海门被打开，渔途航线完整连通。"}
+            {u8"终海门", u8"塞壬守在航线尽头，终海的危险全面苏醒。", u8"终海门被打开，渔途航线完整连通。"}
         };
 
         inline const StageText& stageText(int stage)
@@ -590,8 +590,9 @@ namespace Config {
 
         inline int stageStartDistance(int stage)
         {
-            if (stage <= 1) return 0;
-            return stageConfig(stage - 1).targetDistance;
+            const int safeStage = qBound(1, stage, STAGE_COUNT);
+            if (safeStage <= 1) return 0;
+            return stageConfig(safeStage - 1).targetDistance;
         }
     }
 }

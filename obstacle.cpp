@@ -28,7 +28,7 @@ bool Obstacle::isVisible(const QPointF& playerPos) const {
 
 Reef::Reef(const QPointF& worldPos) : Obstacle(ObstacleType::REEF, worldPos) {
     m_size = GameConfig::REEF_MIN_SIZE +
-             QRandomGenerator::global()->generate() % (GameConfig::REEF_MAX_SIZE - GameConfig::REEF_MIN_SIZE + 1);
+             QRandomGenerator::global()->bounded(GameConfig::REEF_MAX_SIZE - GameConfig::REEF_MIN_SIZE + 1);
 }
 
 QRectF Reef::collider() const {

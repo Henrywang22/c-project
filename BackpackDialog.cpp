@@ -1493,9 +1493,8 @@ const BackpackDialog::ItemDef* BackpackDialog::selectedItemDef() const
 {
     const QVector<ItemDef> defs = itemDefs();
     if (m_selectedItemIndex < 0 || m_selectedItemIndex >= defs.size()) return nullptr;
-    static ItemDef selected;
-    selected = defs[m_selectedItemIndex];
-    return &selected;
+    m_selectedItemCache = defs[m_selectedItemIndex];
+    return &m_selectedItemCache;
 }
 
 const Weapon* BackpackDialog::selectedWeapon() const
@@ -1728,7 +1727,7 @@ void BackpackDialog::clampSelections()
 {
     const int weaponCount = static_cast<int>(InventorySystem::instance().weapons().size());
     if (weaponCount <= 0) {
-        m_selectedEquipmentIndex = 0;
+        m_selectedEquipmentIndex = -1;
     } else {
         if (m_selectedEquipmentIndex < 0) {
             m_selectedEquipmentIndex = std::max(0, InventorySystem::instance().currentWeaponIndex());

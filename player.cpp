@@ -189,8 +189,7 @@ void Player::updateDebuffs() {
     if (m_isPoisoned) {
         if (m_poisonTimer.elapsed() >= m_poisonDurationMs) {
             m_isPoisoned = false;
-            // 中毒结束后体力上限减少10%
-            applyTemporaryMaxStaminaPenalty(maxStamina * 0.1f);
+            m_poisonTickTimer.invalidate();
         }
         else if (m_poisonTickTimer.elapsed() >= 1000) {
             takeDurabilityDamage(POISON_TICK_DAMAGE);
@@ -451,7 +450,7 @@ void Player::restoreStaminaToFull() {
 }
 
 void Player::applyTemporaryMaxStaminaPenalty(int amount) {
-    m_staminaPenalty += amount;
+    m_staminaPenalty = qBound(0, m_staminaPenalty + qMax(0, amount), maxStamina - 1);
     int effectiveMax = qMax(1, maxStamina - m_staminaPenalty);
     if (m_stamina > effectiveMax) {
         m_stamina = effectiveMax;

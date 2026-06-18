@@ -329,8 +329,8 @@ void Swordfish::update(Player& player)
             if (std::fabs(chargeVx) > 0.30f) facingX = chargeVx < 0.0f ? -1.0f : 1.0f;
         }
 
-        if (posY < 60) { posY = 60;  patrolVy = abs(patrolVy); }
-        if (posY > 700) { posY = 700; patrolVy = -abs(patrolVy); }
+        if (posY < 60) { posY = 60;  patrolVy = std::fabs(patrolVy); }
+        if (posY > 700) { posY = 700; patrolVy = -std::fabs(patrolVy); }
         break;
 
     case WINDUP:

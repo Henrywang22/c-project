@@ -135,9 +135,9 @@ void Fish::changeDirection()
 // 判断鱼是否在玩家捕鱼范围内
 bool Fish::isNearPlayer(int px, int py, int range)
 {
-    int dx = px - x;
-    int dy = py - y;
-    int effectiveRange = range + Config::GameConfig::FISH_INTERACTION_RADIUS;
+    const qreal dx = static_cast<qreal>(px) - posX;
+    const qreal dy = static_cast<qreal>(py) - posY;
+    const qreal effectiveRange = static_cast<qreal>(range + Config::GameConfig::FISH_INTERACTION_RADIUS);
     return (dx * dx + dy * dy) <= (effectiveRange * effectiveRange);
 }
 
@@ -163,8 +163,8 @@ void Fish::update(int playerX, int playerY)
         posX = static_cast<float>(x);
         vx = -std::fabs(vx);
     }
-    if (y < 60) { y = 60;  posY = 60;  vy = abs(vy); }
-    if (y > 700) { y = 700; posY = 700; vy = -abs(vy); }
+    if (y < 60) { y = 60;  posY = 60;  vy = std::fabs(vy); }
+    if (y > 700) { y = 700; posY = 700; vy = -std::fabs(vy); }
 }
 
 // ============================================================
@@ -188,9 +188,9 @@ void CommonFish::update(int playerX, int playerY)
     if (fleeCooldown > 0) fleeCooldown--;
 
     // 感知玩家：距离小于阈值时向反方向逃跑
-    int dx = x - playerX;
-    int dy = y - playerY;
-    float dist = sqrt((float)(dx * dx + dy * dy));
+    const qreal dx = posX - static_cast<qreal>(playerX);
+    const qreal dy = posY - static_cast<qreal>(playerY);
+    const float dist = static_cast<float>(std::sqrt(dx * dx + dy * dy));
     if (dist < 120 && fleeCooldown <= 0 && !fleeing) {
         fleeing = true;
         fleeCooldown = 180;
@@ -221,8 +221,8 @@ void CommonFish::update(int playerX, int playerY)
         posX = static_cast<float>(x);
         vx = -std::fabs(vx);
     }
-    if (y < 60) { y = 60;  posY = 60;  vy = abs(vy); }
-    if (y > 700) { y = 700; posY = 700; vy = -abs(vy); }
+    if (y < 60) { y = 60;  posY = 60;  vy = std::fabs(vy); }
+    if (y > 700) { y = 700; posY = 700; vy = -std::fabs(vy); }
 }
 
 // ============================================================
@@ -246,9 +246,9 @@ void RareFish::update(int playerX, int playerY)
     if (fleeCooldown > 0) fleeCooldown--;
 
     // 感知范围更大，逃跑更快
-    int dx = x - playerX;
-    int dy = y - playerY;
-    float dist = sqrt((float)(dx * dx + dy * dy));
+    const qreal dx = posX - static_cast<qreal>(playerX);
+    const qreal dy = posY - static_cast<qreal>(playerY);
+    const float dist = static_cast<float>(std::sqrt(dx * dx + dy * dy));
     if (dist < 150 && fleeCooldown <= 0) {
         fleeing = true;
         fleeCooldown = 120;
@@ -279,8 +279,8 @@ void RareFish::update(int playerX, int playerY)
         posX = static_cast<float>(x);
         vx = -std::fabs(vx);
     }
-    if (y < 60) { y = 60;  posY = 60;  vy = abs(vy); }
-    if (y > 700) { y = 700; posY = 700; vy = -abs(vy); }
+    if (y < 60) { y = 60;  posY = 60;  vy = std::fabs(vy); }
+    if (y > 700) { y = 700; posY = 700; vy = -std::fabs(vy); }
 }
 
 // ============================================================

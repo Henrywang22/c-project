@@ -1450,7 +1450,7 @@ void GameManager::loadSave()
     if (fileManager.loadGame(data) && !data.isDead) {
         clearStageEntities();
 
-        stage = data.stage;
+        stage = std::clamp(data.stage, 1, Config::GameConfig::STAGE_COUNT);
         Player& p = Player::instance();
         p.restoreSavedProgress(
             data.distance,

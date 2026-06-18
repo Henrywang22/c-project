@@ -573,8 +573,6 @@ void GameWindow::gameLoop()
         updateAttackProjectiles();
         updateHitFeedbacks();
         updateFloatingNotice();
-        applyTestModeBenefits();
-
         if (gm->gameOver) { state = STATE_DEFEAT;  update(); return; }
         if (gm->victory) {
             saveVictoryHighScore();
@@ -597,7 +595,14 @@ void GameWindow::gameLoop()
 
         updateFishing();
         gm->update();
-        bossEncounterRemainingMs = 0;
+        if (gm->boss && gm->boss->alive && !bossEncounterShown) {
+            bossEncounterShown = true;
+            bossEncounterRemainingMs = 1800;
+            encounterBossKind = gm->boss->kind;
+        }
+        if (bossEncounterRemainingMs > 0) {
+            bossEncounterRemainingMs = qMax(0, bossEncounterRemainingMs - 16);
+        }
         applyTestModeBenefits();
         break;
     }
@@ -1016,6 +1021,7 @@ void GameWindow::drawGame(QPainter& p)
     drawFishingHUD(p);
     drawTestModeOverlay(p);
     drawFloatingNotice(p);
+    drawBossEncounterNotice(p);
 
     if (state == STATE_PAUSED) drawPaused(p);
 }
@@ -1027,7 +1033,7 @@ void GameWindow::drawGame(QPainter& p)
 void GameWindow::drawFish(QPainter& p)
 {
     for (auto f : gm->fish) {
-        if (f->caught || f->escaped) continue;
+        if (!f || f->caught || f->escaped) continue;
         int screenX = f->x - gm->cameraX;
         if (screenX < -20 || screenX > 1300) continue;
 
@@ -1118,6 +1124,7 @@ void GameWindow::drawObstacles(QPainter& p)
 
     const auto& obstacles = ObstacleManager::instance().obstacles();
     for (auto* o : obstacles) {
+        if (!o) continue;
         QPointF playerPos(gm->playerX(), gm->playerY());
         if (!o->isVisible(playerPos)) continue;
 
@@ -1941,7 +1948,7 @@ void GameWindow::drawSharks(QPainter& p)
 
     // 普通鲨鱼
     for (auto s : gm->sharks) {
-        if (!s->alive) continue;
+        if (!s || !s->alive) continue;
         int screenX = s->x - gm->cameraX;
         if (screenX < -50 || screenX > 1330) continue;
 
@@ -1953,14 +1960,14 @@ void GameWindow::drawSharks(QPainter& p)
             p.drawEllipse(screenX - sharkW / 2, s->y - sharkH / 2, sharkW, sharkH);
         }
         p.fillRect(screenX - 20, s->y - sharkH / 2 - 12, 40, 6, QColor(60, 60, 60));
-        int bw = (int)(40.0f * s->hp / s->maxHp);
+        int bw = qBound(0, (int)(40.0f * s->hp / qMax(1, s->maxHp)), 40);
         p.fillRect(screenX - 20, s->y - sharkH / 2 - 12, bw, 6, QColor(220, 50, 50));
         if (s->isStunned()) drawStunBadge(s->position(), QSizeF(sharkW, sharkH));
     }
 
     // 剑鱼
     for (auto s : gm->swordfishes) {
-        if (!s->alive) continue;
+        if (!s || !s->alive) continue;
         int screenX = s->x - gm->cameraX;
         if (screenX < -50 || screenX > 1330) continue;
 
@@ -1977,14 +1984,14 @@ void GameWindow::drawSharks(QPainter& p)
             p.drawText(screenX - 15, s->y - 18, "蓄力!");
         }
         p.fillRect(screenX - 20, s->y - swordfishH / 2 - 10, 40, 5, QColor(60, 60, 60));
-        int bw2 = (int)(40.0f * s->hp / s->maxHp);
+        int bw2 = qBound(0, (int)(40.0f * s->hp / qMax(1, s->maxHp)), 40);
         p.fillRect(screenX - 20, s->y - swordfishH / 2 - 10, bw2, 5, QColor(220, 50, 50));
         if (s->isStunned()) drawStunBadge(s->position(), QSizeF(swordfishW, swordfishH));
     }
 
     // 墨鱼
     for (auto o : gm->octopuses) {
-        if (!o->alive) continue;
+        if (!o || !o->alive) continue;
         if (o->hasInkProjectile()) {
             const QPointF velocity = o->inkProjectileDirection();
             drawInkFrame(o->inkProjectilePosition(), o->inkAnimationFrame(), QSize(56, 34),
@@ -2009,7 +2016,7 @@ void GameWindow::drawSharks(QPainter& p)
                          0, QSize(38, 30), o->facingX < 0.0f, pulse);
         }
         p.fillRect(screenX - 18, o->y - octopusH / 2 - 10, 36, 5, QColor(60, 60, 60));
-        int bw3 = (int)(36.0f * o->hp / o->maxHp);
+        int bw3 = qBound(0, (int)(36.0f * o->hp / qMax(1, o->maxHp)), 36);
         p.fillRect(screenX - 18, o->y - octopusH / 2 - 10, bw3, 5, QColor(220, 50, 50));
         if (o->isStunned()) drawStunBadge(o->position(), QSizeF(octopusW, octopusH));
     }
@@ -2904,21 +2911,13 @@ void GameWindow::drawHUD(QPainter& p)
         if (gm->boss && gm->boss->alive) {
             switch (gm->boss->kind) {
             case BossKind::FiveHeadShark:
-                objectiveText = QStringLiteral("躲轰炸，反击五头鲨");
+                objectiveText = QStringLiteral("击败五头鲨");
                 break;
-            case BossKind::TaliMonster: {
-                QPointF pos;
-                int hp = 0;
-                int maxHp = 0;
-                objectiveText = gm->boss->getSecondaryTarget(pos, hp, maxHp)
-                    ? QStringLiteral("本体免疫，先打分身")
-                    : QStringLiteral("避开连刺，攻击本体");
+            case BossKind::TaliMonster:
+                objectiveText = QStringLiteral("击败塔里怪物");
                 break;
-            }
             case BossKind::Siren:
-                objectiveText = gm->boss->state == Boss::PHASE2
-                    ? QStringLiteral("引导迷音/哀歌击中共鸣柱")
-                    : QStringLiteral("攻击塞壬，躲幻影");
+                objectiveText = QStringLiteral("击败塞壬");
                 break;
             }
         }
@@ -3003,13 +3002,13 @@ void GameWindow::drawHUD(QPainter& p)
     // 耐久条
     p.drawText(10, 28, "耐久");
     p.fillRect(50, 8, 80, 12, QColor(60, 60, 60));
-    int durW = 80 * pl.durability() / pl.maxDurability;
+    int durW = qBound(0, 80 * pl.durability() / qMax(1, pl.maxDurability), 80);
     p.fillRect(50, 8, durW, 12, QColor(80, 200, 80));
 
     // 体力条
     p.drawText(145, 28, "体力");
     p.fillRect(185, 8, 80, 12, QColor(60, 60, 60));
-    int staW = 80 * pl.stamina() / pl.maxStamina;
+    int staW = qBound(0, 80 * pl.stamina() / qMax(1, pl.maxStamina), 80);
     p.fillRect(185, 8, staW, 12, QColor(200, 200, 50));
 
     // 文字信息
@@ -3127,7 +3126,42 @@ void GameWindow::drawFloatingNotice(QPainter& p)
 
 void GameWindow::drawBossEncounterNotice(QPainter& p)
 {
-    Q_UNUSED(p);
+    if (bossEncounterRemainingMs <= 0 || imgBossEncounterWarning.isNull()) return;
+
+    constexpr int durationMs = 1800;
+    const int ageMs = durationMs - bossEncounterRemainingMs;
+    const qreal fadeIn = qBound<qreal>(0.0, ageMs / 220.0, 1.0);
+    const qreal fadeOut = qBound<qreal>(0.0, bossEncounterRemainingMs / 300.0, 1.0);
+    const qreal opacity = qMin(fadeIn, fadeOut);
+    const int slideOffset = qRound((1.0 - fadeIn) * -36.0);
+
+    p.save();
+    p.scale(width() / 1280.0, height() / 720.0);
+    p.setOpacity(opacity);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+    const QRect panel(250 + slideOffset, 270, 780, 140);
+    p.drawPixmap(panel, imgBossEncounterWarning, imgBossEncounterWarning.rect());
+
+    QFont titleFont("Microsoft YaHei");
+    titleFont.setPixelSize(30);
+    titleFont.setWeight(QFont::Black);
+    p.setFont(titleFont);
+    p.setPen(QColor(38, 10, 5, 230));
+    p.drawText(QRect(390 + slideOffset, 296, 500, 44),
+               Qt::AlignCenter, QStringLiteral("BOSS 出没注意"));
+    p.setPen(QColor(255, 105, 52));
+    p.drawText(QRect(388 + slideOffset, 294, 500, 44),
+               Qt::AlignCenter, QStringLiteral("BOSS 出没注意"));
+
+    QFont nameFont("Microsoft YaHei");
+    nameFont.setPixelSize(22);
+    nameFont.setWeight(QFont::Bold);
+    p.setFont(nameFont);
+    p.setPen(QColor(255, 229, 178));
+    p.drawText(QRect(390 + slideOffset, 352, 500, 34),
+               Qt::AlignCenter, bossDisplayName(encounterBossKind));
+    p.restore();
 }
 
 // ============================================================
@@ -3993,10 +4027,10 @@ void GameWindow::resetRunAndReturnToMenu()
     InventorySystem::instance().clearAll();
     InventorySystem::instance().initDefaultWeaponIfNeeded();
 
+    resetFishingState(false);
     delete gm;
     gm = new GameManager();
 
-    resetFishingState(false);
     attackProjectiles.clear();
     hitFeedbacks.clear();
     floatingNotice.active = false;

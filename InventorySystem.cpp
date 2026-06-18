@@ -185,7 +185,7 @@ int InventorySystem::getTotalItemCount() const
 
 bool InventorySystem::canAddWeapon() const
 {
-    return true;
+    return static_cast<int>(m_weapons.size()) < Config::MAX_WEAPON_BACKPACK;
 }
 
 bool InventorySystem::addWeapon(Weapon* weapon)
@@ -311,10 +311,26 @@ bool InventorySystem::assignWeaponToQuickSlot(int weaponIndex, int slotIndex)
 
     const int previousSlot = quickSlotForWeapon(weaponIndex);
     const int displacedWeapon = m_quickWeaponSlots[slotIndex];
+    int fallbackSlot = -1;
+    if (previousSlot < 0 && displacedWeapon >= 0 && displacedWeapon != weaponIndex) {
+        for (int slot = 0; slot < 6; ++slot) {
+            if (slot != slotIndex && m_quickWeaponSlots[slot] < 0) {
+                fallbackSlot = slot;
+                break;
+            }
+        }
+        if (fallbackSlot < 0) {
+            return false;
+        }
+    }
+
     m_quickWeaponSlots[slotIndex] = weaponIndex;
 
     if (previousSlot >= 0 && previousSlot != slotIndex) {
         m_quickWeaponSlots[previousSlot] = displacedWeapon;
+    }
+    else if (fallbackSlot >= 0) {
+        m_quickWeaponSlots[fallbackSlot] = displacedWeapon;
     }
     return true;
 }

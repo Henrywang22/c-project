@@ -147,4 +147,5 @@ private:
     QPixmap m_iconRepair2;
     QPixmap m_iconRepair3;
     QPixmap m_iconEmergencyRepair;
+    mutable ItemDef m_selectedItemCache;
 };

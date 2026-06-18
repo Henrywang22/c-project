@@ -286,7 +286,7 @@ protected:
             return;
         }
         if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) && !m_options.isEmpty()) {
-            m_selectedIndex = 0;
+            m_selectedIndex = qBound(0, m_hoverIndex, m_options.size() - 1);
             accept();
             return;
         }

@@ -39,9 +39,9 @@ private:
     qreal weatherWeight(WeatherType weather) const;
     WeatherType m_currentWeather;
     WeatherType m_targetWeather;
-    int m_weatherFrameCount;
-    int m_weatherDurationFrames;
-    int m_transitionFrameCount;
+    qreal m_weatherFrameCount;
+    qreal m_weatherDurationFrames;
+    qreal m_transitionFrameCount;
     bool m_isTransitioning;
     mutable bool m_lightningTriggered;
     int m_sunnyWeight;

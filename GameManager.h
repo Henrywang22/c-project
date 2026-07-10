@@ -1,6 +1,5 @@
 #pragma once
 #include <vector>
-#include <QElapsedTimer>
 #include "Player.h"
 #include "Fish.h"
 #include "Obstacle.h"
@@ -11,13 +10,14 @@
 #include "FileManager.h"
 #include "Weapon.h"
 #include "InventorySystem.h"
+#include "SimulationClock.h"
 
 class GameManager {
 public:
     GameManager();
     ~GameManager();
 
-    void update();
+    void update(qreal deltaTime);
     void spawnFish();
     void spawnObstacles();
     void spawnShark();
@@ -36,8 +36,8 @@ public:
     // 新增：触发主角 E 键震荡波效果
     void triggerShockWave();
 
-    void saveAndQuit();
-    void loadSave();
+    bool saveAndQuit();
+    bool loadSave();
     bool isBossDefeated();
     std::vector<QRectF> terrainColliders() const;
 
@@ -80,6 +80,7 @@ private:
     int bossClearDelayMs = 0;
     bool bossRewardSettled = false;
     qreal m_deltaTime = 0.016;
-    QElapsedTimer m_attackCooldown;
+    qreal m_gameSecondsAccumulator = 0.0;
+    GameTimer m_attackCooldown;
     bool m_enemyDiscoveryRecorded[5] = {};
 };

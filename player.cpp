@@ -44,7 +44,7 @@ void Player::reset() {
     m_dashCooldownMs = 1500;
     m_dashDurationMs = 180;
     m_dashDirection = QPointF(1, 0);
-    m_dashCooldown.start();
+    m_dashCooldown.invalidate();
 
     // Shock 初始化
     m_isShockActive = false;
@@ -99,6 +99,7 @@ void Player::restoreSavedProgress(
     m_speedReduction = 0;
     m_damageFlashMs = 0;
     m_isDashing = false;
+    m_dashCooldown.invalidate();
     m_isShockActive = false;
     m_shockReady = true;
     m_shockRechargeTimer.invalidate();
@@ -231,15 +232,16 @@ void Player::updateMovement(qreal deltaTime) {
 
     qreal targetBaseSpeed = m_baseSpeed;
     int currentEffectiveMaxStamina = qMax(1, maxStamina - m_staminaPenalty);
+    const bool hasMovementInput = m_keyW || m_keyA || m_keyS || m_keyD;
 
-    if (m_keyShift && m_stamina > 0) {
+    if (m_keyShift && hasMovementInput && m_stamina > 0) {
         targetBaseSpeed = qMax(
             GameConfig::SHIP_BOOST_SPEED,
             m_baseSpeed * GameConfig::SHIP_BOOST_MULTIPLIER
         );
         m_stamina = qMax(0, m_stamina - GameConfig::BOOST_STAMINA_COST_PER_FRAME);
     }
-    else if (!m_keyShift && m_stamina < currentEffectiveMaxStamina) {
+    else if (m_stamina < currentEffectiveMaxStamina) {
         m_stamina = qMin(currentEffectiveMaxStamina, m_stamina + 1);
     }
 
@@ -354,7 +356,7 @@ void Player::applyInkBlind(int durationMs)
 
 bool Player::canDash() const {
     if (m_isDashing || m_isStunned || m_isDead) return false;
-    if (m_dashCooldown.elapsed() < m_dashCooldownMs) return false;
+    if (m_dashCooldown.isValid() && m_dashCooldown.elapsed() < m_dashCooldownMs) return false;
     if (m_stamina < DASH_STAMINA_COST) return false;
     return true;
 }

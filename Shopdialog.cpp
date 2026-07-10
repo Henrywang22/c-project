@@ -309,6 +309,21 @@ void ShopDialog::wheelEvent(QWheelEvent* event)
             return;
         }
     }
+    else if (m_category == Category::WeaponUpgrade || m_category == Category::Backpack) {
+        const int delta = event->angleDelta().y() != 0
+            ? event->angleDelta().y()
+            : event->pixelDelta().y();
+        const int weaponCount = InventorySystem::instance().weaponCount();
+        if (delta != 0 && weaponCount > 0) {
+            m_selectedWeaponIndex = qBound(
+                0,
+                m_selectedWeaponIndex + (delta < 0 ? 1 : -1),
+                weaponCount - 1);
+            update();
+            event->accept();
+            return;
+        }
+    }
 
     QDialog::wheelEvent(event);
 }
@@ -514,10 +529,11 @@ void ShopDialog::drawSuppliesPage(QPainter& p)
         if (idx >= m_supplyOffers.size()) break;
         const auto& offer = m_supplyOffers[idx];
         const int owned = InventorySystem::instance().getItemCount(offer.type);
+        const int price = itemPurchasePrice(offer.type, offer.price);
         drawCard(p, QRect(x0 + i * (cardW + gap), y0, cardW, cardH),
                  offer.title, QStringLiteral("当前拥有：%1").arg(owned), offer.description,
-                 offer.icon ? *offer.icon : QPixmap(), offer.price, offer.tagColor,
-                 !hasEnoughCoins(offer.price), ZoneAction::BuySupply, idx);
+                 offer.icon ? *offer.icon : QPixmap(), price, offer.tagColor,
+                 !hasEnoughCoins(price), ZoneAction::BuySupply, idx);
     }
 
     QRect prev(kContentRect.left() + 142, kContentRect.bottom() - 46, 86, 34);
@@ -537,7 +553,13 @@ void ShopDialog::drawWeaponUpgradePage(QPainter& p)
                    QStringLiteral("我的装备"), shopTitleFont(14, QFont::Bold), QColor(73, 43, 16), Qt::AlignCenter);
 
     int y = kContentRect.top() + 96;
-    for (int i = 0; i < static_cast<int>(weapons.size()); ++i) {
+    constexpr int visibleRows = 5;
+    const int firstVisible = qBound(
+        0,
+        m_selectedWeaponIndex - visibleRows / 2,
+        qMax(0, static_cast<int>(weapons.size()) - visibleRows));
+    const int endVisible = qMin(static_cast<int>(weapons.size()), firstVisible + visibleRows);
+    for (int i = firstVisible; i < endVisible; ++i) {
         const Weapon* w = weapons[i];
         if (!w) continue;
         drawRow(p, QRect(kContentRect.left() + 18, y, 204, 58),
@@ -577,6 +599,8 @@ void ShopDialog::drawWeaponUpgradePage(QPainter& p)
     const int tier1Price = weaponUpgradePrice(selectedWeapon, 1);
     const int tier2Price = weaponUpgradePrice(selectedWeapon, 2);
     const int tier3Price = weaponUpgradePrice(selectedWeapon, 3);
+    const int repairPrice = weaponRepairPrice(selectedWeapon);
+    const bool repairUnavailable = !selectedWeapon || repairPrice <= 0;
 
     drawTextShadow(p, QRect(kContentRect.left() + 226, kContentRect.bottom() - 184, 78, 28),
                    QStringLiteral("I：伤害 +%1 / 耐久 +%2")
@@ -604,8 +628,10 @@ void ShopDialog::drawWeaponUpgradePage(QPainter& p)
                      QStringLiteral("强化 III"), m_buttonGreen, ZoneAction::UpgradeWeaponTier, m_selectedWeaponIndex, 3,
                      weapons.empty());
     drawActionButton(p, QRect(kContentRect.left() + 302, kContentRect.bottom() - 52, 104, 42),
-                     QStringLiteral("修复"), m_buttonGold, ZoneAction::RepairWeapon, m_selectedWeaponIndex, 0,
-                     weapons.empty());
+                     repairPrice > 0 ? QStringLiteral("修复\n%1 金币").arg(repairPrice)
+                                     : QStringLiteral("修复"),
+                     m_buttonGold, ZoneAction::RepairWeapon, m_selectedWeaponIndex, 0,
+                     repairUnavailable);
 
     drawPrice(p, QRect(kContentRect.left() + 226, kContentRect.bottom() - 150, 80, 34), tier1Price);
     drawPrice(p, QRect(kContentRect.left() + 310, kContentRect.bottom() - 150, 80, 34), tier2Price);
@@ -670,7 +696,13 @@ void ShopDialog::drawBackpackPage(QPainter& p)
 
     const auto& weapons = inv.weapons();
     int y = kContentRect.top() + 78;
-    for (int i = 0; i < static_cast<int>(weapons.size()); ++i) {
+    constexpr int visibleRows = 5;
+    const int firstVisible = qBound(
+        0,
+        m_selectedWeaponIndex - visibleRows / 2,
+        qMax(0, static_cast<int>(weapons.size()) - visibleRows));
+    const int endVisible = qMin(static_cast<int>(weapons.size()), firstVisible + visibleRows);
+    for (int i = firstVisible; i < endVisible; ++i) {
         const Weapon* w = weapons[i];
         if (!w) continue;
         const QString weaponStatus = w->isBroken()
@@ -1093,7 +1125,7 @@ void ShopDialog::handleZone(const ClickZone& zone)
     }
     case ZoneAction::BuySupply: {
         const auto& offer = m_supplyOffers[zone.index];
-        buyBackpackItem(offer.type, offer.price, offer.title);
+        buyBackpackItem(offer.type, itemPurchasePrice(offer.type, offer.price), offer.title);
         break;
     }
     case ZoneAction::BuyShipUpgrade: {
@@ -1186,8 +1218,14 @@ void ShopDialog::buyBackpackItem(InventoryItemType type, int price, const QStrin
         return;
     }
 
+    InventorySystem& inventory = InventorySystem::instance();
+    if (!inventory.addItem(type, 1)) {
+        GameUi::showWoodMessage(this, QStringLiteral("购买失败"),
+                                QStringLiteral("物品未能放入背包。"));
+        return;
+    }
     spendCoins(price);
-    InventorySystem::instance().addItem(type, 1);
+    inventory.recordItemPurchase(type);
     updateCoinsLabel();
     refreshBackpackUI();
     showShopNotice(QStringLiteral("购买成功"),
@@ -1329,6 +1367,42 @@ int ShopDialog::weaponUpgradePrice(const Weapon* weapon, int tier) const
                 qRound(basePrice * weaponTierMultiplier * levelMultiplier / 10.0) * 10);
 }
 
+int ShopDialog::weaponRepairAmount(const Weapon* weapon) const
+{
+    if (!weapon) return 0;
+
+    const int missing = qMax(0, weapon->getMaxDur() - weapon->getCurrentDur());
+    const int serviceCapacity = qMax(1,
+        weapon->getMaxDur() * Config::SHOP_WEAPON_REPAIR_PERCENT / 100);
+    return qMin(missing, serviceCapacity);
+}
+
+int ShopDialog::weaponRepairPrice(const Weapon* weapon) const
+{
+    if (!weapon) return 0;
+
+    const int repairAmount = weaponRepairAmount(weapon);
+    if (repairAmount <= 0) return 0;
+
+    const int serviceCapacity = qMax(1,
+        weapon->getMaxDur() * Config::SHOP_WEAPON_REPAIR_PERCENT / 100);
+    const qreal enhancementMultiplier = 1.0 + qMax(0, weapon->getEnhancementLevel()) * 0.15;
+    const int fullServicePrice = qMax(
+        Config::PRICE_SHOP_WEAPON_REPAIR,
+        qRound(weapon->getValue() * 0.55 * enhancementMultiplier));
+    const int rawPrice = (fullServicePrice * repairAmount + serviceCapacity - 1)
+        / serviceCapacity;
+    return qBound(25, ((rawPrice + 4) / 5) * 5, qMax(25, fullServicePrice));
+}
+
+int ShopDialog::itemPurchasePrice(InventoryItemType type, int basePrice) const
+{
+    const int purchases = InventorySystem::instance().getItemPurchaseCount(type);
+    const qreal multiplier = 1.0 + purchases * Config::ITEM_PRICE_GROWTH_PER_PURCHASE;
+    const int scaled = qRound(basePrice * multiplier);
+    return qMax(basePrice, ((scaled + 4) / 5) * 5);
+}
+
 int ShopDialog::shipUpgradeLevel(const QString& attr) const
 {
     const Player& player = Player::instance();
@@ -1385,12 +1459,6 @@ void ShopDialog::discardSelectedBackpackWeapon()
 
 void ShopDialog::buyShopWeaponRepair()
 {
-    int price = Config::PRICE_SHOP_WEAPON_REPAIR;
-    if (!hasEnoughCoins(price)) {
-        showInsufficientCoinsNotice(price);
-        return;
-    }
-
     int index = m_selectedWeaponIndex;
     const auto& weapons = InventorySystem::instance().weapons();
     if (index < 0 || index >= static_cast<int>(weapons.size())) {
@@ -1404,13 +1472,21 @@ void ShopDialog::buyShopWeaponRepair()
         return;
     }
 
+    const int restored = weaponRepairAmount(weapon);
+    const int price = weaponRepairPrice(weapon);
+    if (!hasEnoughCoins(price)) {
+        showInsufficientCoinsNotice(price);
+        return;
+    }
+
     spendCoins(price);
     InventorySystem::instance().repairWeaponByPercent(index, Config::SHOP_WEAPON_REPAIR_PERCENT);
     updateCoinsLabel();
     refreshBackpackUI();
     showShopNotice(QStringLiteral("修复成功"),
-                   QStringLiteral("%1 已完成修复。\n花费 %2 金币。")
+                   QStringLiteral("%1 已恢复 %2 点耐久。\n花费 %3 金币。")
                    .arg(QString::fromStdString(weapon->getName()))
+                   .arg(restored)
                    .arg(price));
 }
 

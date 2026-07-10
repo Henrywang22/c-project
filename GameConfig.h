@@ -66,6 +66,7 @@ namespace Config {
 
     // ---- 紧急装备修理工具：放入背包，游戏途中使用 ----
     const int PRICE_EMERGENCY_WEAPON_REPAIR = 40;
+    const qreal ITEM_PRICE_GROWTH_PER_PURCHASE = 0.18;
 
     // 恢复所选装备最大耐久的百分比。
     // 这是紧急修复，所以数值不要太高。
@@ -87,11 +88,11 @@ namespace Config {
     const int DMG_ROD_T1 = 0;
     const int DUR_ROD_T1 = 50;
 
-    const int PRICE_ROD_T2 = 120;
+    const int PRICE_ROD_T2 = 180;
     const int DMG_ROD_T2 = 0;
     const int DUR_ROD_T2 = 60;
 
-    const int PRICE_ROD_T3 = 240;
+    const int PRICE_ROD_T3 = 420;
     const int DMG_ROD_T3 = 0;
     const int DUR_ROD_T3 = 80;
 
@@ -103,11 +104,11 @@ namespace Config {
     const int DMG_NET_T1 = 0;
     const int DUR_NET_T1 = 40;
 
-    const int PRICE_NET_T2 = 160;
+    const int PRICE_NET_T2 = 240;
     const int DMG_NET_T2 = 0;
     const int DUR_NET_T2 = 50;
 
-    const int PRICE_NET_T3 = 300;
+    const int PRICE_NET_T3 = 560;
     const int DMG_NET_T3 = 0;
     const int DUR_NET_T3 = 60;
 
@@ -120,11 +121,11 @@ namespace Config {
     const int DMG_HARPOON_T1 = 30;
     const int DUR_HARPOON_T1 = 25;
 
-    const int PRICE_HARPOON_T2 = 220;
+    const int PRICE_HARPOON_T2 = 320;
     const int DMG_HARPOON_T2 = 55;
     const int DUR_HARPOON_T2 = 30;
 
-    const int PRICE_HARPOON_T3 = 450;
+    const int PRICE_HARPOON_T3 = 800;
     const int DMG_HARPOON_T3 = 100;
     const int DUR_HARPOON_T3 = 40;
 
@@ -136,11 +137,11 @@ namespace Config {
     const int DMG_PISTOL_T1 = 50;
     const int DUR_PISTOL_T1 = 15;
 
-    const int PRICE_PISTOL_T2 = 380;
+    const int PRICE_PISTOL_T2 = 560;
     const int DMG_PISTOL_T2 = 90;
     const int DUR_PISTOL_T2 = 20;
 
-    const int PRICE_PISTOL_T3 = 750;
+    const int PRICE_PISTOL_T3 = 1400;
     const int DMG_PISTOL_T3 = 150;
     const int DUR_PISTOL_T3 = 25;
 
@@ -152,11 +153,11 @@ namespace Config {
     const int DMG_SHOTGUN_T1 = 80;
     const int DUR_SHOTGUN_T1 = 10;
 
-    const int PRICE_SHOTGUN_T2 = 550;
+    const int PRICE_SHOTGUN_T2 = 800;
     const int DMG_SHOTGUN_T2 = 140;
     const int DUR_SHOTGUN_T2 = 12;
 
-    const int PRICE_SHOTGUN_T3 = 1200;
+    const int PRICE_SHOTGUN_T3 = 2000;
     const int DMG_SHOTGUN_T3 = 250;
     const int DUR_SHOTGUN_T3 = 15;
 

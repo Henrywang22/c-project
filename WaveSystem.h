@@ -2,9 +2,9 @@
 #define WAVESYSTEM_H
 
 #include <QObject>
-#include <QElapsedTimer>
 #include <QPointF>
 #include "GameConfig.h"
+#include "SimulationClock.h"
 
 enum class WaveDirection { LEFT, RIGHT };
 
@@ -36,7 +36,7 @@ private:
     bool m_isWaveActive;
     WaveDirection m_currentDir;
     qreal m_speedMultiplier;
-    QElapsedTimer m_waveTimer;
+    GameTimer m_waveTimer;
     int m_triggerChancePerFrame;
     int m_rightWeight;
     int m_leftWeight;

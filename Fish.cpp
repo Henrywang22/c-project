@@ -144,6 +144,8 @@ bool Fish::isNearPlayer(int px, int py, int range)
 // 基类默认update（子类会覆盖）
 void Fish::update(int playerX, int playerY)
 {
+    Q_UNUSED(playerX);
+    Q_UNUSED(playerY);
     if (tickStatusEffects()) return;
     moveTimer++;
     const float speedScale = (lockedForCatch
@@ -176,6 +178,7 @@ CommonFish::CommonFish(int x, int y, Type type) : Fish(x, y, type)
     // 随机初始游动方向，速度慢
     float angle = (rand() % 360) * 3.14159f / 180.0f;
     float speed = 0.8f + (rand() % 5) * 0.1f;
+    cruiseSpeed = speed;
     vx = speed * cos(angle);
     vy = speed * sin(angle);
 }
@@ -198,7 +201,17 @@ void CommonFish::update(int playerX, int playerY)
         vx = (dx / len) * 2.0f; // 逃跑速度加快
         vy = (dy / len) * 2.0f;
     }
-    if (fleeing && fleeCooldown <= 120) fleeing = false;
+    if (fleeing && fleeCooldown <= 120) {
+        fleeing = false;
+        const float speed = std::hypot(vx, vy);
+        if (speed > 0.001f) {
+            vx = vx / speed * cruiseSpeed;
+            vy = vy / speed * cruiseSpeed;
+        }
+        else {
+            changeDirection();
+        }
+    }
 
     // 每120帧随机改变方向（不在逃跑时）
     if (moveTimer % 120 == 0 && !fleeing) changeDirection();
@@ -234,6 +247,7 @@ RareFish::RareFish(int x, int y, Type type) : Fish(x, y, type)
     // 速度更快，更难捕
     float angle = (rand() % 360) * 3.14159f / 180.0f;
     float speed = 1.5f + (rand() % 8) * 0.1f;
+    cruiseSpeed = speed;
     vx = speed * cos(angle);
     vy = speed * sin(angle);
 }
@@ -256,7 +270,17 @@ void RareFish::update(int playerX, int playerY)
         vx = (dx / len) * 3.5f;
         vy = (dy / len) * 3.5f;
     }
-    if (fleeing && fleeCooldown <= 60) fleeing = false;
+    if (fleeing && fleeCooldown <= 60) {
+        fleeing = false;
+        const float speed = std::hypot(vx, vy);
+        if (speed > 0.001f) {
+            vx = vx / speed * cruiseSpeed;
+            vy = vy / speed * cruiseSpeed;
+        }
+        else {
+            changeDirection();
+        }
+    }
 
     // 每80帧随机改变方向（更频繁，更难预判）
     if (moveTimer % 80 == 0 && !fleeing) changeDirection();

@@ -4,10 +4,10 @@
 #include <QObject>
 #include <QPointF>
 #include <QRectF>
-#include <QElapsedTimer>
 #include <QKeyEvent>
 #include <QVector2D>
 #include "GameConfig.h"
+#include "SimulationClock.h"
 
 class Weapon;
 
@@ -150,14 +150,14 @@ private:
     // 基础状态
     bool m_isStunned;
     bool m_isDead;
-    QElapsedTimer m_stunTimer;
+    GameTimer m_stunTimer;
     int m_stunDuration;
     qreal m_speedReduction;
     int m_damageFlashMs;
     bool m_reboundActive;
     QPointF m_reboundDir;
     int m_reboundDurationMs;
-    QElapsedTimer m_reboundTimer;
+    GameTimer m_reboundTimer;
 
     // 按键追踪
     bool m_keyW, m_keyA, m_keyS, m_keyD, m_keyShift, m_keySpace;
@@ -168,34 +168,34 @@ private:
     int m_dashCooldownMs;
     int m_dashDurationMs;
     QPointF m_dashDirection;
-    QElapsedTimer m_dashTimer;
-    QElapsedTimer m_dashCooldown;
+    GameTimer m_dashTimer;
+    GameTimer m_dashCooldown;
 
     // --- Shock 属性 ---
     bool m_isShockActive;
     bool m_shockReady;
     int m_shockRechargeMs;
     int m_shockDurationMs;
-    QElapsedTimer m_shockTimer;
-    QElapsedTimer m_shockRechargeTimer;
+    GameTimer m_shockTimer;
+    GameTimer m_shockRechargeTimer;
 
     // --- Debuff 属性 ---
     bool m_isInputReversed;
     int m_inputReverseDurationMs;
-    QElapsedTimer m_inputReverseTimer;
+    GameTimer m_inputReverseTimer;
 
     bool m_noRangedAttack;
     int m_noRangedDurationMs;
-    QElapsedTimer m_noRangedTimer;
+    GameTimer m_noRangedTimer;
 
     bool m_isPoisoned;
     int m_poisonDurationMs;
-    QElapsedTimer m_poisonTimer;
-    QElapsedTimer m_poisonTickTimer;
+    GameTimer m_poisonTimer;
+    GameTimer m_poisonTickTimer;
 
     bool m_isInkBlinded;
     int m_inkBlindDurationMs;
-    QElapsedTimer m_inkBlindTimer;
+    GameTimer m_inkBlindTimer;
 
     Weapon* m_currentWeapon = nullptr;
 };

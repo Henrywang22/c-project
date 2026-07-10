@@ -101,7 +101,12 @@ void InventorySystem::initDefaultWeaponIfNeeded()
 
 bool InventorySystem::canAddItem(int count) const
 {
-    return getTotalItemCount() + count <= Config::MAX_ITEM_BACKPACK;
+    if (count <= 0) {
+        return false;
+    }
+
+    const int remaining = qMax(0, Config::MAX_ITEM_BACKPACK - getTotalItemCount());
+    return count <= remaining;
 }
 
 bool InventorySystem::addItem(InventoryItemType type, int count)
@@ -150,7 +155,11 @@ bool InventorySystem::useFood(Player& player)
         return false;
     }
 
+    const int staminaBefore = player.stamina();
     player.restoreStamina(Config::HEAL_FOOD_RATION);
+    if (player.stamina() <= staminaBefore) {
+        return false;
+    }
     m_foodCount--;
     return true;
 }
@@ -238,6 +247,24 @@ int InventorySystem::getTotalItemCount() const
         + m_shipRepairT2Count
         + m_shipRepairT3Count
         + m_emergencyWeaponRepairCount;
+}
+
+int InventorySystem::getItemPurchaseCount(InventoryItemType type) const
+{
+    const int index = static_cast<int>(type);
+    if (index < 0 || index >= static_cast<int>(m_itemPurchaseCounts.size())) {
+        return 0;
+    }
+    return m_itemPurchaseCounts[index];
+}
+
+void InventorySystem::recordItemPurchase(InventoryItemType type)
+{
+    const int index = static_cast<int>(type);
+    if (index < 0 || index >= static_cast<int>(m_itemPurchaseCounts.size())) {
+        return;
+    }
+    m_itemPurchaseCounts[index] = qMin(1000000, m_itemPurchaseCounts[index] + 1);
 }
 
 bool InventorySystem::canAddWeapon() const
@@ -370,27 +397,13 @@ bool InventorySystem::assignWeaponToQuickSlot(int weaponIndex, int slotIndex)
 
     const int previousSlot = quickSlotForWeapon(weaponIndex);
     const int displacedWeapon = m_quickWeaponSlots[slotIndex];
-    int fallbackSlot = -1;
-    if (previousSlot < 0 && displacedWeapon >= 0 && displacedWeapon != weaponIndex) {
-        for (int slot = 0; slot < 6; ++slot) {
-            if (slot != slotIndex && m_quickWeaponSlots[slot] < 0) {
-                fallbackSlot = slot;
-                break;
-            }
-        }
-        if (fallbackSlot < 0) {
-            return false;
-        }
-    }
-
     m_quickWeaponSlots[slotIndex] = weaponIndex;
 
     if (previousSlot >= 0 && previousSlot != slotIndex) {
         m_quickWeaponSlots[previousSlot] = displacedWeapon;
     }
-    else if (fallbackSlot >= 0) {
-        m_quickWeaponSlots[fallbackSlot] = displacedWeapon;
-    }
+    // A weapon without a previous slot replaces the target slot directly.
+    // The displaced weapon remains safely stored in the backpack, unassigned.
     return true;
 }
 
@@ -513,6 +526,7 @@ bool InventorySystem::upgradeWeapon(int index, int damageBoost, int durabilityBo
 
 void InventorySystem::clearAll()
 {
+    Player::instance().equipWeapon(nullptr);
     for (Weapon* weapon : m_weapons) {
         delete weapon;
     }
@@ -526,6 +540,7 @@ void InventorySystem::clearAll()
     m_shipRepairT2Count = 0;
     m_shipRepairT3Count = 0;
     m_emergencyWeaponRepairCount = 0;
+    m_itemPurchaseCounts.fill(0);
 }
 
 InventorySystem::InventoryLoadData InventorySystem::exportData() const
@@ -537,6 +552,7 @@ InventorySystem::InventoryLoadData InventorySystem::exportData() const
     data.shipRepairT2Count = m_shipRepairT2Count;
     data.shipRepairT3Count = m_shipRepairT3Count;
     data.emergencyWeaponRepairCount = m_emergencyWeaponRepairCount;
+    data.itemPurchaseCounts = m_itemPurchaseCounts;
 
     data.currentWeaponIndex = m_currentWeaponIndex;
     data.quickWeaponSlots = m_quickWeaponSlots;
@@ -567,17 +583,20 @@ void InventorySystem::loadFromData(const InventoryLoadData& data)
 {
     clearAll();
 
-    m_foodCount = data.foodCount;
-    m_shipRepairT1Count = data.shipRepairT1Count;
-    m_shipRepairT2Count = data.shipRepairT2Count;
-    m_shipRepairT3Count = data.shipRepairT3Count;
-    m_emergencyWeaponRepairCount = data.emergencyWeaponRepairCount;
-
-    if (m_foodCount < 0) m_foodCount = 0;
-    if (m_shipRepairT1Count < 0) m_shipRepairT1Count = 0;
-    if (m_shipRepairT2Count < 0) m_shipRepairT2Count = 0;
-    if (m_shipRepairT3Count < 0) m_shipRepairT3Count = 0;
-    if (m_emergencyWeaponRepairCount < 0) m_emergencyWeaponRepairCount = 0;
+    int remainingItems = Config::MAX_ITEM_BACKPACK;
+    auto takeValidatedCount = [&](int savedCount) {
+        const int count = qBound(0, savedCount, remainingItems);
+        remainingItems -= count;
+        return count;
+    };
+    m_foodCount = takeValidatedCount(data.foodCount);
+    m_shipRepairT1Count = takeValidatedCount(data.shipRepairT1Count);
+    m_shipRepairT2Count = takeValidatedCount(data.shipRepairT2Count);
+    m_shipRepairT3Count = takeValidatedCount(data.shipRepairT3Count);
+    m_emergencyWeaponRepairCount = takeValidatedCount(data.emergencyWeaponRepairCount);
+    for (int i = 0; i < static_cast<int>(m_itemPurchaseCounts.size()); ++i) {
+        m_itemPurchaseCounts[i] = qBound(0, data.itemPurchaseCounts[i], 1000000);
+    }
     if (m_foodCount > 0) markItemDiscovery(InventoryItemType::Food);
     if (m_shipRepairT1Count > 0) markItemDiscovery(InventoryItemType::ShipRepairT1);
     if (m_shipRepairT2Count > 0) markItemDiscovery(InventoryItemType::ShipRepairT2);
@@ -587,9 +606,20 @@ void InventorySystem::loadFromData(const InventoryLoadData& data)
     }
 
     int maxCount = Config::MAX_WEAPON_BACKPACK;
+    std::vector<int> savedToRuntimeIndex(data.weapons.size(), -1);
 
     for (int i = 0; i < static_cast<int>(data.weapons.size()) && i < maxCount; ++i) {
         const WeaponLoadData& savedWeapon = data.weapons[i];
+
+        const bool fieldsValid =
+            savedWeapon.tier >= 1 && savedWeapon.tier <= 3 &&
+            savedWeapon.damage >= 0 && savedWeapon.damage <= 100000 &&
+            savedWeapon.maxDurability >= 1 && savedWeapon.maxDurability <= Config::INFINITE_WEAPON_DURABILITY &&
+            savedWeapon.currentDurability >= 0 && savedWeapon.currentDurability <= savedWeapon.maxDurability &&
+            savedWeapon.range >= 1 && savedWeapon.range <= 10000 &&
+            savedWeapon.durabilityConsumption >= 0 && savedWeapon.durabilityConsumption <= 100000 &&
+            savedWeapon.enhancementLevel >= 0 && savedWeapon.enhancementLevel <= 10000;
+        if (!fieldsValid) continue;
 
         Weapon* weapon = ItemFactory::createWeapon(savedWeapon.typeCode, savedWeapon.tier);
 
@@ -606,6 +636,7 @@ void InventorySystem::loadFromData(const InventoryLoadData& data)
             savedWeapon.enhancementLevel
         );
 
+        savedToRuntimeIndex[i] = static_cast<int>(m_weapons.size());
         m_weapons.push_back(weapon);
         markEquipmentDiscoveryForWeapon(weapon);
     }
@@ -618,29 +649,22 @@ void InventorySystem::loadFromData(const InventoryLoadData& data)
     m_quickWeaponSlots.fill(-1);
     std::vector<bool> usedWeaponIndices(m_weapons.size(), false);
     for (int slot = 0; slot < 6; ++slot) {
-        const int weaponIndex = data.quickWeaponSlots[slot];
-        if (weaponIndex < 0 || weaponIndex >= static_cast<int>(m_weapons.size())) {
+        const int savedIndex = data.quickWeaponSlots[slot];
+        if (savedIndex < 0 || savedIndex >= static_cast<int>(savedToRuntimeIndex.size())) {
             continue;
         }
+        const int weaponIndex = savedToRuntimeIndex[savedIndex];
+        if (weaponIndex < 0) continue;
         if (usedWeaponIndices[weaponIndex]) {
             continue;
         }
         m_quickWeaponSlots[slot] = weaponIndex;
         usedWeaponIndices[weaponIndex] = true;
     }
-    for (int weaponIndex = 0; weaponIndex < static_cast<int>(m_weapons.size()) && weaponIndex < 6; ++weaponIndex) {
-        if (quickSlotForWeapon(weaponIndex) >= 0) continue;
-        for (int slot = 0; slot < 6; ++slot) {
-            if (m_quickWeaponSlots[slot] < 0) {
-                m_quickWeaponSlots[slot] = weaponIndex;
-                break;
-            }
-        }
-    }
-
     if (data.currentWeaponIndex >= 0 &&
-        data.currentWeaponIndex < static_cast<int>(m_weapons.size())) {
-        m_currentWeaponIndex = data.currentWeaponIndex;
+        data.currentWeaponIndex < static_cast<int>(savedToRuntimeIndex.size()) &&
+        savedToRuntimeIndex[data.currentWeaponIndex] >= 0) {
+        m_currentWeaponIndex = savedToRuntimeIndex[data.currentWeaponIndex];
     }
     else {
         m_currentWeaponIndex = 0;

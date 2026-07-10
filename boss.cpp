@@ -139,8 +139,9 @@ Boss::Boss(BossKind bossKind, int x, int y, int maxHpValue, int attackValue, int
 void Boss::update(Player& player)
 {
     if (!alive) return;
+    const bool freezeCombatTimers = stunned() && !dying;
     updateTimers();
-    updateHazards();
+    if (!freezeCombatTimers) updateHazards();
     if (dying) return;
     enraged = hp <= maxHp / 2;
     if (kind == BossKind::FiveHeadShark)
@@ -268,7 +269,7 @@ void Boss::requestSharkSpawn(const QPointF& spawnPos)
 
 int Boss::scaledDamage(int baseDamage) const
 {
-    return enraged ? int(baseDamage * 1.2f) : baseDamage;
+    return enraged ? int(baseDamage * 1.3f) : baseDamage;
 }
 
 void Boss::setVisualAction(BossVisualAction action, int durationMs)
@@ -302,7 +303,7 @@ void Boss::startDeathAnimation()
 }
 
 FiveHeadSharkBoss::FiveHeadSharkBoss(int x, int y)
-    : Boss(BossKind::FiveHeadShark, x, y, 2900, 18, 700)
+    : Boss(BossKind::FiveHeadShark, x, y, 5000, 28, 900)
 {
     speed = 2.0f;
 }
@@ -329,7 +330,7 @@ void FiveHeadSharkBoss::updateBoss(Player& player)
     contactCooldownMs = std::max(0, contactCooldownMs - FrameMs);
     if (collider().intersects(player.collider()) && contactCooldownMs <= 0 &&
         player.canTakeDamage()) {
-        player.takeDurabilityDamage(scaledDamage(15));
+        player.takeDurabilityDamage(scaledDamage(22));
         player.applyRebound(normalizedOr(player.worldPos() - position(), QPointF(facingX, 0.0)) * 1.4);
         contactCooldownMs = 900;
     }
@@ -340,9 +341,6 @@ void FiveHeadSharkBoss::updateBoss(Player& player)
     }
     if (distanceToPlayer > 620.0 || playerFrameSpeed > 3.2) {
         summonTimerMs = std::max(0, summonTimerMs - FrameMs);
-    }
-    if (distanceToPlayer < 360.0 && std::abs(playerPos.y() - y) < 150.0) {
-        meleeCooldownMs = std::max(0, meleeCooldownMs - FrameMs);
     }
     updatePatrol(player);
     updateMelee(player);
@@ -409,6 +407,13 @@ void FiveHeadSharkBoss::updateMelee(Player& player)
     meleeCooldownMs = std::max(0, meleeCooldownMs - FrameMs);
     meleeRecoveryMs = std::max(0, meleeRecoveryMs - FrameMs);
 
+    // 玩家持续留在五头鲨嘴部覆盖范围内时，进入贴身压制节奏；
+    // 离开范围后立即清零，避免远距离时继承短冷却。
+    const bool playerInMeleeRange = rectHitsPlayer(biteRect(), player);
+    meleePressureMs = playerInMeleeRange
+        ? qMin(1200, meleePressureMs + FrameMs)
+        : 0;
+
     if (meleeWindupMs > 0) {
         meleeWindupMs -= FrameMs;
         if (meleeWindupMs > 210) {
@@ -420,13 +425,16 @@ void FiveHeadSharkBoss::updateMelee(Player& player)
         }
         if (meleeWindupMs <= 0) {
             QRectF hitRect = biteRect();
-            addHazard({ BossHazardType::MeleeHitbox, hitRect.center(), hitRect, 0, 250, 0, scaledDamage(30), true });
+            addHazard({ BossHazardType::MeleeHitbox, hitRect.center(), hitRect, 0, 250, 0, scaledDamage(42), true });
             if (rectHitsPlayer(hitRect, player) && player.canTakeDamage()) {
-                player.takeDurabilityDamage(scaledDamage(30));
+                player.takeDurabilityDamage(scaledDamage(42));
                 player.applyRebound(normalizedOr(player.worldPos() - position(), QPointF(facingX, 0.0)) * 3.0);
             }
-            meleeRecoveryMs = 600;
-            meleeCooldownMs = enraged ? 2300 : 2850;
+            const bool sustainedMeleePressure = playerInMeleeRange && meleePressureMs >= 360;
+            meleeRecoveryMs = sustainedMeleePressure ? 430 : 600;
+            meleeCooldownMs = sustainedMeleePressure
+                ? (enraged ? 980 : 1250)
+                : (enraged ? 2300 : 2850);
         }
         return;
     }
@@ -493,9 +501,9 @@ void FiveHeadSharkBoss::updateBombardment(Player& player)
         bombardmentCastMs -= FrameMs;
         if (bombardmentCastMs <= 0) {
             for (const QRectF& rect : pendingBombRects) {
-                addHazard({ BossHazardType::BombHitbox, rect.center(), rect, 0, 360, 0, scaledDamage(40), true });
+                addHazard({ BossHazardType::BombHitbox, rect.center(), rect, 0, 360, 0, scaledDamage(55), true });
                 if (rectHitsPlayer(rect, player))
-                    player.takeDurabilityDamage(scaledDamage(40));
+                    player.takeDurabilityDamage(scaledDamage(55));
             }
             pendingBombRects.clear();
         }
@@ -753,7 +761,7 @@ void TaliMonsterBoss::finishCloneExplosion(Player& player)
 }
 
 SirenBoss::SirenBoss(int x, int y)
-    : Boss(BossKind::Siren, x, y, 4200, 30, 1500)
+    : Boss(BossKind::Siren, x, y, 9000, 44, 1800)
 {
     speed = 1.15f;
 }
@@ -946,7 +954,7 @@ void SirenBoss::updatePhase2(Player& player)
         };
         for (const QPointF& field : fields) {
             addHazard({ BossHazardType::SeaweedZone, field, QRectF(),
-                        158, 6500, 0, 8, true });
+                        158, 6500, 0, 12, true });
         }
         const qreal playerFrameSpeed = std::hypot(estimatedPlayerVelocity.x(), estimatedPlayerVelocity.y());
         seaweedFieldTimerMs = playerFrameSpeed > 2.8 ? 6000 : 6800;
@@ -978,7 +986,7 @@ void SirenBoss::updatePhase2(Player& player)
         player.setWorldPos(player.worldPos() +
             QPointF(away.x() / length * 4.0, away.y() / length * 4.0));
         if (reefContactCooldownMs <= 0 && player.canTakeDamage()) {
-            player.takeDurabilityDamage(35);
+            player.takeDurabilityDamage(hazard.damage > 0 ? hazard.damage : 50);
             reefContactCooldownMs = 900;
         }
     }
@@ -998,7 +1006,7 @@ void SirenBoss::updateSoulSong(Player& player)
                 addHazard({ BossHazardType::SoulSong, from,
                             beamBounds(from, to, maxHalfWidth),
                             maxHalfWidth, 760, 0,
-                            state == PHASE2 ? 34 : 30,
+                            state == PHASE2 ? 48 : 42,
                             true, i, to });
 
                 qreal pillarT = 2.0;
@@ -1017,8 +1025,8 @@ void SirenBoss::updateSoulSong(Player& player)
                     phantomHit = true;
             }
 
-            if (playerHit) {
-                player.takeDurabilityDamage(state == PHASE2 ? 34 : 30);
+            if (playerHit && player.canTakeDamage()) {
+                player.takeDurabilityDamage(state == PHASE2 ? 48 : 42);
                 player.applyInputReverse(15000);
             }
             if (phantomHit)
@@ -1116,7 +1124,7 @@ void SirenBoss::updatePhantom(Player& player)
     phantomPos = stepToward(phantomPos, player.worldPos(), chaseSpeed);
     phantomContactTickMs = std::max(0, phantomContactTickMs - FrameMs);
     if (circleHitsPlayer(phantomPos, 36, player) && phantomContactTickMs <= 0) {
-        player.takeDurabilityDamage(8);
+        player.takeDurabilityDamage(12);
         phantomContactTickMs = 1000;
     }
 }
@@ -1160,7 +1168,7 @@ void SirenBoss::updateElegy(Player& player)
                 elegyExposureMs += FrameMs;
                 elegyTickMs = std::max(0, elegyTickMs - FrameMs);
                 if (elegyTickMs <= 0) {
-                    player.takeDurabilityDamage(2);
+                    player.takeDurabilityDamage(3);
                     elegyTickMs = 650;
                 }
                 if (!elegySucceeded && player.isSpaceHeld() && !player.isMoving()) {
@@ -1227,7 +1235,7 @@ void SirenBoss::updateEndlessReturn(Player& player)
         rx = clampInt(rx, 95, Config::GameConfig::RIGHT_BORDER - 95);
         ry = clampInt(ry, ArenaTop + 55, ArenaBottom - 55);
         QRectF reefRect(rx - 40, ry - 32, 80, 64);
-        addHazard({ BossHazardType::ReefHitbox, QPointF(rx, ry), reefRect, 0, 20000, 0, 50, true });
+        addHazard({ BossHazardType::ReefHitbox, QPointF(rx, ry), reefRect, 0, 20000, 0, 60, true });
     }
 
     endlessReturnTimerMs = 20000;
@@ -1418,8 +1426,8 @@ void SirenBoss::updateResonancePillars(Player& player)
 void SirenBoss::applyNaturalDecay()
 {
     naturalDecayTimerMs += FrameMs;
-    if (naturalDecayTimerMs < 1000) return;
-    naturalDecayTimerMs -= 1000;
+    if (naturalDecayTimerMs < 2000) return;
+    naturalDecayTimerMs -= 2000;
     hp -= std::max(1, int(maxHp * 0.0075f));
 
     // 二阶段仍会被歌声反噬缓慢衰弱；共鸣柱爆裂才是主要输出。

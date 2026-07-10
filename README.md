@@ -27,7 +27,7 @@ Sail your ship across **9 stages** of increasing difficulty. Catch fish, fight s
 | `H`              | Open Encyclopedia (fish / enemies / bosses discovered so far) |
 | `E`              | Emergency shockwave skill                                    |
 | `Space`          | Dash / sprint burst                                          |
-| `Q`              | Save and quit                                                |
+| `Ctrl+Q`         | Save and quit                                                |
 | `N`              | New game (from main menu, or after defeat)                   |
 | `C`              | Continue from your last save (main menu, if a save exists)   |
 | `M`              | Return to main menu                                          |

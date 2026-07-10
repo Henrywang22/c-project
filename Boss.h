@@ -51,7 +51,7 @@ struct BossHazard {
     int damage = 0;
     bool active = true;
     int visualStage = 0;
-    QPointF target;
+    QPointF target = QPointF();
 };
 
 struct BossSpawnRequest {
@@ -134,6 +134,7 @@ private:
     int meleeCooldownMs = 0;
     int meleeWindupMs = 0;
     int meleeRecoveryMs = 0;
+    int meleePressureMs = 0;
     int contactCooldownMs = 0;
     QPointF lastPlayerPos;
     QPointF estimatedPlayerVelocity;

@@ -97,13 +97,6 @@ bool isHarpoonWeapon(const Weapon* weapon)
     return weapon && weapon->getTypeCode() == "Harpoon";
 }
 
-bool harpoonLineHitsRect(const QLineF& line, const QRectF& rect)
-{
-    if (rect.isEmpty()) return false;
-    const qreal pad = Config::HARPOON_PROJECTILE_HIT_PADDING;
-    return lineIntersectsRect(line, rect.adjusted(-pad, -pad, pad, pad));
-}
-
 qreal harpoonHitDistance(const QLineF& line, const QRectF& rect, bool& hit)
 {
     hit = false;
@@ -408,7 +401,7 @@ GameManager::GameManager()
         Config::GameConfig::stageConfig(stage).whirlpoolCount
     );
     for (int i = 0; i < Config::GameConfig::stageConfig(stage).initialFish; i++) spawnFish();
-    m_attackCooldown.start();
+    m_attackCooldown.invalidate();
 }
 
 GameManager::~GameManager()
@@ -417,9 +410,10 @@ GameManager::~GameManager()
     ObstacleManager::instance().clear();
 }
 
-void GameManager::update()
+void GameManager::update(qreal deltaTime)
 {
     if (gameOver || victory) return;
+    m_deltaTime = qBound<qreal>(0.001, deltaTime, 0.05);
 
     Player& p = Player::instance();
 
@@ -447,8 +441,15 @@ void GameManager::update()
     if (p.isDead()) { gameOver = true; return; }
 
     gameTimer++;
-    if (gameTimer % 60 == 0) p.gameSeconds++;
+    m_gameSecondsAccumulator += m_deltaTime;
+    while (m_gameSecondsAccumulator >= 1.0) {
+        ++p.gameSeconds;
+        m_gameSecondsAccumulator -= 1.0;
+    }
     p.distance = playerX();
+
+    const int px = playerX();
+    const int py = playerY();
 
     fish.erase(std::remove_if(fish.begin(), fish.end(),
         [](Fish* f) {
@@ -456,21 +457,21 @@ void GameManager::update()
             return false;
         }), fish.end());
 
-    auto eraseDead = [](auto& enemies) {
+    auto eraseInactive = [px](auto& enemies) {
         enemies.erase(std::remove_if(enemies.begin(), enemies.end(),
-            [](auto* enemy) {
-                if (!enemy->alive) { delete enemy; return true; }
+            [px](auto* enemy) {
+                if (!enemy->alive || enemy->position().x() < px - 1800) {
+                    delete enemy;
+                    return true;
+                }
                 return false;
             }), enemies.end());
     };
 
-    eraseDead(sharks);
-    eraseDead(swordfishes);
-    eraseDead(octopuses);
-    eraseDead(specialEnemies);
-
-    int px = playerX();
-    int py = playerY();
+    eraseInactive(sharks);
+    eraseInactive(swordfishes);
+    eraseInactive(octopuses);
+    eraseInactive(specialEnemies);
 
     ObstacleManager::instance().update(m_deltaTime);
 
@@ -561,6 +562,16 @@ void GameManager::update()
 
     recordVisibleEnemyDiscoveries();
 
+    resolveEntitySolids();
+
+    checkCollisions();
+
+    if (p.isDead()) {
+        stageClear = false;
+        gameOver = true;
+        return;
+    }
+
     if (!stageClear && px >= stageBossTriggerX()) {
         if (cfg.hasBoss) {
             if (!bossSpawned) {
@@ -572,10 +583,6 @@ void GameManager::update()
             stageClear = true;
         }
     }
-
-    resolveEntitySolids();
-
-    checkCollisions();
 
     if (stage > Config::GameConfig::STAGE_COUNT) victory = true;
 }
@@ -917,6 +924,8 @@ void GameManager::clearStageEntities()
 void GameManager::resetStageRuntime()
 {
     clearStageEntities();
+    WaveSystem::instance().reset();
+    WeatherSystem::instance().reset();
 
     // Boss fights may end after the player has drifted beyond one or more
     // later checkpoints.  A new stage always begins at its own entrance.
@@ -931,6 +940,7 @@ void GameManager::resetStageRuntime()
     player.distance = qRound(stageStartPos.x());
 
     spawnTimer = 0;
+    m_gameSecondsAccumulator = 0.0;
     bossSpawned = false;
     stageClear = false;
     bossClearDelayMs = 0;
@@ -1026,14 +1036,14 @@ void GameManager::spawnBoss(int stageNum)
     bossRewardSettled = false;
 
     if (stageNum == 4) {
-        boss->hp = 2900;
-        boss->maxHp = 2900;
-        boss->dropValue = 800;
+        boss->hp = 5000;
+        boss->maxHp = 5000;
+        boss->dropValue = 900;
     }
     else if (stageNum >= 9) {
-        boss->hp = 4200;
-        boss->maxHp = 4200;
-        boss->dropValue = 1500;
+        boss->hp = 9000;
+        boss->maxHp = 9000;
+        boss->dropValue = 1800;
     }
     recordBossDiscovery(fileManager, boss->kind);
 }
@@ -1130,7 +1140,7 @@ void GameManager::checkCollisions()
             bossClearDelayMs = 2600;
         }
         else {
-            bossClearDelayMs = std::max(0, bossClearDelayMs - 16);
+            bossClearDelayMs = std::max(0, bossClearDelayMs - qRound(m_deltaTime * 1000.0));
             if (bossClearDelayMs <= 0)
                 stageClear = true;
         }
@@ -1161,76 +1171,98 @@ bool GameManager::attackAt(int targetX, int targetY, Weapon* weapon)
         const int damagePerLine = shotgun
             ? std::max(1, damage / std::max<int>(1, static_cast<int>(attackLines.size())))
             : damage;
-        bool hitAny = false;
+        struct PendingGunHit {
+            Enemy* enemy = nullptr;
+            bool bossTarget = false;
+            bool secondaryTarget = false;
+            int pelletCount = 0;
+        };
+        std::vector<PendingGunHit> pendingHits;
 
-        auto applyLineDamage = [&](Enemy* enemy) {
-            if (!enemy || !enemy->alive) return;
-
-            int hitCount = 0;
-            const QRectF hitbox = enemy->collider();
-            for (const auto& line : attackLines) {
-                if (lineIntersectsRect(line, hitbox)) {
-                    ++hitCount;
+        auto addPendingHit = [&](Enemy* enemy, bool bossTarget, bool secondaryTarget) {
+            for (auto& hit : pendingHits) {
+                if (hit.enemy == enemy && hit.secondaryTarget == secondaryTarget) {
+                    ++hit.pelletCount;
+                    return;
                 }
             }
-
-            if (hitCount <= 0) return;
-
-            enemy->takeDamage(damagePerLine * hitCount);
-            applyHitKnockback(enemy, playerPos, 18.0);
-            if (!enemy->alive) {
-                Player::instance().coins += enemy->dropValue;
-                killCount++;
-                recordEnemyDiscovery(fileManager, enemy);
-            }
-            hitAny = true;
+            pendingHits.push_back({ enemy, bossTarget, secondaryTarget, 1 });
         };
 
-        if (boss && boss->alive) {
-            int hitCount = 0;
-            QPointF secondaryPos;
-            int secondaryHp = 0;
-            int secondaryMaxHp = 0;
-            QRectF hitbox = boss->collider();
-            const bool secondaryActive = boss->getSecondaryTarget(secondaryPos, secondaryHp, secondaryMaxHp);
-            if (secondaryActive) {
-                hitbox = QRectF(
-                    secondaryPos.x() - Config::GameConfig::TALI_CLONE_COLLIDER_WIDTH / 2.0,
-                    secondaryPos.y() - Config::GameConfig::TALI_CLONE_COLLIDER_HEIGHT / 2.0,
-                    Config::GameConfig::TALI_CLONE_COLLIDER_WIDTH,
-                    Config::GameConfig::TALI_CLONE_COLLIDER_HEIGHT
-                );
-            }
-            else if (boss->isInvulnerable()) {
-                hitbox = QRectF();
-            }
+        const auto terrain = terrainColliders();
+        for (const QLineF& line : attackLines) {
+            qreal nearestDistance = 1e18;
+            Enemy* nearestEnemy = nullptr;
+            bool nearestIsBoss = false;
+            bool nearestIsSecondary = false;
 
-            for (const auto& line : attackLines) {
-                if (!hitbox.isEmpty() && lineIntersectsRect(line, hitbox)) {
-                    ++hitCount;
+            auto considerBlocker = [&](const QRectF& rect) {
+                bool hit = false;
+                const qreal distance = harpoonHitDistance(line, rect, hit);
+                if (hit) nearestDistance = qMin(nearestDistance, distance);
+            };
+            for (Obstacle* obstacle : ObstacleManager::instance().obstacles()) {
+                if (obstacle) considerBlocker(obstacle->collider());
+            }
+            for (const QRectF& rect : terrain) considerBlocker(rect);
+
+            auto considerEnemy = [&](Enemy* enemy, const QRectF& hitbox,
+                                     bool bossTarget, bool secondaryTarget = false) {
+                if (!enemy || !enemy->alive || hitbox.isEmpty()) return;
+                bool hit = false;
+                const qreal distance = harpoonHitDistance(line, hitbox, hit);
+                if (!hit || distance >= nearestDistance) return;
+                nearestDistance = distance;
+                nearestEnemy = enemy;
+                nearestIsBoss = bossTarget;
+                nearestIsSecondary = secondaryTarget;
+            };
+
+            if (boss && boss->alive) {
+                QPointF secondaryPos;
+                int secondaryHp = 0;
+                int secondaryMaxHp = 0;
+                const bool secondaryActive =
+                    boss->getSecondaryTarget(secondaryPos, secondaryHp, secondaryMaxHp);
+                QRectF bossHitbox;
+                if (secondaryActive) {
+                    bossHitbox = QRectF(
+                        secondaryPos.x() - Config::GameConfig::TALI_CLONE_COLLIDER_WIDTH / 2.0,
+                        secondaryPos.y() - Config::GameConfig::TALI_CLONE_COLLIDER_HEIGHT / 2.0,
+                        Config::GameConfig::TALI_CLONE_COLLIDER_WIDTH,
+                        Config::GameConfig::TALI_CLONE_COLLIDER_HEIGHT);
+                }
+                else if (!boss->isInvulnerable()) {
+                    bossHitbox = boss->collider();
+                }
+                considerEnemy(boss, bossHitbox, true, secondaryActive);
+            }
+            for (Shark* enemy : sharks)
+                considerEnemy(enemy, enemy ? enemy->collider() : QRectF(), false);
+            for (Swordfish* enemy : swordfishes)
+                considerEnemy(enemy, enemy ? enemy->collider() : QRectF(), false);
+            for (Octopus* enemy : octopuses)
+                considerEnemy(enemy, enemy ? enemy->collider() : QRectF(), false);
+            for (Enemy* enemy : specialEnemies)
+                considerEnemy(enemy, enemy ? enemy->collider() : QRectF(), false);
+
+            if (nearestEnemy) addPendingHit(nearestEnemy, nearestIsBoss, nearestIsSecondary);
+        }
+
+        bool hitAny = !pendingHits.empty();
+        for (const PendingGunHit& hit : pendingHits) {
+            hit.enemy->takeDamage(damagePerLine * hit.pelletCount);
+            if (hit.bossTarget) {
+                if (!hit.secondaryTarget) applyHitKnockback(hit.enemy, playerPos, 6.0);
+            }
+            else {
+                applyHitKnockback(hit.enemy, playerPos, 18.0);
+                if (!hit.enemy->alive) {
+                    Player::instance().coins += hit.enemy->dropValue;
+                    killCount++;
+                    recordEnemyDiscovery(fileManager, hit.enemy);
                 }
             }
-
-            if (hitCount > 0) {
-                boss->takeDamage(damagePerLine * hitCount);
-                if (!secondaryActive) {
-                    applyHitKnockback(boss, playerPos, 6.0);
-                }
-                hitAny = true;
-            }
-        }
-
-        for (auto s : sharks) {
-            applyLineDamage(s);
-        }
-        for (auto s : swordfishes) {
-            applyLineDamage(s);
-        }
-        for (auto o : octopuses) {
-            applyLineDamage(o);
-        }
-        for (auto e : specialEnemies) {
-            applyLineDamage(e);
         }
 
         if (hitAny) {
@@ -1419,14 +1451,15 @@ bool GameManager::canAttemptAttack(const Weapon* weapon) const
         return false;
     }
 
-    if (!Player::instance().canUseRangedAttack()) {
+    if (Player::instance().isStunned() || !Player::instance().canUseRangedAttack()) {
         return false;
     }
 
-    return m_attackCooldown.elapsed() >= weapon->getAttackCooldownMs();
+    return !m_attackCooldown.isValid() ||
+           m_attackCooldown.elapsed() >= weapon->getAttackCooldownMs();
 }
 
-void GameManager::saveAndQuit()
+bool GameManager::saveAndQuit()
 {
     Player& p = Player::instance();
     SaveData data;
@@ -1443,10 +1476,10 @@ void GameManager::saveAndQuit()
     data.maxStamina = p.maxStamina;
     data.baseSpeed = static_cast<float>(p.baseSpeed());
     data.killCount = killCount;
-    fileManager.saveGame(data);
+    return fileManager.saveGame(data);
 }
 
-void GameManager::loadSave()
+bool GameManager::loadSave()
 {
     SaveData data;
     if (fileManager.loadGame(data) && !data.isDead) {
@@ -1480,15 +1513,19 @@ void GameManager::loadSave()
         lightningStrikeActive = false;
         lightningWarningFrames = 0;
         lightningStrikeFrames = 0;
+        m_gameSecondsAccumulator = 0.0;
 
+        WaveSystem::instance().reset();
+        WeatherSystem::instance().reset();
         applyStageConfig();
         const auto& cfg = Config::GameConfig::stageConfig(stage);
         ObstacleManager::instance().generateLevel(stage, cfg.reefCount, cfg.whirlpoolCount);
         for (int i = 0; i < cfg.initialFish; ++i) {
             spawnFish();
         }
+        return true;
     }
-
+    return false;
 }
 
 bool GameManager::isBossDefeated()

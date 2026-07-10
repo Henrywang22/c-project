@@ -86,7 +86,7 @@ public:
     // -------------------------
     // 游戏存档
     // -------------------------
-    void saveGame(const SaveData& data);
+    bool saveGame(const SaveData& data);
     bool loadGame(SaveData& data);
     bool hasSave();
     void deleteSave();

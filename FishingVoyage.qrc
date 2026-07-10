@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="FishingVoyage">
         <file alias="ui/menu/background.png">ui图/生成素材/主菜单/menu_background.png</file>
+        <file alias="ui/app_icon.png">assets/app_icon.png</file>
         <file alias="ui/menu/panel.png">ui图/生成素材/主菜单/menu_panel.png</file>
         <file alias="ui/menu/title_plaque.png">ui图/生成素材/主菜单/title_plaque.png</file>
         <file alias="ui/menu/record_panel.png">ui图/生成素材/主菜单/record_panel.png</file>

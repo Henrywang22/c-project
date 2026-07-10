@@ -73,6 +73,57 @@ QPixmap pixmapFromPath(const QString& path)
     return pixmap;
 }
 
+QRect fittedPixmapRect(const QPixmap& pixmap, const QRect& rect)
+{
+    if (pixmap.isNull() || rect.isEmpty()) return {};
+    QSize size = pixmap.size();
+    size.scale(rect.size(), Qt::KeepAspectRatio);
+    QRect target(QPoint(0, 0), size);
+    target.moveCenter(rect.center());
+    return target;
+}
+
+// 修补石斑鱼 cutout 顶部被裁平的背鳍轮廓。补片绘制在原图下方，
+// 保留原始鱼身与像素风细节，只扩展缺失的上缘。
+void drawGrouperDorsalFinRepair(QPainter& p, const QPixmap& pixmap, const QRect& rect)
+{
+    const QRect target = fittedPixmapRect(pixmap, rect);
+    if (target.isEmpty() || pixmap.width() <= 0 || pixmap.height() <= 0) return;
+
+    const qreal sx = static_cast<qreal>(target.width()) / pixmap.width();
+    const qreal sy = static_cast<qreal>(target.height()) / pixmap.height();
+    const auto point = [&](qreal x, qreal y) {
+        return QPointF(target.left() + x * sx, target.top() + y * sy);
+    };
+
+    const QPolygonF outline = {
+        point(93, 39), point(106, 23), point(121, 12), point(141, 7),
+        point(162, 11), point(181, 20), point(196, 36)
+    };
+    const QPolygonF fill = {
+        point(102, 38), point(114, 25), point(128, 16), point(142, 13),
+        point(160, 16), point(178, 25), point(189, 37)
+    };
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, false);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(41, 49, 14));
+    p.drawPolygon(outline);
+    p.setBrush(QColor(108, 93, 31));
+    p.drawPolygon(fill);
+    p.setPen(QPen(QColor(205, 166, 73), qMax<qreal>(1.0, sx * 1.2)));
+    p.drawLine(point(118, 27), point(127, 17));
+    p.drawLine(point(135, 22), point(142, 13));
+    p.drawLine(point(153, 24), point(159, 16));
+    p.setPen(QPen(QColor(71, 61, 20), qMax<qreal>(1.0, sx)));
+    p.drawLine(point(108, 34), point(121, 20));
+    p.drawLine(point(126, 34), point(139, 15));
+    p.drawLine(point(147, 35), point(159, 17));
+    p.drawLine(point(166, 35), point(177, 24));
+    p.restore();
+}
+
 qreal clamp01(qreal value)
 {
     return std::clamp(value, 0.0, 1.0);
@@ -773,10 +824,10 @@ void EncyclopediaDialog::buildCatalog()
         return StatLine{ label, value };
     };
     const int enemyStage = qBound(1, m_currentStage, Config::GameConfig::STAGE_COUNT);
-    constexpr qreal kEnemyHpGrowth = 0.15;
-    constexpr qreal kEnemyAttackGrowth = 0.12;
-    constexpr qreal kEnemySpeedGrowth = 0.025;
-    constexpr qreal kEnemyRewardGrowth = 0.15;
+    constexpr qreal kEnemyHpGrowth = 0.22;
+    constexpr qreal kEnemyAttackGrowth = 0.16;
+    constexpr qreal kEnemySpeedGrowth = 0.03;
+    constexpr qreal kEnemyRewardGrowth = 0.18;
     constexpr int kFishCatalogTotal = 12;
     constexpr int kEquipmentCatalogTotal = 5;
     constexpr int kItemCatalogTotal = 5;
@@ -1237,11 +1288,11 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/boss_five_head_shark.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/boss_five_head_shark.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("夺命五头鲨")),
-           stat(QStringLiteral("HP（初始）"), QStringLiteral("2,900")),
+           stat(QStringLiteral("HP（初始）"), QStringLiteral("5,000")),
            stat(QStringLiteral("阶段数"), QStringLiteral("2 阶段")),
            stat(QStringLiteral("出现关卡"), QStringLiteral("第 4 关 Boss")),
            stat(QStringLiteral("危险等级"), QStringLiteral("极高")),
-           stat(QStringLiteral("击败收益"), QStringLiteral("800"))},
+           stat(QStringLiteral("击败收益"), QStringLiteral("900"))},
           QStringLiteral("深海中孕育的变异巨鲨，五个头颅各自拥有独立意识。海员传说中，它的出现常伴随碎浪与鲨影。"),
           true, QColor("#9d3737")},
         {QStringLiteral("B02"), QStringLiteral("塔利海怪"), QStringLiteral("已发现"),
@@ -1259,11 +1310,11 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/boss_siren.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/boss_siren.png"),
            {stat(QStringLiteral("名称"), QStringLiteral("塞壬女妖")),
-            stat(QStringLiteral("HP（初始）"), QStringLiteral("4,200")),
+            stat(QStringLiteral("HP（初始）"), QStringLiteral("9,000")),
             stat(QStringLiteral("阶段数"), QStringLiteral("2 阶段")),
             stat(QStringLiteral("出现关卡"), QStringLiteral("第 9 关最终 Boss")),
             stat(QStringLiteral("危险等级"), QStringLiteral("终局")),
-            stat(QStringLiteral("击败收益"), QStringLiteral("1,500"))},
+            stat(QStringLiteral("击败收益"), QStringLiteral("1,800"))},
            QStringLiteral("月色下吟唱的深海女王。她的歌声会让航线和时间都变得模糊，许多船只只留下被潮水磨平的桅杆。"),
            true, QColor("#9d3737")},
         unknown(QStringLiteral("B04"), QStringLiteral("未解锁")),
@@ -1503,6 +1554,9 @@ void EncyclopediaDialog::drawDetailPage(QPainter& p)
         p.setOpacity(0.22);
         drawPixmapFit(p, image, imageArea.adjusted(18, 18, -18, -12).translated(3, 5));
         p.setOpacity(1.0);
+        if (entry.id == QStringLiteral("012")) {
+            drawGrouperDorsalFinRepair(p, image, imageArea.adjusted(18, 18, -18, -12));
+        }
         drawPixmapFit(p, image, imageArea.adjusted(18, 18, -18, -12));
         p.restore();
     } else {
@@ -1568,6 +1622,9 @@ void EncyclopediaDialog::drawEntryRow(QPainter& p, const QRect& rect, const Entr
         p.setOpacity(0.18);
         drawPixmapFit(p, icon, iconFrame.adjusted(4, 2, -4, -2).translated(2, 3));
         p.setOpacity(1.0);
+        if (entry.id == QStringLiteral("012")) {
+            drawGrouperDorsalFinRepair(p, icon, iconFrame.adjusted(4, 2, -4, -2));
+        }
         drawPixmapFit(p, icon, iconFrame.adjusted(4, 2, -4, -2));
         p.restore();
     } else {
@@ -1658,11 +1715,8 @@ void EncyclopediaDialog::drawTextShadow(QPainter& p, const QRect& rect, const QS
 
 void EncyclopediaDialog::drawPixmapFit(QPainter& p, const QPixmap& pixmap, const QRect& rect)
 {
-    if (pixmap.isNull() || rect.isEmpty()) return;
-    QSize size = pixmap.size();
-    size.scale(rect.size(), Qt::KeepAspectRatio);
-    QRect target(QPoint(0, 0), size);
-    target.moveCenter(rect.center());
+    const QRect target = fittedPixmapRect(pixmap, rect);
+    if (target.isEmpty()) return;
     p.drawPixmap(target, pixmap);
 }
 

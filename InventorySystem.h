@@ -56,6 +56,7 @@ public:
         int shipRepairT2Count = 0;
         int shipRepairT3Count = 0;
         int emergencyWeaponRepairCount = 0;
+        std::array<int, 5> itemPurchaseCounts = { 0, 0, 0, 0, 0 };
 
         int currentWeaponIndex = -1;
         std::array<int, 6> quickWeaponSlots = { -1, -1, -1, -1, -1, -1 };
@@ -90,6 +91,8 @@ public:
 
     int getItemCount(InventoryItemType type) const;
     int getTotalItemCount() const;
+    int getItemPurchaseCount(InventoryItemType type) const;
+    void recordItemPurchase(InventoryItemType type);
 
     // -------------------------
     // 装备背包
@@ -139,4 +142,5 @@ private:
     int m_shipRepairT2Count = 0;
     int m_shipRepairT3Count = 0;
     int m_emergencyWeaponRepairCount = 0;
+    std::array<int, 5> m_itemPurchaseCounts = { 0, 0, 0, 0, 0 };
 };

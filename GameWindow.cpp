@@ -83,15 +83,6 @@ QString victoryGradeTitle(const QString& grade)
     return QStringLiteral("勉强归航");
 }
 
-QString victoryComment(const QString& grade)
-{
-    if (grade == QStringLiteral("S")) return QStringLiteral("风暴和深海都记住了你的船名。");
-    if (grade == QStringLiteral("A")) return QStringLiteral("这趟远航收获丰厚，船队会传颂你的航线。");
-    if (grade == QStringLiteral("B")) return QStringLiteral("稳稳归港，战利品和图鉴都有扎实进展。");
-    if (grade == QStringLiteral("C")) return QStringLiteral("成功完成远航，但仍有不少收益可以挖掘。");
-    return QStringLiteral("船还在，航线也还在，下次会更漂亮。");
-}
-
 int stageLengthMeters(int stage)
 {
     const int start = Config::GameConfig::stageStartDistance(stage);
@@ -189,7 +180,7 @@ QString fishDisplayName(Fish::Type type)
     return QStringLiteral("\u672a\u77e5\u9c7c");
 }
 
-const char* fishDiscoveryName(Fish::Type type)
+[[maybe_unused]] const char* fishDiscoveryName(Fish::Type type)
 {
     switch (type) {
     case Fish::SARDINE:        return u8"\u6c99\u4e01\u9c7c";
@@ -208,7 +199,7 @@ const char* fishDiscoveryName(Fish::Type type)
     return "Unknown Fish";
 }
 
-int fishDiscoveryId(Fish::Type type)
+[[maybe_unused]] int fishDiscoveryId(Fish::Type type)
 {
     switch (type) {
     case Fish::SARDINE:        return 0;
@@ -301,7 +292,7 @@ void drawPromptText(QPainter& p, const QRect& rect, const QString& text, int pix
     p.drawText(rect, flags, text);
 }
 
-void drawPromptBackground(QPainter& p, const QPixmap& pixmap)
+[[maybe_unused]] void drawPromptBackground(QPainter& p, const QPixmap& pixmap)
 {
     if (!pixmap.isNull()) {
         p.drawPixmap(QRect(0, 0, 1280, 720), pixmap, pixmap.rect());
@@ -559,31 +550,8 @@ GameWindow::GameWindow(QWidget* parent) : QWidget(parent)
     imgWeaponRangeRing.load(":/FishingVoyage/effects/weapon_range_ring.png");
     imgHitSpark.load(":/FishingVoyage/effects/hit_spark.png");
     imgMuzzleFlash.load(":/FishingVoyage/effects/muzzle_flash.png");
-    imgFiveHeadIdle.load(":/FishingVoyage/boss/five_head_shark/idle.png");
-    imgFiveHeadBite.load(":/FishingVoyage/boss/five_head_shark/bite.png");
-    imgFiveHeadCast.load(":/FishingVoyage/boss/five_head_shark/cast.png");
-    imgFiveHeadBombardment.load(":/FishingVoyage/boss/five_head_shark/bombardment.png");
-    imgFiveHeadSummonWater.load(":/FishingVoyage/boss/five_head_shark/summon_water.png");
-    imgFiveHeadHit.load(":/FishingVoyage/boss/five_head_shark/hit.png");
-    imgFiveHeadDeath.load(":/FishingVoyage/boss/five_head_shark/death.png");
-    imgSirenIdle.load(":/FishingVoyage/boss/siren/idle.png");
-    imgSirenPhaseTransition.load(":/FishingVoyage/boss/siren/phase_transition.png");
-    imgSirenSoulSongWindup.load(":/FishingVoyage/boss/siren/soul_song_windup.png");
-    imgSirenSoulSong.load(":/FishingVoyage/boss/siren/soul_song.png");
-    imgSirenSoulSongWarningBeam.load(":/FishingVoyage/boss/siren/soul_song_warning_beam.png");
-    imgSirenSoulSongBeam.load(":/FishingVoyage/boss/siren/soul_song_beam.png");
-    imgSirenElegyWindup.load(":/FishingVoyage/boss/siren/elegy_windup.png");
-    imgSirenElegyWave.load(":/FishingVoyage/boss/siren/elegy_wave.png");
-    imgSirenElegyPull.load(":/FishingVoyage/boss/siren/elegy_pull.png");
-    imgSirenSeaweed.load(":/FishingVoyage/boss/siren/seaweed_zone.png");
-    imgSirenReef.load(":/FishingVoyage/boss/siren/reef_emerge.png");
-    imgSirenPhantomIdle.load(":/FishingVoyage/boss/siren/phantom_idle.png");
-    imgSirenPhantomMove.load(":/FishingVoyage/boss/siren/phantom_move.png");
-    imgSirenPhantomStun.load(":/FishingVoyage/boss/siren/phantom_stun.png");
-    imgSirenImmunity.load(":/FishingVoyage/boss/siren/immunity.png");
-    imgSirenResonancePillar.load(":/FishingVoyage/boss/siren/resonance_pillar.png");
-    imgSirenFocusMeter.load(":/FishingVoyage/boss/siren/focus_meter.png");
-    imgSirenDeath.load(":/FishingVoyage/boss/siren/death.png");
+    // Boss sprite sheets are the largest decoded resources in the game.  They
+    // are loaded only when the corresponding encounter starts.
     imgBossEncounterWarning.load(":/FishingVoyage/boss/common/encounter_warning.png");
     imgStageDecor[0].load(":/FishingVoyage/decor/stage1_islet.png");
     imgStageDecor[1].load(":/FishingVoyage/decor/stage2_lighthouse.png");
@@ -648,13 +616,102 @@ GameWindow::GameWindow(QWidget* parent) : QWidget(parent)
     imgIconItemEmergencyRepair.load(":/FishingVoyage/ui/icons/item_emergency_repair.png");
 
     timer = new QTimer(this);
+    timer->setTimerType(Qt::PreciseTimer);
     connect(timer, &QTimer::timeout, this, &GameWindow::gameLoop);
-    timer->start(16);
+    frameTimer.start();
+    SimulationClock::reset();
+    SimulationClock::setPaused(true);
 }
 
 GameWindow::~GameWindow()
 {
+    releaseBossAssets();
     delete gm;
+}
+
+void GameWindow::setGameState(GameState nextState)
+{
+    state = nextState;
+    const bool playing = state == STATE_PLAYING;
+    SimulationClock::setPaused(!playing);
+
+    if (playing) {
+        frameTimer.restart();
+        if (!timer->isActive()) timer->start(16);
+    }
+    else if (timer->isActive()) {
+        timer->stop();
+    }
+    update();
+}
+
+void GameWindow::releaseBossAssets()
+{
+    imgFiveHeadIdle = QPixmap();
+    imgFiveHeadBite = QPixmap();
+    imgFiveHeadCast = QPixmap();
+    imgFiveHeadBombardment = QPixmap();
+    imgFiveHeadSummonWater = QPixmap();
+    imgFiveHeadHit = QPixmap();
+    imgFiveHeadDeath = QPixmap();
+    imgSirenIdle = QPixmap();
+    imgSirenPhaseTransition = QPixmap();
+    imgSirenSoulSongWindup = QPixmap();
+    imgSirenSoulSong = QPixmap();
+    imgSirenSoulSongWarningBeam = QPixmap();
+    imgSirenSoulSongBeam = QPixmap();
+    imgSirenElegyWindup = QPixmap();
+    imgSirenElegyWave = QPixmap();
+    imgSirenElegyPull = QPixmap();
+    imgSirenSeaweed = QPixmap();
+    imgSirenReef = QPixmap();
+    imgSirenPhantomIdle = QPixmap();
+    imgSirenPhantomMove = QPixmap();
+    imgSirenPhantomStun = QPixmap();
+    imgSirenImmunity = QPixmap();
+    imgSirenResonancePillar = QPixmap();
+    imgSirenFocusMeter = QPixmap();
+    imgSirenDeath = QPixmap();
+    bossAssetsLoaded = false;
+}
+
+void GameWindow::loadBossAssets(BossKind kind)
+{
+    if (bossAssetsLoaded && loadedBossAssetKind == kind) return;
+    releaseBossAssets();
+
+    if (kind == BossKind::FiveHeadShark) {
+        imgFiveHeadIdle.load(":/FishingVoyage/boss/five_head_shark/idle.png");
+        imgFiveHeadBite.load(":/FishingVoyage/boss/five_head_shark/bite.png");
+        imgFiveHeadCast.load(":/FishingVoyage/boss/five_head_shark/cast.png");
+        imgFiveHeadBombardment.load(":/FishingVoyage/boss/five_head_shark/bombardment.png");
+        imgFiveHeadSummonWater.load(":/FishingVoyage/boss/five_head_shark/summon_water.png");
+        imgFiveHeadHit.load(":/FishingVoyage/boss/five_head_shark/hit.png");
+        imgFiveHeadDeath.load(":/FishingVoyage/boss/five_head_shark/death.png");
+    }
+    else if (kind == BossKind::Siren) {
+        imgSirenIdle.load(":/FishingVoyage/boss/siren/idle.png");
+        imgSirenPhaseTransition.load(":/FishingVoyage/boss/siren/phase_transition.png");
+        imgSirenSoulSongWindup.load(":/FishingVoyage/boss/siren/soul_song_windup.png");
+        imgSirenSoulSong.load(":/FishingVoyage/boss/siren/soul_song.png");
+        imgSirenSoulSongWarningBeam.load(":/FishingVoyage/boss/siren/soul_song_warning_beam.png");
+        imgSirenSoulSongBeam.load(":/FishingVoyage/boss/siren/soul_song_beam.png");
+        imgSirenElegyWindup.load(":/FishingVoyage/boss/siren/elegy_windup.png");
+        imgSirenElegyWave.load(":/FishingVoyage/boss/siren/elegy_wave.png");
+        imgSirenElegyPull.load(":/FishingVoyage/boss/siren/elegy_pull.png");
+        imgSirenSeaweed.load(":/FishingVoyage/boss/siren/seaweed_zone.png");
+        imgSirenReef.load(":/FishingVoyage/boss/siren/reef_emerge.png");
+        imgSirenPhantomIdle.load(":/FishingVoyage/boss/siren/phantom_idle.png");
+        imgSirenPhantomMove.load(":/FishingVoyage/boss/siren/phantom_move.png");
+        imgSirenPhantomStun.load(":/FishingVoyage/boss/siren/phantom_stun.png");
+        imgSirenImmunity.load(":/FishingVoyage/boss/siren/immunity.png");
+        imgSirenResonancePillar.load(":/FishingVoyage/boss/siren/resonance_pillar.png");
+        imgSirenFocusMeter.load(":/FishingVoyage/boss/siren/focus_meter.png");
+        imgSirenDeath.load(":/FishingVoyage/boss/siren/death.png");
+    }
+
+    loadedBossAssetKind = kind;
+    bossAssetsLoaded = true;
 }
 
 // ============================================================
@@ -683,42 +740,44 @@ void GameWindow::paintEvent(QPaintEvent*)
 
 void GameWindow::gameLoop()
 {
+    const qint64 elapsedMs = qMax<qint64>(1, frameTimer.restart());
+    const qreal deltaTime = qBound<qreal>(0.001, elapsedMs / 1000.0, 0.05);
+
     switch (state) {
     case STATE_PLAYING: {
         updateAttackProjectiles();
         updateHitFeedbacks();
         updateFloatingNotice();
-        if (gm->gameOver) { state = STATE_DEFEAT;  update(); return; }
-        if (gm->victory) {
-            saveVictoryHighScore();
-            state = STATE_VICTORY;
-            update();
-            return;
-        }
-
-        // 关卡通关
-        if (gm->stageClear) {
-            resetFishingState(true);
-
-            Player::instance().clearInputState();
-            promptButtonHover = false;
-            setCursor(Qt::ArrowCursor);
-            state = STATE_STAGE_CLEAR;
-            update();
-            return;
-        }
-
         updateFishing();
-        gm->update();
+        gm->update(deltaTime);
+        if (gm->boss) loadBossAssets(gm->boss->kind);
         if (gm->boss && gm->boss->alive && !bossEncounterShown) {
             bossEncounterShown = true;
             bossEncounterRemainingMs = 1800;
             encounterBossKind = gm->boss->kind;
         }
         if (bossEncounterRemainingMs > 0) {
-            bossEncounterRemainingMs = qMax(0, bossEncounterRemainingMs - 16);
+            bossEncounterRemainingMs = qMax(0, bossEncounterRemainingMs - qRound(deltaTime * 1000.0));
         }
         applyTestModeBenefits();
+
+        if (gm->gameOver) {
+            setGameState(STATE_DEFEAT);
+            return;
+        }
+        if (gm->victory) {
+            saveVictoryHighScore();
+            setGameState(STATE_VICTORY);
+            return;
+        }
+        if (gm->stageClear) {
+            resetFishingState(true);
+            Player::instance().clearInputState();
+            promptButtonHover = false;
+            setCursor(Qt::ArrowCursor);
+            setGameState(STATE_STAGE_CLEAR);
+            return;
+        }
         break;
     }
     default: break;
@@ -890,7 +949,7 @@ void GameWindow::drawIntro(QPainter& p)
         "【海域】  礁石会碰撞损伤，漩涡会降低体力和速度；风浪、天气会影响航行",
         "          墨鱼喷墨会遮挡视野；特殊敌人和 Boss 会带来额外状态效果",
         "",
-        "【菜单】  H 打开航海图鉴    ESC 暂停    Q 保存并退出",
+        "【菜单】  H 打开航海图鉴    ESC 暂停    Ctrl+Q 保存并退出",
     };
 
     p.setFont(QFont("Microsoft YaHei", 11));
@@ -950,7 +1009,7 @@ void GameWindow::drawMenu(QPainter& p)
         p.drawText(titleRect.adjusted(0, 100, 0, -16), Qt::AlignCenter, "FISHING VOYAGE");
 
         const QString labels[6] = {
-            "开始航程", "继续游戏", "航海图鉴", "操作说明", "游戏设置", "退出游戏"
+            "开始航程", "继续游戏", "航海图鉴", "操作说明", "版本信息", "退出游戏"
         };
         const bool hasSave = gm->fileManager.hasSave();
         for (int i = 0; i < 6; ++i) {
@@ -1312,7 +1371,6 @@ void GameWindow::drawWaves(QPainter& p)
         QColor deep = rightward ? QColor(14, 112, 132, 118) : QColor(17, 74, 132, 126);
         QColor mid = rightward ? QColor(44, 184, 190, 74) : QColor(54, 122, 184, 82);
         QColor foam = rightward ? QColor(218, 255, 245, 190) : QColor(210, 232, 255, 180);
-        QColor accent = rightward ? QColor(87, 226, 210, 214) : QColor(248, 186, 92, 220);
         if (WeatherSystem::instance().currentWeather() == WeatherType::STORM) {
             deep = deep.darker(135);
             mid = mid.darker(125);
@@ -1651,7 +1709,7 @@ void GameWindow::drawWeatherEffects(QPainter& p)
             p.drawPixmap(noticeRect, imgWoodNoticeButton, imgWoodNoticeButton.rect());
         }
         p.setOpacity(1.0);
-        p.setFont(promptFont(17, QFont::Bold));
+        p.setFont(promptFont(17, true));
         p.setPen(QColor(255, 235, 174));
         p.drawText(noticeRect.adjusted(24, 0, -24, -4), Qt::AlignCenter, prompt);
     }
@@ -2801,12 +2859,13 @@ void GameWindow::spawnHitFeedback(const QPointF& worldPos)
     hitFeedbacks.append(effect);
 }
 
-void GameWindow::showFloatingNotice(const QString& title, const QString& body)
+void GameWindow::showFloatingNotice(const QString& title, const QString& body, bool compact)
 {
     floatingNotice.title = title;
     floatingNotice.body = body;
     floatingNotice.ageMs = 0;
-    floatingNotice.lifetimeMs = 2400;
+    floatingNotice.lifetimeMs = compact ? 1600 : 2400;
+    floatingNotice.compact = compact;
     floatingNotice.active = true;
 }
 
@@ -2963,6 +3022,10 @@ void GameWindow::saveVictoryHighScore()
     if (victoryScoreSaved || !gm) return;
 
     Player& pl = Player::instance();
+    if (testModeEnabled || pl.testModeInfiniteCoins) {
+        victoryScoreSaved = true;
+        return;
+    }
     gm->fileManager.saveHighScoreByStats(
         "Captain",
         pl.distance,
@@ -3353,7 +3416,10 @@ void GameWindow::drawFloatingNotice(QPainter& p)
     const qreal fadeOut = qBound(0.0, static_cast<qreal>(floatingNotice.lifetimeMs - floatingNotice.ageMs) / 300.0, 1.0);
     p.setOpacity(qMin(fadeIn, fadeOut));
 
-    const QRect panel(392, 82 + static_cast<int>((1.0 - fadeIn) * -18), 496, 220);
+    const bool compact = floatingNotice.compact;
+    const QRect panel = compact
+        ? QRect(425, 92 + static_cast<int>((1.0 - fadeIn) * -14), 430, 126)
+        : QRect(392, 82 + static_cast<int>((1.0 - fadeIn) * -18), 496, 220);
     if (!imgWoodNoticeBoard.isNull()) {
         p.drawPixmap(panel, imgWoodNoticeBoard, imgWoodNoticeBoard.rect());
     } else {
@@ -3361,7 +3427,10 @@ void GameWindow::drawFloatingNotice(QPainter& p)
     }
 
     if (!imgNoticeIconInfo.isNull()) {
-        p.drawPixmap(QRect(panel.left() + 64, panel.top() + 80, 52, 52), imgNoticeIconInfo, imgNoticeIconInfo.rect());
+        const QRect iconRect = compact
+            ? QRect(panel.left() + 34, panel.top() + 44, 38, 38)
+            : QRect(panel.left() + 64, panel.top() + 80, 52, 52);
+        p.drawPixmap(iconRect, imgNoticeIconInfo, imgNoticeIconInfo.rect());
     }
 
     auto drawText = [&](const QRect& rect, const QString& text, int size, const QColor& color, bool bold) {
@@ -3373,10 +3442,17 @@ void GameWindow::drawFloatingNotice(QPainter& p)
         p.drawText(rect, Qt::AlignLeft | Qt::AlignVCenter | Qt::TextWordWrap, text);
     };
 
-    drawText(QRect(panel.left() + 132, panel.top() + 68, panel.width() - 220, 40),
-             floatingNotice.title, 20, QColor(88, 42, 12), true);
-    drawText(QRect(panel.left() + 132, panel.top() + 112, panel.width() - 220, 58),
-             floatingNotice.body, 13, QColor(78, 48, 18), true);
+    if (compact) {
+        drawText(QRect(panel.left() + 90, panel.top() + 22, panel.width() - 124, 34),
+                 floatingNotice.title, 17, QColor(88, 42, 12), true);
+        drawText(QRect(panel.left() + 90, panel.top() + 55, panel.width() - 124, 48),
+                 floatingNotice.body, 12, QColor(78, 48, 18), true);
+    } else {
+        drawText(QRect(panel.left() + 132, panel.top() + 68, panel.width() - 220, 40),
+                 floatingNotice.title, 20, QColor(88, 42, 12), true);
+        drawText(QRect(panel.left() + 132, panel.top() + 112, panel.width() - 220, 58),
+                 floatingNotice.body, 13, QColor(78, 48, 18), true);
+    }
     p.restore();
 }
 
@@ -3705,7 +3781,7 @@ void GameWindow::drawFishingHUD(QPainter& p)
         drawCornerPlate(QRect(r.right() - 86, r.bottom() - 78, 76, 70));
     };
 
-    auto drawTitlePlaque = [&](const QRect& r) {
+    [[maybe_unused]] auto drawTitlePlaque = [&](const QRect& r) {
         p.fillRect(r.adjusted(6, 8, 6, 10), QColor(0, 0, 0, 110));
         p.fillRect(r, QColor(42, 19, 8));
         p.fillRect(r.adjusted(7, 7, -7, -7), QColor(112, 52, 22));
@@ -3982,16 +4058,20 @@ void GameWindow::openShop()
 
 void GameWindow::openTestModeShop()
 {
+#if !defined(FISHINGVOYAGE_ENABLE_TEST_MODE)
+    return;
+#else
     if (!testModeEnabled) return;
 
     resetFishingState(true);
     Player::instance().clearInputState();
     applyTestModeBenefits();
+    SimulationClock::setPaused(true);
     timer->stop();
     openShop();
     applyTestModeBenefits();
-    timer->start(16);
-    update();
+    setGameState(STATE_PLAYING);
+#endif
 }
 
 void GameWindow::openBackpack()
@@ -4065,17 +4145,30 @@ bool GameWindow::useQuickItemSlot(int hotbarIndex)
 
 void GameWindow::toggleTestMode()
 {
+#if !defined(FISHINGVOYAGE_ENABLE_TEST_MODE)
+    testModeEnabled = false;
+    Player::instance().testModeInfiniteCoins = false;
+    return;
+#else
     testModeEnabled = !testModeEnabled;
     if (testModeEnabled) {
         applyTestModeBenefits();
+        showFloatingNotice(QStringLiteral("测试模式已开启"),
+                           QStringLiteral("无限金币、耐久和体力已生效；按 P 打开测试商店，按 O 关闭。"));
     } else {
         Player::instance().testModeInfiniteCoins = false;
+        showFloatingNotice(QStringLiteral("测试模式已关闭"),
+                           QStringLiteral("已恢复正常游戏规则。"));
     }
     update();
+#endif
 }
 
 void GameWindow::applyTestModeBenefits()
 {
+#if !defined(FISHINGVOYAGE_ENABLE_TEST_MODE)
+    return;
+#else
     if (!testModeEnabled) return;
 
     Player& pl = Player::instance();
@@ -4097,6 +4190,7 @@ void GameWindow::applyTestModeBenefits()
     if (gm) {
         gm->gameOver = false;
     }
+#endif
 }
 
 void GameWindow::confirmStagePrompt()
@@ -4105,8 +4199,7 @@ void GameWindow::confirmStagePrompt()
     setCursor(Qt::ArrowCursor);
 
     if (state == STATE_STAGE_START) {
-        state = STATE_PLAYING;
-        update();
+        setGameState(STATE_PLAYING);
         return;
     }
 
@@ -4122,8 +4215,7 @@ void GameWindow::confirmStagePrompt()
         gm->clearStageEntities();
         gm->victory = true;
         saveVictoryHighScore();
-        state = STATE_VICTORY;
-        update();
+        setGameState(STATE_VICTORY);
         return;
     }
 
@@ -4132,14 +4224,15 @@ void GameWindow::confirmStagePrompt()
     bossEncounterShown = false;
     bossEncounterRemainingMs = 0;
 
-    timer->stop();
     openShop();
+    releaseBossAssets();
     gm->resetStageRuntime();
-    gm->saveAndQuit();
-    timer->start(16);
+    if (!gm->saveAndQuit()) {
+        GameUi::showWoodMessage(this, QStringLiteral("保存失败"),
+                                QStringLiteral("无法写入存档，请检查用户数据目录权限。"));
+    }
 
-    state = STATE_STAGE_START;
-    update();
+    setGameState(STATE_STAGE_START);
 }
 
 void GameWindow::startNewGame()
@@ -4166,8 +4259,7 @@ void GameWindow::startNewGame()
     setCursor(Qt::ArrowCursor);
 
     promptButtonHover = false;
-    state = STATE_STAGE_START;
-    update();
+    setGameState(STATE_STAGE_START);
 }
 
 void GameWindow::continueGame()
@@ -4176,7 +4268,11 @@ void GameWindow::continueGame()
         return;
     }
 
-    gm->loadSave();
+    if (!gm->loadSave()) {
+        GameUi::showWoodMessage(this, QStringLiteral("存档无法读取"),
+                                QStringLiteral("存档已损坏或来自不兼容版本。原文件仍会保留。"));
+        return;
+    }
 
     resetFishingState(false);
     attackProjectiles.clear();
@@ -4191,10 +4287,10 @@ void GameWindow::continueGame()
 
     const int stageStart = Config::GameConfig::stageStartDistance(gm->stage);
     promptButtonHover = false;
-    state = Player::instance().distance <= stageStart + 5
+    const GameState nextState = Player::instance().distance <= stageStart + 5
         ? STATE_STAGE_START
         : STATE_PLAYING;
-    update();
+    setGameState(nextState);
 }
 
 QRect GameWindow::menuButtonRect(int index) const
@@ -4266,14 +4362,18 @@ void GameWindow::returnToMainMenu()
     attackProjectiles.clear();
     hitFeedbacks.clear();
     floatingNotice.active = false;
-    gm->saveAndQuit();
+    if (!gm->saveAndQuit()) {
+        GameUi::showWoodMessage(this, QStringLiteral("保存失败"),
+                                QStringLiteral("无法写入存档，已留在当前游戏中。"));
+        return;
+    }
 
     pauseMainMenuHover = false;
     victoryButtonHover = -1;
     menuHoverIndex = -1;
     setCursor(Qt::ArrowCursor);
-    state = STATE_MENU;
-    update();
+    releaseBossAssets();
+    setGameState(STATE_MENU);
 }
 
 void GameWindow::resetRunAndReturnToMenu()
@@ -4286,6 +4386,7 @@ void GameWindow::resetRunAndReturnToMenu()
     resetFishingState(false);
     delete gm;
     gm = new GameManager();
+    releaseBossAssets();
 
     attackProjectiles.clear();
     hitFeedbacks.clear();
@@ -4301,8 +4402,7 @@ void GameWindow::resetRunAndReturnToMenu()
     menuHoverIndex = -1;
 
     setCursor(Qt::ArrowCursor);
-    state = STATE_MENU;
-    update();
+    setGameState(STATE_MENU);
 }
 
 // ============================================================
@@ -4316,7 +4416,7 @@ void GameWindow::drawPaused(QPainter& p)
     p.setFont(QFont("Microsoft YaHei", 36, QFont::Bold));
     p.drawText(0, 280, 1280, 80, Qt::AlignCenter, "游戏暂停");
     p.setFont(QFont("Microsoft YaHei", 18));
-    p.drawText(0, 370, 1280, 40, Qt::AlignCenter, "按 ESC 继续    按 H 打开航海图鉴    按 Q 保存退出");
+    p.drawText(0, 370, 1280, 40, Qt::AlignCenter, "按 ESC 继续    按 H 打开航海图鉴    按 Ctrl+Q 保存并退出");
 
     const QRect button = pauseMainMenuButtonRect();
     if (!imgWoodNoticeButton.isNull()) {
@@ -4553,7 +4653,7 @@ void GameWindow::drawVictory(QPainter& p)
 // 捕鱼逻辑更新
 // ============================================================
 
-Fish* GameWindow::nearestFishInWeaponRange(const Weapon* weapon) const
+Fish* GameWindow::fishAtWorldPosition(const QPointF& worldPos, const Weapon* weapon) const
 {
     if (!weapon || !weapon->canFish() || weapon->isBroken()) {
         return nullptr;
@@ -4561,14 +4661,14 @@ Fish* GameWindow::nearestFishInWeaponRange(const Weapon* weapon) const
 
     Fish* nearest = nullptr;
     qreal nearestDist = 0.0;
-    const QPointF playerPos = Player::instance().worldPos();
-
     for (auto f : gm->fish) {
         if (!f || f->caught || f->escaped) continue;
         if (!f->isNearPlayer(gm->playerX(), gm->playerY(), weapon->getRange())) continue;
+        const QRectF clickArea = f->collider().adjusted(-18.0, -18.0, 18.0, 18.0);
+        if (!clickArea.contains(worldPos)) continue;
 
-        const qreal dx = f->x - playerPos.x();
-        const qreal dy = f->y - playerPos.y();
+        const qreal dx = f->x - worldPos.x();
+        const qreal dy = f->y - worldPos.y();
         const qreal dist = dx * dx + dy * dy;
         if (!nearest || dist < nearestDist) {
             nearest = f;
@@ -4704,11 +4804,21 @@ void GameWindow::finishFishing(Config::FishingResult result)
     Weapon* weapon = InventorySystem::instance().currentWeapon();
     Player& pl = Player::instance();
 
-    auto consumeFishingStamina = [&]() {
+    auto staminaCostForResult = [&](Config::FishingResult fishingResult) {
         int cost = targetFish ? targetFish->staminaCost : 0;
-        if (result == Config::FishingResult::Perfect) {
-            cost = (cost + 1) / 2;
-        }
+        if (fishingResult == Config::FishingResult::Perfect) cost = (cost + 1) / 2;
+        return qMax(0, cost);
+    };
+
+    if (result != Config::FishingResult::Fail &&
+        pl.stamina() < staminaCostForResult(result)) {
+        result = Config::FishingResult::Fail;
+        showFloatingNotice(QStringLiteral("体力不足"),
+                           QStringLiteral("收线失败，先休息或使用干粮恢复体力。"));
+    }
+
+    auto consumeFishingStamina = [&]() {
+        const int cost = staminaCostForResult(result);
         if (cost <= 0) {
             return;
         }
@@ -4827,6 +4937,18 @@ void GameWindow::updateFishing()
 
     Weapon* weapon = InventorySystem::instance().currentWeapon();
 
+    if (!weapon || !weapon->canFish() || weapon->isBroken()) {
+        resetFishingState(true);
+        return;
+    }
+    if (!targetFish->isNearPlayer(gm->playerX(), gm->playerY(), weapon->getRange())) {
+        showFloatingNotice(QStringLiteral("目标脱离范围"),
+                           QStringLiteral("鱼已挣脱，请靠近后重新瞄准。"),
+                           true);
+        finishFishing(Config::FishingResult::Fail);
+        return;
+    }
+
     // 捕捉超时：鱼逃跑，并按 Fail 结果消耗捕鱼工具耐久
     if (fishTimer >= targetFish->catchTimeLimit) {
         finishFishing(Config::FishingResult::Fail);
@@ -4858,7 +4980,7 @@ void GameWindow::updateFishing()
 void GameWindow::keyPressEvent(QKeyEvent* event)
 {
     if (state == STATE_INTRO) {
-        state = STATE_MENU; update();
+        setGameState(STATE_MENU);
         return;
     }
 
@@ -4872,6 +4994,7 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
         return;
     }
 
+#if defined(FISHINGVOYAGE_ENABLE_TEST_MODE)
     if (event->key() == Qt::Key_O && state != STATE_DEFEAT && state != STATE_VICTORY) {
         toggleTestMode();
         return;
@@ -4882,6 +5005,7 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
         openTestModeShop();
         return;
     }
+#endif
 
     if (state == STATE_STAGE_START || state == STATE_STAGE_CLEAR) {
         if (event->key() == Qt::Key_Space ||
@@ -4915,9 +5039,14 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
             Player::instance().clearInputState();
             pauseMainMenuHover = false;
             setCursor(Qt::ArrowCursor);
-            state = STATE_PLAYING;
+            setGameState(STATE_PLAYING);
         }
-        else if (event->key() == Qt::Key_Q) { gm->saveAndQuit(); close(); }
+        else if (event->key() == Qt::Key_Q &&
+                 event->modifiers().testFlag(Qt::ControlModifier)) {
+            if (gm->saveAndQuit()) close();
+            else GameUi::showWoodMessage(this, QStringLiteral("保存失败"),
+                                         QStringLiteral("无法写入存档，请检查用户数据目录权限。"));
+        }
         else if (event->key() == Qt::Key_H) { openEncyclopedia(); update(); }
         else if (event->key() == Qt::Key_M) { returnToMainMenu(); }
         return;
@@ -4941,18 +5070,20 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
                 break;
             }
             Player::instance().clearInputState();
+            SimulationClock::setPaused(true);
             timer->stop();
             openBackpack();
-            timer->start(16);
+            setGameState(STATE_PLAYING);
             break;
         case Qt::Key_H:
             if (isFishing) {
                 break;
             }
             Player::instance().clearInputState();
+            SimulationClock::setPaused(true);
             timer->stop();
             openEncyclopedia();
-            timer->start(16);
+            setGameState(STATE_PLAYING);
             break;
         case Qt::Key_1:
         case Qt::Key_2:
@@ -4969,9 +5100,23 @@ void GameWindow::keyPressEvent(QKeyEvent* event)
             break;
         case Qt::Key_Escape:
             Player::instance().clearInputState();
-            state = STATE_PAUSED;
+            setGameState(STATE_PAUSED);
             break;
-        case Qt::Key_Q: gm->saveAndQuit(); close(); break;
+        case Qt::Key_Q:
+            if (!event->modifiers().testFlag(Qt::ControlModifier)) {
+                break;
+            }
+            if (gm->saveAndQuit()) {
+                close();
+            }
+            else {
+                SimulationClock::setPaused(true);
+                timer->stop();
+                GameUi::showWoodMessage(this, QStringLiteral("保存失败"),
+                                        QStringLiteral("无法写入存档，请检查用户数据目录权限。"));
+                setGameState(STATE_PLAYING);
+            }
+            break;
         default: break;
         }
     }
@@ -5093,8 +5238,8 @@ void GameWindow::mousePressEvent(QMouseEvent* event)
         }
         else if (buttonIndex == 4) {
             GameUi::showWoodMessage(this,
-                                    QStringLiteral("\u6e38\u620f\u8bbe\u7f6e"),
-                                    QStringLiteral("\u8bbe\u7f6e\u754c\u9762\u540e\u7eed\u63a5\u5165\u3002"));
+                                    QStringLiteral("渔途 正式版 v1.0.4"),
+                                    QStringLiteral("窗口分辨率：1280 × 720\n存档将安全保存在当前用户的数据目录中。"));
         }
         else if (buttonIndex == 5) {
             close();
@@ -5141,12 +5286,16 @@ void GameWindow::mousePressEvent(QMouseEvent* event)
     int worldX = (int)clickPos.x() + gm->cameraX;
     int worldY = (int)clickPos.y();
 
-    // 0. 正在捕鱼中：点击目标鱼附近视为 QTE 连击
+    // 0. 已锁定捕鱼目标后，左键只负责 QTE 操作；不再要求继续对准鱼。
     if (isFishing && targetFish) {
-        fishClickCount++;
-        spawnHitFeedback(targetFish->position());
+        if (!Player::instance().isStunned()) {
+            fishClickCount++;
+            spawnHitFeedback(targetFish->position());
+        }
         return;
     }
+
+    if (Player::instance().isStunned()) return;
 
     Weapon* weapon = InventorySystem::instance().currentWeapon();
     if (!weapon) return;
@@ -5184,9 +5333,15 @@ void GameWindow::mousePressEvent(QMouseEvent* event)
     // 2. 如果没有命中敌人，再尝试捕鱼
     // 这样可以避免鱼叉同一次点击既打中敌人又开始捕鱼。
     if (weapon->canFish() && !isFishing) {
-        Fish* nearest = nearestFishInWeaponRange(weapon);
-        if (nearest) {
-            targetFish = nearest;
+        Fish* clickedFish = fishAtWorldPosition(QPointF(worldX, worldY), weapon);
+        if (clickedFish) {
+            const int minimumStamina = (clickedFish->staminaCost + 1) / 2;
+            if (Player::instance().stamina() < minimumStamina) {
+                showFloatingNotice(QStringLiteral("体力不足"),
+                                   QStringLiteral("至少需要 %1 点体力才能收线。").arg(minimumStamina));
+                return;
+            }
+            targetFish = clickedFish;
             targetFish->lockedForCatch = true;
             isFishing = true;
             fishClickCount = 0;

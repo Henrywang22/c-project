@@ -72,10 +72,10 @@ void Enemy::applyStageScaling(int stage)
     stage = qMax(1, stage);
     if (m_scaledStage == stage) return;
 
-    const qreal hpScale = 1.0 + 0.15 * (stage - 1);
-    const qreal attackScale = 1.0 + 0.12 * (stage - 1);
-    const qreal speedScale = 1.0 + 0.025 * (stage - 1);
-    const qreal rewardScale = 1.0 + 0.15 * (stage - 1);
+    const qreal hpScale = 1.0 + 0.22 * (stage - 1);
+    const qreal attackScale = 1.0 + 0.16 * (stage - 1);
+    const qreal speedScale = 1.0 + 0.03 * (stage - 1);
+    const qreal rewardScale = 1.0 + 0.18 * (stage - 1);
     maxHp = qMax(1, qRound(maxHp * hpScale));
     hp = maxHp;
     attack = qMax(0, qRound(attack * attackScale));

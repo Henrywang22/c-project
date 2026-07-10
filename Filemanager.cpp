@@ -8,6 +8,13 @@
 #include <cstring>
 #include <algorithm>
 #include <cstdio>
+#include <cmath>
+#include <QDir>
+#include <QCoreApplication>
+#include <QFile>
+#include <QFileInfo>
+#include <QSaveFile>
+#include <QStandardPaths>
 
 // ============================================================
 // 存档文件格式
@@ -15,12 +22,58 @@
 
 namespace {
 
-    const char SAVE_MAGIC[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '6', '\0' };
+    bool gSavePresenceKnown = false;
+    bool gHasSave = false;
+
+    QString dataFilePath(const char* fileName)
+    {
+        QString root = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        if (root.isEmpty()) root = QDir::homePath() + QStringLiteral("/.fishing-voyage");
+        QDir().mkpath(root);
+
+        const QString name = QString::fromLatin1(fileName);
+        const QString target = QDir(root).filePath(name);
+        const QString legacyCandidates[] = {
+            QDir::current().filePath(name),
+            QDir(QCoreApplication::applicationDirPath()).filePath(name)
+        };
+        if (!QFileInfo::exists(target)) {
+            for (const QString& legacy : legacyCandidates) {
+                if (QFileInfo::exists(legacy) && QFile::copy(legacy, target)) break;
+            }
+        }
+        return target;
+    }
+
+    std::string dataFilePathStd(const char* fileName)
+    {
+        return QDir::toNativeSeparators(dataFilePath(fileName)).toStdString();
+    }
+
+    bool isSaveDataSane(const SaveData& data)
+    {
+        return data.stage >= 1 && data.stage <= Config::GameConfig::STAGE_COUNT &&
+               data.distance >= 0 && data.distance <= Config::GameConfig::RIGHT_BORDER &&
+               data.coins >= 0 && data.coins <= 1000000000 &&
+               data.maxDurability >= 1 && data.maxDurability <= 1000000 &&
+               data.maxStamina >= 1 && data.maxStamina <= 1000000 &&
+               data.durability >= 0 && data.durability <= data.maxDurability &&
+               data.stamina >= 0 && data.stamina <= data.maxStamina &&
+               data.fishCaught >= 0 && data.fishCaught <= 100000000 &&
+               data.fishTotalValue >= 0 && data.fishTotalValue <= 1000000000 &&
+               data.gameSeconds >= 0 && data.gameSeconds <= 1000000000 &&
+               data.killCount >= 0 && data.killCount <= 100000000 &&
+               std::isfinite(data.baseSpeed) && data.baseSpeed > 0.0f && data.baseSpeed <= 5000.0f;
+    }
+
+    const char SAVE_MAGIC[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '7', '\0' };
+    const char SAVE_MAGIC_V6[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '6', '\0' };
     const char SAVE_MAGIC_V5[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '5', '\0' };
     const char SAVE_MAGIC_V4[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '4', '\0' };
     const char SAVE_MAGIC_V3[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '3', '\0' };
     const char SAVE_MAGIC_V2[8] = { 'Y', 'U', 'T', 'U', 'S', 'V', '2', '\0' };
-    const int SAVE_VERSION = 6;
+    const int SAVE_VERSION = 7;
+    const int SAVE_VERSION_V6 = 6;
     const int SAVE_VERSION_V5 = 5;
     const int SAVE_VERSION_V4 = 4;
     const int SAVE_VERSION_V3 = 3;
@@ -46,6 +99,17 @@ namespace {
     struct SaveFileHeader {
         char magic[8];
         int version;
+    };
+
+    struct LegacyHighScoreEntry {
+        char name[20];
+        int score;
+        int distance;
+        int kills;
+        int fishCaught;
+        int fishTotalValue;
+        int gameSeconds;
+        int stagesCleared;
     };
 
     struct WeaponSaveBlockV3 {
@@ -97,6 +161,20 @@ namespace {
         WeaponSaveBlock weapons[LEGACY_SAVE_WEAPONS];
     };
 
+    struct InventorySaveBlockV6 {
+        int foodCount;
+        int shipRepairT1Count;
+        int shipRepairT2Count;
+        int shipRepairT3Count;
+        int emergencyWeaponRepairCount;
+
+        int weaponCount;
+        int currentWeaponIndex;
+
+        WeaponSaveBlock weapons[MAX_SAVE_WEAPONS];
+        int quickWeaponSlots[6];
+    };
+
     struct InventorySaveBlock {
         int foodCount;
         int shipRepairT1Count;
@@ -109,6 +187,7 @@ namespace {
 
         WeaponSaveBlock weapons[MAX_SAVE_WEAPONS];
         int quickWeaponSlots[6];
+        int itemPurchaseCounts[ITEM_DISCOVERY_COUNT];
     };
 
     struct InventorySaveBlockV5 {
@@ -156,6 +235,11 @@ namespace {
     struct FullSaveData {
         SaveData core;
         InventorySaveBlock inventory;
+    };
+
+    struct FullSaveDataV6 {
+        SaveData core;
+        InventorySaveBlockV6 inventory;
     };
 
     struct FullSaveDataV4 {
@@ -263,6 +347,10 @@ namespace {
         for (int slot = 0; slot < 6; ++slot) {
             block.quickWeaponSlots[slot] = quickSlots[slot];
         }
+        for (int item = 0; item < ITEM_DISCOVERY_COUNT; ++item) {
+            block.itemPurchaseCounts[item] = inv.getItemPurchaseCount(
+                static_cast<InventoryItemType>(item));
+        }
 
         for (int i = 0; i < block.weaponCount; ++i) {
             const Weapon* w = weapons[i];
@@ -302,6 +390,9 @@ namespace {
         for (int slot = 0; slot < 6; ++slot) {
             data.quickWeaponSlots[slot] = block.quickWeaponSlots[slot];
         }
+        for (int item = 0; item < ITEM_DISCOVERY_COUNT; ++item) {
+            data.itemPurchaseCounts[item] = block.itemPurchaseCounts[item];
+        }
 
         int weaponCount = block.weaponCount;
         if (weaponCount < 0) {
@@ -323,6 +414,37 @@ namespace {
             w.durabilityConsumption = block.weapons[i].durabilityConsumption;
             w.enhancementLevel = block.weapons[i].enhancementLevel;
 
+            data.weapons.push_back(w);
+        }
+
+        InventorySystem::instance().loadFromData(data);
+    }
+
+    void loadInventoryFromSaveBlockV6(const InventorySaveBlockV6& block)
+    {
+        InventorySystem::InventoryLoadData data;
+
+        data.foodCount = block.foodCount;
+        data.shipRepairT1Count = block.shipRepairT1Count;
+        data.shipRepairT2Count = block.shipRepairT2Count;
+        data.shipRepairT3Count = block.shipRepairT3Count;
+        data.emergencyWeaponRepairCount = block.emergencyWeaponRepairCount;
+        data.currentWeaponIndex = block.currentWeaponIndex;
+        for (int slot = 0; slot < 6; ++slot) {
+            data.quickWeaponSlots[slot] = block.quickWeaponSlots[slot];
+        }
+
+        const int weaponCount = qBound(0, block.weaponCount, MAX_SAVE_WEAPONS);
+        for (int i = 0; i < weaponCount; ++i) {
+            InventorySystem::WeaponLoadData w;
+            w.typeCode = block.weapons[i].typeCode;
+            w.tier = block.weapons[i].tier;
+            w.damage = block.weapons[i].damage;
+            w.maxDurability = block.weapons[i].maxDurability;
+            w.currentDurability = block.weapons[i].currentDurability;
+            w.range = block.weapons[i].range;
+            w.durabilityConsumption = block.weapons[i].durabilityConsumption;
+            w.enhancementLevel = block.weapons[i].enhancementLevel;
             data.weapons.push_back(w);
         }
 
@@ -432,10 +554,11 @@ namespace {
 
     void initEmptyFishLogIfNeeded()
     {
+        const std::string logPath = dataFilePathStd("Log.dat");
         const std::streamoff expectedBytes =
             static_cast<std::streamoff>(TOTAL_DISCOVERY_COUNT * sizeof(FishEntry));
 
-        std::ifstream existing("Log.dat", std::ios::binary | std::ios::ate);
+        std::ifstream existing(logPath, std::ios::binary | std::ios::ate);
         if (existing.is_open()) {
             std::streamoff currentBytes = existing.tellg();
             existing.close();
@@ -444,8 +567,18 @@ namespace {
                 return;
             }
 
+            const std::streamoff alignedBytes =
+                (currentBytes / static_cast<std::streamoff>(sizeof(FishEntry))) *
+                static_cast<std::streamoff>(sizeof(FishEntry));
+            if (alignedBytes != currentBytes) {
+                QFile truncated(dataFilePath("Log.dat"));
+                if (!truncated.open(QIODevice::ReadWrite) || !truncated.resize(alignedBytes)) return;
+                truncated.close();
+                currentBytes = alignedBytes;
+            }
+
             int startIndex = static_cast<int>(currentBytes / sizeof(FishEntry));
-            std::ofstream append("Log.dat", std::ios::binary | std::ios::app);
+            std::ofstream append(logPath, std::ios::binary | std::ios::app);
             if (!append.is_open()) {
                 return;
             }
@@ -460,7 +593,7 @@ namespace {
             return;
         }
 
-        std::ofstream init("Log.dat", std::ios::binary);
+        std::ofstream init(logPath, std::ios::binary);
         FishEntry empty = { 0, false, "" };
 
         for (int i = 0; i < TOTAL_DISCOVERY_COUNT; i++) {
@@ -479,7 +612,7 @@ namespace {
 
         initEmptyFishLogIfNeeded();
 
-        std::fstream f("Log.dat", std::ios::binary | std::ios::in | std::ios::out);
+        std::fstream f(dataFilePathStd("Log.dat"), std::ios::binary | std::ios::in | std::ios::out);
         if (!f.is_open()) {
             return;
         }
@@ -507,7 +640,7 @@ namespace {
 
         initEmptyFishLogIfNeeded();
 
-        std::ifstream f("Log.dat", std::ios::binary);
+        std::ifstream f(dataFilePathStd("Log.dat"), std::ios::binary);
         if (!f.is_open()) {
             return false;
         }
@@ -540,7 +673,7 @@ FileManager::FileManager()
 // saveGame 会自动保存 InventorySystem 当前背包。
 // ============================================================
 
-void FileManager::saveGame(const SaveData& data)
+bool FileManager::saveGame(const SaveData& data)
 {
     SaveFileHeader header;
     std::memset(&header, 0, sizeof(header));
@@ -553,29 +686,21 @@ void FileManager::saveGame(const SaveData& data)
     fullSave.core = data;
     fullSave.inventory = makeInventorySaveBlock();
 
-    const char* tempPath = "save.tmp";
-    const char* savePath = "save.dat";
-    std::ofstream f(tempPath, std::ios::binary | std::ios::trunc);
+    QSaveFile file(dataFilePath("save.dat"));
+    if (!file.open(QIODevice::WriteOnly)) return false;
 
-    if (!f.is_open()) {
-        return;
+    const qint64 headerBytes = file.write(
+        reinterpret_cast<const char*>(&header), sizeof(header));
+    const qint64 saveBytes = file.write(
+        reinterpret_cast<const char*>(&fullSave), sizeof(fullSave));
+    if (headerBytes != sizeof(header) || saveBytes != sizeof(fullSave) || !file.commit()) {
+        file.cancelWriting();
+        return false;
     }
 
-    f.write(reinterpret_cast<const char*>(&header), sizeof(header));
-    f.write(reinterpret_cast<const char*>(&fullSave), sizeof(fullSave));
-    f.flush();
-    if (!f.good()) {
-        f.close();
-        std::remove(tempPath);
-        return;
-    }
-    f.close();
-    if (std::rename(tempPath, savePath) != 0) {
-        std::remove(savePath);
-        if (std::rename(tempPath, savePath) != 0) {
-            std::remove(tempPath);
-        }
-    }
+    gSavePresenceKnown = true;
+    gHasSave = true;
+    return true;
 }
 
 // ============================================================
@@ -589,7 +714,8 @@ void FileManager::saveGame(const SaveData& data)
 
 bool FileManager::loadGame(SaveData& data)
 {
-    std::ifstream f("save.dat", std::ios::binary);
+    const QString savePath = dataFilePath("save.dat");
+    std::ifstream f(dataFilePathStd("save.dat"), std::ios::binary);
 
     if (!f.is_open()) {
         return false;
@@ -604,6 +730,11 @@ bool FileManager::loadGame(SaveData& data)
         f.good()
         && std::memcmp(header.magic, SAVE_MAGIC, sizeof(SAVE_MAGIC)) == 0
         && header.version == SAVE_VERSION;
+
+    bool isV6Save =
+        f.good()
+        && std::memcmp(header.magic, SAVE_MAGIC_V6, sizeof(SAVE_MAGIC_V6)) == 0
+        && header.version == SAVE_VERSION_V6;
 
     bool isV3Save =
         f.good()
@@ -636,8 +767,22 @@ bool FileManager::loadGame(SaveData& data)
         }
 
         data = fullSave.core;
+        if (!isSaveDataSane(data)) return false;
         loadInventoryFromSaveBlock(fullSave.inventory);
 
+        return true;
+    }
+
+    if (isV6Save) {
+        FullSaveDataV6 oldSave;
+        std::memset(&oldSave, 0, sizeof(oldSave));
+
+        f.read(reinterpret_cast<char*>(&oldSave), sizeof(oldSave));
+        if (!f.good()) return false;
+
+        data = oldSave.core;
+        if (!isSaveDataSane(data)) return false;
+        loadInventoryFromSaveBlockV6(oldSave.inventory);
         return true;
     }
 
@@ -652,6 +797,7 @@ bool FileManager::loadGame(SaveData& data)
         }
 
         data = oldSave.core;
+        if (!isSaveDataSane(data)) return false;
         loadInventoryFromSaveBlockV5(oldSave.inventory);
         return true;
     }
@@ -667,6 +813,7 @@ bool FileManager::loadGame(SaveData& data)
         }
 
         data = oldSave.core;
+        if (!isSaveDataSane(data)) return false;
         loadInventoryFromSaveBlockV4(oldSave.inventory);
 
         return true;
@@ -683,6 +830,7 @@ bool FileManager::loadGame(SaveData& data)
         }
 
         data = makeSaveDataFromV3(oldSave.core);
+        if (!isSaveDataSane(data)) return false;
         loadInventoryFromSaveBlockV3(oldSave.inventory);
 
         return true;
@@ -699,9 +847,16 @@ bool FileManager::loadGame(SaveData& data)
         }
 
         data = makeSaveDataFromV2(oldSave.core);
+        if (!isSaveDataSane(data)) return false;
         loadInventoryFromSaveBlockV3(oldSave.inventory);
 
         return true;
+    }
+
+    // 旧版无文件头存档只在长度精确匹配时迁移。未知或损坏的
+    // 新版文件绝不能按旧结构解释，否则 magic 会被当作游戏数据。
+    if (QFileInfo(savePath).size() != static_cast<qint64>(sizeof(SaveDataV2Core))) {
+        return false;
     }
 
     // 旧版存档兼容
@@ -718,6 +873,7 @@ bool FileManager::loadGame(SaveData& data)
     }
 
     data = makeSaveDataFromV2(oldData);
+    if (!isSaveDataSane(data)) return false;
 
     // 旧存档没有背包信息，给默认鱼竿
     InventorySystem::instance().clearAll();
@@ -728,14 +884,38 @@ bool FileManager::loadGame(SaveData& data)
 
 bool FileManager::hasSave()
 {
-    std::ifstream f("save.dat", std::ios::binary);
-    return f.is_open();
+    if (gSavePresenceKnown) return gHasSave;
+
+    const QString savePath = dataFilePath("save.dat");
+    QFile file(savePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        gSavePresenceKnown = true;
+        gHasSave = false;
+        return false;
+    }
+
+    SaveFileHeader header{};
+    const qint64 bytes = file.read(reinterpret_cast<char*>(&header), sizeof(header));
+    const bool knownHeader = bytes == sizeof(header) && (
+        (std::memcmp(header.magic, SAVE_MAGIC, sizeof(SAVE_MAGIC)) == 0 && header.version == SAVE_VERSION) ||
+        (std::memcmp(header.magic, SAVE_MAGIC_V6, sizeof(SAVE_MAGIC_V6)) == 0 && header.version == SAVE_VERSION_V6) ||
+        (std::memcmp(header.magic, SAVE_MAGIC_V5, sizeof(SAVE_MAGIC_V5)) == 0 && header.version == SAVE_VERSION_V5) ||
+        (std::memcmp(header.magic, SAVE_MAGIC_V4, sizeof(SAVE_MAGIC_V4)) == 0 && header.version == SAVE_VERSION_V4) ||
+        (std::memcmp(header.magic, SAVE_MAGIC_V3, sizeof(SAVE_MAGIC_V3)) == 0 && header.version == SAVE_VERSION_V3) ||
+        (std::memcmp(header.magic, SAVE_MAGIC_V2, sizeof(SAVE_MAGIC_V2)) == 0 && header.version == SAVE_VERSION_V2));
+    const bool legacyExact = file.size() == static_cast<qint64>(sizeof(SaveDataV2Core));
+
+    gSavePresenceKnown = true;
+    gHasSave = knownHeader || legacyExact;
+    return gHasSave;
 }
 
 void FileManager::deleteSave()
 {
-    std::remove("save.dat");
-    std::remove("save.tmp");
+    QFile::remove(dataFilePath("save.dat"));
+    QFile::remove(dataFilePath("save.tmp"));
+    gSavePresenceKnown = true;
+    gHasSave = false;
 }
 
 // ============================================================
@@ -932,15 +1112,15 @@ void FileManager::saveHighScore(
         scores.resize(10);
     }
 
-    std::ofstream f("highscore.dat", std::ios::binary);
-
-    if (!f.is_open()) {
-        return;
-    }
-
+    QSaveFile file(dataFilePath("highscore.dat"));
+    if (!file.open(QIODevice::WriteOnly)) return;
     for (const auto& s : scores) {
-        f.write(reinterpret_cast<const char*>(&s), sizeof(HighScoreEntry));
+        if (file.write(reinterpret_cast<const char*>(&s), sizeof(HighScoreEntry)) != sizeof(HighScoreEntry)) {
+            file.cancelWriting();
+            return;
+        }
     }
+    file.commit();
 }
 
 // ============================================================
@@ -1004,32 +1184,55 @@ void FileManager::saveHighScoreByStats(
         scores.resize(10);
     }
 
-    std::ofstream f("highscore.dat", std::ios::binary);
-
-    if (!f.is_open()) {
-        return;
-    }
-
+    QSaveFile file(dataFilePath("highscore.dat"));
+    if (!file.open(QIODevice::WriteOnly)) return;
     for (const auto& s : scores) {
-        f.write(reinterpret_cast<const char*>(&s), sizeof(HighScoreEntry));
+        if (file.write(reinterpret_cast<const char*>(&s), sizeof(HighScoreEntry)) != sizeof(HighScoreEntry)) {
+            file.cancelWriting();
+            return;
+        }
     }
+    file.commit();
 }
 
 std::vector<HighScoreEntry> FileManager::loadHighScores()
 {
     std::vector<HighScoreEntry> scores;
 
-    std::ifstream f("highscore.dat", std::ios::binary);
+    std::ifstream f(dataFilePathStd("highscore.dat"), std::ios::binary | std::ios::ate);
 
     if (!f.is_open()) {
         return scores;
     }
 
-    HighScoreEntry e;
+    const std::streamoff fileSize = f.tellg();
+    f.seekg(0, std::ios::beg);
 
-    while (f.read(reinterpret_cast<char*>(&e), sizeof(HighScoreEntry))) {
-        e.name[19] = '\0';
-        scores.push_back(e);
+    if (fileSize > 0 && fileSize % static_cast<std::streamoff>(sizeof(HighScoreEntry)) == 0) {
+        HighScoreEntry e;
+        while (f.read(reinterpret_cast<char*>(&e), sizeof(HighScoreEntry))) {
+            e.name[19] = '\0';
+            scores.push_back(e);
+        }
+    }
+    else if (fileSize > 0 && fileSize % static_cast<std::streamoff>(sizeof(LegacyHighScoreEntry)) == 0) {
+        LegacyHighScoreEntry legacy;
+        while (f.read(reinterpret_cast<char*>(&legacy), sizeof(legacy))) {
+            HighScoreEntry e{};
+            std::memcpy(e.name, legacy.name, sizeof(e.name));
+            e.name[19] = '\0';
+            e.score = legacy.score;
+            e.distance = legacy.distance;
+            e.kills = legacy.kills;
+            e.fishCaught = legacy.fishCaught;
+            e.fishTotalValue = legacy.fishTotalValue;
+            e.gameSeconds = legacy.gameSeconds;
+            e.stagesCleared = legacy.stagesCleared;
+            scores.push_back(e);
+        }
+    }
+    else {
+        return scores;
     }
 
     std::sort(

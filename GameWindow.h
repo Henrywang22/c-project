@@ -2,6 +2,7 @@
 #include <QWidget>
 #include <QPainter>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QEvent>
@@ -42,6 +43,7 @@ private slots:
 
 private:
     QTimer* timer;
+    QElapsedTimer frameTimer;
     GameManager* gm;
     GameState    state = STATE_MENU;
 
@@ -97,6 +99,7 @@ private:
         QString body;
         int ageMs = 0;
         int lifetimeMs = 2400;
+        bool compact = false;
         bool active = false;
     };
 
@@ -136,7 +139,7 @@ private:
     void updateAttackProjectiles();
     void updateHitFeedbacks();
     void updateFloatingNotice();
-    Fish* nearestFishInWeaponRange(const Weapon* weapon) const;
+    Fish* fishAtWorldPosition(const QPointF& worldPos, const Weapon* weapon) const;
     void resetFishingState(bool releaseTarget = true);
     Config::FishingResult calibrationFishingResult() const;
     qreal calibrationMarkerRatio() const;
@@ -146,7 +149,7 @@ private:
     void spawnGunProjectiles(const QPointF& targetWorld, const Weapon* weapon);
     void spawnHarpoonProjectile(const QPointF& targetWorld, const Weapon* weapon);
     void spawnHitFeedback(const QPointF& worldPos);
-    void showFloatingNotice(const QString& title, const QString& body);
+    void showFloatingNotice(const QString& title, const QString& body, bool compact = false);
     void notifyWeaponBrokenIfNeeded(const Weapon* weapon, bool wasBroken);
     bool isGunWeapon(const Weapon* weapon) const;
     bool isHarpoonWeapon(const Weapon* weapon) const;
@@ -169,6 +172,9 @@ private:
     int victoryButtonAt(const QPoint& pos) const;
     void returnToMainMenu();
     void resetRunAndReturnToMenu();
+    void setGameState(GameState nextState);
+    void loadBossAssets(BossKind kind);
+    void releaseBossAssets();
 
     // 图片资源
     QPixmap imgSardine;
@@ -238,6 +244,8 @@ private:
     QPixmap imgSirenFocusMeter;
     QPixmap imgSirenDeath;
     QPixmap imgBossEncounterWarning;
+    bool bossAssetsLoaded = false;
+    BossKind loadedBossAssetKind = BossKind::FiveHeadShark;
     QPixmap imgStageDecor[6];
     QPixmap imgTerrainProps[12];
     QPixmap imgPlayerMove[5][4];

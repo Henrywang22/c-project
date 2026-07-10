@@ -160,6 +160,7 @@ protected:
 
         m_optionRects.clear();
         const int visible = qMin(6, m_options.size());
+        m_firstVisible = qBound(0, m_firstVisible, qMax(0, m_options.size() - visible));
         for (int i = 0; i < visible; ++i) {
             QRect row;
             if (compact) {
@@ -183,7 +184,7 @@ protected:
                 p.restore();
             }
             drawPixmapFit(p, m_button, row);
-            const QString option = m_options[i];
+            const QString option = m_options[m_firstVisible + i];
             if (compact) {
                 drawNoticeText(p, row.adjusted(18, 0, -18, -3), option, 17,
                                hovered ? QColor(255, 246, 190) : QColor(255, 232, 170),
@@ -214,6 +215,15 @@ protected:
                                hovered ? QColor(255, 236, 158) : QColor(238, 205, 134),
                                true, Qt::AlignLeft | Qt::AlignVCenter);
             }
+        }
+
+        if (m_options.size() > visible) {
+            drawNoticeText(p, QRect(board.right() - 228, board.top() + 154, 110, 26),
+                           QStringLiteral("%1-%2 / %3")
+                               .arg(m_firstVisible + 1)
+                               .arg(m_firstVisible + visible)
+                               .arg(m_options.size()),
+                           13, QColor(94, 56, 24), true, Qt::AlignRight | Qt::AlignVCenter);
         }
 
         if (compact && visible == 1) {
@@ -269,7 +279,7 @@ protected:
         const QPoint pos = event->position().toPoint();
         for (int i = 0; i < m_optionRects.size(); ++i) {
             if (m_optionRects[i].contains(pos)) {
-                m_selectedIndex = i;
+                m_selectedIndex = m_firstVisible + i;
                 accept();
                 return;
             }
@@ -279,6 +289,23 @@ protected:
         }
     }
 
+    void wheelEvent(QWheelEvent* event) override
+    {
+        const int visible = qMin(6, m_options.size());
+        const int maximum = qMax(0, m_options.size() - visible);
+        const int delta = event->angleDelta().y() != 0
+            ? event->angleDelta().y()
+            : event->pixelDelta().y();
+        if (delta != 0 && maximum > 0) {
+            m_firstVisible = qBound(0, m_firstVisible + (delta < 0 ? 1 : -1), maximum);
+            m_hoverIndex = -1;
+            update();
+            event->accept();
+            return;
+        }
+        QDialog::wheelEvent(event);
+    }
+
     void keyPressEvent(QKeyEvent* event) override
     {
         if (event->key() == Qt::Key_Escape) {
@@ -286,8 +313,18 @@ protected:
             return;
         }
         if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) && !m_options.isEmpty()) {
-            m_selectedIndex = qBound(0, m_hoverIndex, m_options.size() - 1);
+            m_selectedIndex = qBound(0, m_firstVisible + qMax(0, m_hoverIndex), m_options.size() - 1);
             accept();
+            return;
+        }
+        if (event->key() == Qt::Key_Up || event->key() == Qt::Key_Down ||
+            event->key() == Qt::Key_PageUp || event->key() == Qt::Key_PageDown) {
+            const int step = (event->key() == Qt::Key_PageUp || event->key() == Qt::Key_PageDown) ? 6 : 1;
+            const int direction = (event->key() == Qt::Key_Up || event->key() == Qt::Key_PageUp) ? -1 : 1;
+            m_firstVisible = qBound(0, m_firstVisible + direction * step,
+                                   qMax(0, m_options.size() - qMin(6, m_options.size())));
+            m_hoverIndex = -1;
+            update();
             return;
         }
         QDialog::keyPressEvent(event);
@@ -304,6 +341,7 @@ private:
     int m_hoverIndex = -1;
     bool m_cancelHover = false;
     int m_selectedIndex = -1;
+    int m_firstVisible = 0;
 };
 
 struct GuideSection {
@@ -595,9 +633,7 @@ void showOperationGuide(QWidget* parent)
             QStringLiteral("\u80cc\u5305\u3001\u56fe\u9274\u4e0e\u5546\u5e97"),
             QStringLiteral(
                 "\u00b7 H\uff1a\u6253\u5f00\u822a\u6d77\u56fe\u9274\uff1b\u6355\u9c7c\u8fdb\u884c\u4e2d\u4e0d\u80fd\u6253\u5f00\u80cc\u5305\u6216\u56fe\u9274\u3002\n"
-                "\u00b7 \u9c7c\u7c7b\u4f1a\u5728\u9996\u6b21\u6355\u83b7\u540e\u8bb0\u5f55\uff0c\u654c\u4eba\u4f1a\u5728\u9996\u6b21\u9047\u89c1\u65f6\u8bb0\u5f55\u3002\n"
-                "\u00b7 O\uff1a\u5f00\u542f\u6216\u5173\u95ed\u6d4b\u8bd5\u6a21\u5f0f\uff1b\u5f00\u542f\u540e\u4f1a\u6062\u590d\u72b6\u6001\u5e76\u4fdd\u8bc1\u8db3\u591f\u7684\u6d4b\u8bd5\u91d1\u5e01\u3002\n"
-                "\u00b7 P\uff1a\u6d4b\u8bd5\u6a21\u5f0f\u4e0b\u968f\u65f6\u6253\u5f00\u5546\u5e97\u3002")
+                "\u00b7 \u9c7c\u7c7b\u4f1a\u5728\u9996\u6b21\u6355\u83b7\u540e\u8bb0\u5f55\uff0c\u654c\u4eba\u4f1a\u5728\u9996\u6b21\u9047\u89c1\u65f6\u8bb0\u5f55\u3002")
         },
         {
             QStringLiteral("\u6d77\u51b5\u4e0e\u5173\u5361"),
@@ -605,7 +641,7 @@ void showOperationGuide(QWidget* parent)
                 "\u00b7 \u987a\u6d6a\u4f1a\u63a8\u52a8\u8239\u53ea\u52a0\u901f\uff0c\u9006\u6d6a\u4f1a\u964d\u901f\uff0c\u6548\u679c\u53d6\u51b3\u4e8e\u8239\u53ea\u4e0e\u6d77\u6d6a\u7684\u76f8\u5bf9\u65b9\u5411\u3002\n"
                 "\u00b7 \u5929\u6c14\u4f1a\u9010\u6e10\u8fc7\u6e21\u3002\u6d77\u96fe\u4f1a\u7f29\u5c0f\u89c6\u91ce\uff0c\u66b4\u98ce\u96e8\u4e2d\u9700\u6ce8\u610f\u843d\u96f7\u9884\u8b66\u3002\n"
                 "\u00b7 \u5c9b\u5c7f\u548c\u5927\u578b\u5730\u5f62\u6709\u5b9e\u4f53\u4f46\u4e0d\u4f24\u8239\uff1b\u7901\u77f3\u4f1a\u9020\u6210\u78b0\u649e\u4f24\u5bb3\uff0c\u6f29\u6da1\u4f1a\u5e72\u6270\u822a\u884c\u3002\n"
-                "\u00b7 \u6bcf 3 \u5173\u51fa\u73b0\u4e00\u573a Boss \u6218\uff0c\u5230\u8fbe\u822a\u7a0b\u7ec8\u70b9\u5e76\u5b8c\u6210\u672c\u5173\u76ee\u6807\u5373\u53ef\u8fc7\u5173\u3002")
+                "\u00b7 \u7b2c 4 \u5173\u548c\u7b2c 9 \u5173\u4f1a\u8fce\u6765 Boss \u6218\uff0c\u5230\u8fbe\u822a\u7a0b\u7ec8\u70b9\u5e76\u5b8c\u6210\u672c\u5173\u76ee\u6807\u5373\u53ef\u8fc7\u5173\u3002")
         }
     };
 

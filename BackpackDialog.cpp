@@ -1024,20 +1024,29 @@ void BackpackDialog::drawEquipmentList(QPainter& p)
     InventorySystem& inv = InventorySystem::instance();
     const auto& weapons = inv.weapons();
     const int capacity = inv.maxWeaponCapacity();
+    const int weaponCount = static_cast<int>(weapons.size());
+    const int maxFirstVisible = qMax(0, weaponCount - kVisibleRows);
+    const int firstVisible = qBound(
+        0,
+        m_selectedEquipmentIndex - kVisibleRows / 2,
+        maxFirstVisible);
 
-    for (int i = 0; i < kVisibleRows; ++i) {
-        QRect row(kListPanelRect.left() + 22, kListPanelRect.top() + 12 + i * kRowHeight, 340, kRowHeight);
-        const bool hasWeapon = i < static_cast<int>(weapons.size()) && weapons[i];
-        const bool selected = hasWeapon && i == m_selectedEquipmentIndex;
-        const bool locked = i >= capacity;
+    for (int rowIndex = 0; rowIndex < kVisibleRows; ++rowIndex) {
+        const int weaponIndex = firstVisible + rowIndex;
+        QRect row(kListPanelRect.left() + 22,
+                  kListPanelRect.top() + 12 + rowIndex * kRowHeight,
+                  340, kRowHeight);
+        const bool hasWeapon = weaponIndex < weaponCount && weapons[weaponIndex];
+        const bool selected = hasWeapon && weaponIndex == m_selectedEquipmentIndex;
+        const bool locked = weaponIndex >= capacity;
 
         if (hasWeapon) {
-            const Weapon* w = weapons[i];
+            const Weapon* w = weapons[weaponIndex];
             drawRowText(p, row, weaponIcon(QString::fromStdString(w->getTypeCode())),
                         QString::fromStdString(w->getName()),
                         QStringLiteral("耐久 %1  Lv.%2 +%3").arg(weaponDurabilityText(w)).arg(w->getTier()).arg(w->getEnhancementLevel()),
-                        weaponStatusText(i, w), weaponStatusColor(i, w), selected, false);
-            addZone(row, Action::SelectEquipment, i);
+                        weaponStatusText(weaponIndex, w), weaponStatusColor(weaponIndex, w), selected, false);
+            addZone(row, Action::SelectEquipment, weaponIndex);
         } else {
             const QString title = locked ? QStringLiteral("未开放舱位") : QStringLiteral("空槽位");
             const QString subtitle = locked ? QStringLiteral("随游戏进程扩展") : QStringLiteral("购买或替换装备后显示在这里");

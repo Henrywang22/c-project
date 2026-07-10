@@ -27,6 +27,7 @@ Release/
 x64/
 x86/
 build/
+build-*/
 out/
 bin/
 obj/
@@ -70,7 +71,6 @@ Makefile*
 *.pro.user
 qtvars*
 GeneratedFiles/
-*.vcxproj
 # ==========================================
 # 存档及数据文件（按需保留）
 # ==========================================
@@ -89,4 +89,9 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 *.vcxproj.user
-*.slnx
+
+# ==========================================
+# 正式版打包产物（由 tools/package_release.ps1 生成）
+# ==========================================
+release/FishingVoyage_v*/
+release/*_win64.zip

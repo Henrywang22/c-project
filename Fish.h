@@ -50,6 +50,7 @@ public:
     bool fleeing = false;
     int fleeCooldown = 0;
     float facingX = 1.0f;
+    float cruiseSpeed = 1.0f;
 
 protected:
     float posX, posY;

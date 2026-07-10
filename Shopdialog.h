@@ -159,6 +159,9 @@ private:
     void useEmergencyWeaponRepairFromBackpack();
     void discardSelectedBackpackWeapon();
     int weaponUpgradePrice(const Weapon* weapon, int tier) const;
+    int weaponRepairAmount(const Weapon* weapon) const;
+    int weaponRepairPrice(const Weapon* weapon) const;
+    int itemPurchasePrice(InventoryItemType type, int basePrice) const;
     int shipUpgradeLevel(const QString& attr) const;
     int shipUpgradePrice(const ShipUpgradeOffer& offer) const;
     int askWeaponIndex(const QString& title, const QString& label, bool allowBroken = true);

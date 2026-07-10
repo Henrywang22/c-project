@@ -3,8 +3,8 @@
 
 #include <QPointF>
 #include <QRectF>
-#include <QElapsedTimer>
 #include "GameConfig.h"
+#include "SimulationClock.h"
 #include <QList>
 
 
@@ -38,7 +38,7 @@ public:
     void onPlayerCollision(Player* player) override;
 
 private:
-    QElapsedTimer m_collisionCooldown;
+    GameTimer m_collisionCooldown;
 };
 
 class Whirlpool : public Obstacle

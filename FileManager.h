@@ -100,6 +100,10 @@ public:
     bool isEnemyDiscovered(int enemyID);
     void markBossDiscovered(int bossID, const char* bossName);
     bool isBossDiscovered(int bossID);
+    void markEquipmentDiscovered(int equipmentID, const char* equipmentName);
+    bool isEquipmentDiscovered(int equipmentID);
+    void markItemDiscovered(int itemID, const char* itemName);
+    bool isItemDiscovered(int itemID);
 
     // -------------------------
     // 排行榜

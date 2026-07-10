@@ -151,7 +151,7 @@ private:
 
     void buyBackpackItem(InventoryItemType type, int price, const QString& displayName);
     void buyWeapon(Weapon* weapon);
-    void buyAndUseAttributeUpgrade(Item* item);
+    void buyAndUseAttributeUpgrade(Item* item, int priceOverride = -1);
     void buyWeaponUpgrade(int tier);
     void buyShopWeaponRepair();
     void useFoodFromBackpack();
@@ -159,6 +159,8 @@ private:
     void useEmergencyWeaponRepairFromBackpack();
     void discardSelectedBackpackWeapon();
     int weaponUpgradePrice(const Weapon* weapon, int tier) const;
+    int shipUpgradeLevel(const QString& attr) const;
+    int shipUpgradePrice(const ShipUpgradeOffer& offer) const;
     int askWeaponIndex(const QString& title, const QString& label, bool allowBroken = true);
     int askReplaceWeaponIndex();
     void selectWeaponFromBackpack(int index);

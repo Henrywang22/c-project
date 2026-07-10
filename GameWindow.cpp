@@ -331,6 +331,74 @@ QPointF clampedProjectileEnd(const QPointF& origin, const QPointF& target, qreal
                    origin.y() + dy / length * range);
 }
 
+qreal distancePointToSegment(const QPointF& point, const QPointF& from, const QPointF& to)
+{
+    const QPointF segment = to - from;
+    const qreal lengthSq = segment.x() * segment.x() + segment.y() * segment.y();
+    if (lengthSq <= 0.001) {
+        return QLineF(point, from).length();
+    }
+
+    const QPointF relative = point - from;
+    const qreal t = qBound<qreal>(
+        0.0,
+        (relative.x() * segment.x() + relative.y() * segment.y()) / lengthSq,
+        1.0
+    );
+    const QPointF projected(from.x() + segment.x() * t,
+                            from.y() + segment.y() * t);
+    return QLineF(point, projected).length();
+}
+
+QRectF beamBoundsForHalfWidth(const QPointF& from, const QPointF& to, qreal halfWidth)
+{
+    return QRectF(QPointF(std::min(from.x(), to.x()) - halfWidth,
+                         std::min(from.y(), to.y()) - halfWidth),
+                  QPointF(std::max(from.x(), to.x()) + halfWidth,
+                         std::max(from.y(), to.y()) + halfWidth)).normalized();
+}
+
+bool segmentIntersectsRect(const QPointF& from, const QPointF& to, const QRectF& rect)
+{
+    if (rect.contains(from) || rect.contains(to)) return true;
+
+    QLineF line(from, to);
+    const QLineF edges[4] = {
+        QLineF(rect.topLeft(), rect.topRight()),
+        QLineF(rect.topRight(), rect.bottomRight()),
+        QLineF(rect.bottomRight(), rect.bottomLeft()),
+        QLineF(rect.bottomLeft(), rect.topLeft())
+    };
+    QPointF hit;
+    for (const QLineF& edge : edges) {
+        if (line.intersects(edge, &hit) == QLineF::BoundedIntersection)
+            return true;
+    }
+    return false;
+}
+
+bool segmentHitsRectWithHalfWidth(const QPointF& from, const QPointF& to,
+                                  qreal halfWidth, const QRectF& rect)
+{
+    if (!beamBoundsForHalfWidth(from, to, halfWidth).intersects(rect))
+        return false;
+    if (segmentIntersectsRect(from, to, rect))
+        return true;
+
+    const QPointF samples[8] = {
+        rect.topLeft(), rect.topRight(), rect.bottomLeft(), rect.bottomRight(),
+        QPointF(rect.center().x(), rect.top()),
+        QPointF(rect.center().x(), rect.bottom()),
+        QPointF(rect.left(), rect.center().y()),
+        QPointF(rect.right(), rect.center().y())
+    };
+    for (const QPointF& sample : samples) {
+        if (distancePointToSegment(sample, from, to) <= halfWidth)
+            return true;
+    }
+    return false;
+}
+
 QPointF firstLineRectIntersection(const QLineF& line, const QRectF& rect, bool& hit)
 {
     hit = false;
@@ -386,6 +454,53 @@ void drawPixmapCentered(QPainter& p, const QPixmap& pixmap, const QPointF& cente
     }
     const QRectF target(-size.width() / 2.0, -size.height() / 2.0, size.width(), size.height());
     p.drawPixmap(target, pixmap, QRectF(pixmap.rect()));
+    p.restore();
+}
+
+void drawElectricPulseRing(QPainter& p, const QPointF& center, qreal radius,
+                           qreal opacity, bool active)
+{
+    if (radius <= 0.0) return;
+
+    const qreal clampedOpacity = qBound<qreal>(0.0, opacity, 1.0);
+    const QRectF outer(center.x() - radius, center.y() - radius,
+                       radius * 2.0, radius * 2.0);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const int phase = static_cast<int>((now / 42) % 360);
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setBrush(QColor(80, 222, 255, qRound((active ? 22 : 13) * clampedOpacity)));
+    p.setPen(Qt::NoPen);
+    p.drawEllipse(outer);
+
+    p.setBrush(Qt::NoBrush);
+    p.setOpacity(clampedOpacity);
+    p.setPen(QPen(QColor(220, 255, 255, active ? 220 : 150),
+                  active ? 3.4 : 2.4, Qt::SolidLine, Qt::RoundCap));
+    p.drawEllipse(outer);
+
+    p.setOpacity(clampedOpacity * (active ? 0.90 : 0.58));
+    p.setPen(QPen(QColor(68, 234, 255, active ? 215 : 160),
+                  active ? 2.2 : 1.6, Qt::SolidLine, Qt::RoundCap));
+    p.drawEllipse(outer.adjusted(radius * 0.10, radius * 0.10,
+                                 -radius * 0.10, -radius * 0.10));
+
+    const int arcCount = active ? 8 : 5;
+    for (int i = 0; i < arcCount; ++i) {
+        const qreal jitter = std::sin((now * 0.006) + i * 1.7) * radius * 0.035;
+        const QRectF arcRect = outer.adjusted(radius * (0.02 + i % 2 * 0.055) + jitter,
+                                             radius * (0.02 + (i + 1) % 2 * 0.045) - jitter,
+                                             -radius * (0.02 + i % 2 * 0.055) - jitter,
+                                             -radius * (0.02 + (i + 1) % 2 * 0.045) + jitter);
+        const int start = (phase + i * 47) * 16;
+        const int span = (active ? 42 + (i % 3) * 18 : 34 + (i % 2) * 14) * 16;
+        const QColor color = (i % 3 == 0)
+            ? QColor(255, 247, 120, active ? 215 : 130)
+            : QColor(177, 252, 255, active ? 220 : 145);
+        p.setPen(QPen(color, active ? 2.8 : 1.8, Qt::SolidLine, Qt::RoundCap));
+        p.drawArc(arcRect, start, span);
+    }
     p.restore();
 }
 }
@@ -761,23 +876,21 @@ void GameWindow::drawIntro(QPainter& p)
     QStringList lines = {
         QStringLiteral("【目标】  驾船向右航行，闯过 %1 个关卡，在关键海域击败 Boss").arg(Config::GameConfig::STAGE_COUNT),
         "",
-        "【移动】  WASD 移动    Shift 加速（消耗体力）    空格键 闪避冲刺（短暂无敌）",
+        "【移动】  WASD 移动    Shift 加速（消耗体力）    空格 闪避冲刺（短暂无敌）",
         "",
-        "【捕鱼】  装备鱼竿/渔网/鱼叉后，鼠标左键点击鱼即可开始捕捉",
-        "             倒计时内连续点击鼠标左键完成捕获，时间过半完成则体力消耗减半",
-        "             黄色沙丁鱼：价值低，易捕      蓝色金枪鱼：价值中，易捕",
-        "             紫色深海鳗：价值高，难捕      金色金鱼：价值极高，极难捕",
+        "【战斗】  鼠标左键攻击敌人；枪械/鱼叉有射程、冷却和耐久消耗",
+        "          E 震荡波：充能满后释放，眩晕范围内敌人和 Boss，释放后自动回充",
         "",
-        "【战斗】  装备武器后，鼠标左键点击敌人进行攻击（命中才扣耐久，有冷却）",
-        "          优先攻击敌人；未命中时，若武器支持捕鱼则自动尝试捕鱼",
-        "          E键 震荡波：满充能时释放，伤害范围内小怪并眩晕Boss，释放后自动回充",
+        "【捕鱼】  装备鱼竿/渔网/鱼叉后，鼠标左键点击鱼群开始捕捞",
+        "          倒计时内连续点击完成捕获；不同鱼类价值、难度和耐久消耗不同",
         "",
-        "【障碍】  暗礁：碰撞损失耐久并反弹      漩涡：减少体力并降速",
+        "【装备】  1-6 使用快捷栏：优先切换装备，没有装备时使用对应补给品",
+        "          B 打开船舱背包，可装备、修理、使用补给；每关 Boss 击败后进商店整备",
         "",
-        "【背包/商店】  按 B 打开船舱背包      H 打开航海图鉴      ESC 暂停",
-        "             每关 Boss 击败后会自动进入码头商店整备",
+        "【海域】  礁石会碰撞损伤，漩涡会降低体力和速度；风浪、天气会影响航行",
+        "          墨鱼喷墨会遮挡视野；特殊敌人和 Boss 会带来额外状态效果",
         "",
-        "【存档】  按 Q 保存并退出，下次可继续上一关",
+        "【菜单】  H 打开航海图鉴    ESC 暂停    Q 保存并退出",
     };
 
     p.setFont(QFont("Microsoft YaHei", 11));
@@ -997,6 +1110,7 @@ void GameWindow::drawGame(QPainter& p)
     drawSharks(p);
     drawShockWaveEffect(p);
     drawPlayer(p);
+    drawSoulSongHitFeedback(p);
     drawAttackProjectiles(p);
     drawHitFeedbacks(p);
     // 天气叠加效果
@@ -1008,6 +1122,17 @@ void GameWindow::drawGame(QPainter& p)
         const int frameWidth = imgOctopusInk.width() / 4;
         const QRect source(frameWidth * 3, 0, frameWidth, imgOctopusInk.height());
         p.save();
+        p.setOpacity(0.62);
+        p.drawPixmap(QRect(-150, -130, 420, 250), imgOctopusInk, source);
+        p.drawPixmap(QRect(1010, -135, 420, 250), imgOctopusInk, source);
+        p.drawPixmap(QRect(-155, 590, 430, 250), imgOctopusInk, source);
+        p.drawPixmap(QRect(1005, 585, 430, 250), imgOctopusInk, source);
+        p.setOpacity(0.48);
+        p.drawPixmap(QRect(310, -155, 660, 295), imgOctopusInk, source);
+        p.drawPixmap(QRect(310, 580, 660, 295), imgOctopusInk, source);
+        p.drawPixmap(QRect(-175, 170, 340, 390), imgOctopusInk, source);
+        p.drawPixmap(QRect(1115, 170, 340, 390), imgOctopusInk, source);
+
         p.setOpacity(0.82);
         p.drawPixmap(QRect(330, 175, 620, 370), imgOctopusInk, source);
         p.setOpacity(0.38);
@@ -1581,6 +1706,33 @@ void GameWindow::drawBossHazards(QPainter& p)
                      QRectF(frame * frameWidth, 0, frameWidth, sheet.height()));
         p.restore();
     };
+    auto drawDirectionalBeamFrame = [&](const QPixmap& sheet,
+                                        int frameCount,
+                                        const QPointF& startWorld,
+                                        const QPointF& endWorld,
+                                        qreal thickness,
+                                        qreal progress,
+                                        qreal opacity = 1.0) {
+        if (sheet.isNull() || sheet.height() <= 0 || frameCount <= 0) return;
+        QPointF start(startWorld.x() - gm->cameraX, startWorld.y());
+        QPointF end(endWorld.x() - gm->cameraX, endWorld.y());
+        QPointF delta = end - start;
+        qreal length = std::hypot(delta.x(), delta.y());
+        if (length < 24.0) return;
+        const int frameWidth = sheet.width() / frameCount;
+        if (frameWidth <= 0) return;
+        const int frame = qBound(0, qFloor(progress * frameCount), frameCount - 1);
+        const qreal angle = std::atan2(delta.y(), delta.x()) * 180.0 / 3.14159265358979323846;
+        p.save();
+        p.setOpacity(opacity);
+        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        p.translate(start);
+        p.rotate(angle);
+        p.drawPixmap(QRectF(0, -thickness / 2.0, length, thickness),
+                     sheet,
+                     QRectF(frame * frameWidth, 0, frameWidth, sheet.height()));
+        p.restore();
+    };
     auto drawBacklashArcs = [&](const QPointF& center, qreal radius,
                                 qreal progress, qreal fade) {
         p.save();
@@ -1730,6 +1882,7 @@ void GameWindow::drawBossHazards(QPainter& p)
         if (h.type == BossHazardType::SoulSong) {
             const QPointF endWorld = !h.target.isNull() ? h.target : h.rect.center();
             const bool charging = h.damage <= 0;
+            constexpr int SoulSongBeamFrames = 8;
             const qreal stagger = charging ? h.visualStage * 0.045 : 0.0;
             const qreal growth = charging
                 ? qBound<qreal>(0.0,
@@ -1741,41 +1894,46 @@ void GameWindow::drawBossHazards(QPainter& p)
             const qreal currentHalfWidth = charging
                 ? 4.0 + (h.radius - 4.0) * easedGrowth
                 : h.radius;
-            const qreal coreThickness =
-                qBound<qreal>(2.2, currentHalfWidth * 0.42, 20.0);
-            const qreal textureThickness =
-                qBound<qreal>(16.0, currentHalfWidth * 1.55, 68.0);
-            const QPointF startScreen(h.position.x() - gm->cameraX, h.position.y());
-            const QPointF endScreen(endWorld.x() - gm->cameraX, endWorld.y());
-            p.save();
-            p.setRenderHint(QPainter::Antialiasing, true);
-            p.setPen(QPen(charging
-                              ? QColor(110, 236, 255,
-                                       qRound(42 + easedGrowth * 64))
-                              : QColor(145, 255, 255, 132),
-                          coreThickness,
-                          Qt::SolidLine,
-                          Qt::RoundCap));
-            p.drawLine(QLineF(startScreen, endScreen));
-            p.restore();
+            const qreal warningThickness =
+                qBound<qreal>(46.0, currentHalfWidth * 2.10, 92.0);
+            const qreal beamThickness =
+                qBound<qreal>(68.0, currentHalfWidth * 2.35, 104.0);
             if (charging) {
-                if (!imgSirenSoulSong.isNull()) {
+                if (!imgSirenSoulSongWarningBeam.isNull()) {
+                    drawDirectionalBeamFrame(imgSirenSoulSongWarningBeam,
+                                             SoulSongBeamFrames,
+                                             h.position,
+                                             endWorld,
+                                             warningThickness,
+                                             progress,
+                                             0.10 + easedGrowth * 0.34);
+                }
+                else if (!imgSirenSoulSong.isNull()) {
                     drawDirectionalEffectFrame(imgSirenSoulSong,
                                                h.position,
                                                endWorld,
-                                               textureThickness,
+                                               warningThickness,
                                                progress,
-                                               0.10 + easedGrowth * 0.30);
+                                               0.12 + easedGrowth * 0.26);
                 }
                 continue;
             }
-            if (!imgSirenSoulSong.isNull()) {
+            if (!imgSirenSoulSongBeam.isNull()) {
+                drawDirectionalBeamFrame(imgSirenSoulSongBeam,
+                                         SoulSongBeamFrames,
+                                         h.position,
+                                         endWorld,
+                                         beamThickness,
+                                         progress,
+                                         0.96);
+            }
+            else if (!imgSirenSoulSong.isNull()) {
                 drawDirectionalEffectFrame(imgSirenSoulSong,
                                            h.position,
                                            endWorld,
-                                           textureThickness,
+                                           beamThickness,
                                            progress,
-                                           0.62);
+                                           0.72);
             }
             continue;
         }
@@ -2028,21 +2186,20 @@ void GameWindow::drawSharks(QPainter& p)
 
         if (ElectricRay* ray = dynamic_cast<ElectricRay*>(enemy)) {
             if (ray->isPulseCharging() || ray->isPulseVisible()) {
+                const bool activePulse = ray->isPulseVisible();
                 const qreal pulseOpacity = ray->isPulseVisible()
                     ? 0.92
                     : 0.48 + 0.18 * ((QDateTime::currentMSecsSinceEpoch() / 90) % 2);
                 const qreal diameter = ray->pulseRadius() * 2.0;
+                drawElectricPulseRing(p, QPointF(screenX, ray->y),
+                                      ray->pulseRadius(), pulseOpacity, activePulse);
                 const int frameCount = 4;
                 const int frameWidth = imgElectricDischarge.width() / frameCount;
-                const int frame = qBound(0, ray->pulseAnimationFrame(), frameCount - 1);
-                if (!imgElectricDischarge.isNull() && frameWidth > 0) {
+                const int frame = activePulse ? 2 : 1;
+                if (activePulse && !imgElectricDischarge.isNull() && frameWidth > 0) {
                     QRectF source(frame * frameWidth, 0, frameWidth, imgElectricDischarge.height());
-                    if (frame >= 2) {
-                        const qreal trim = frameWidth * 0.08;
-                        source.adjust(trim, trim, -trim, -trim);
-                    }
                     p.save();
-                    p.setOpacity(pulseOpacity);
+                    p.setOpacity(pulseOpacity * 0.74);
                     p.drawPixmap(
                         QRectF(screenX - diameter / 2.0, ray->y - diameter / 2.0,
                                diameter, diameter),
@@ -2385,12 +2542,111 @@ void GameWindow::drawPlayer(QPainter& p)
         p.restore();
     }
 
+    if (player.isInputReversed()) {
+        const int remainingMs = player.inputReverseRemainingMs();
+        const QString remainingText = QStringLiteral("%1.%2s")
+            .arg(remainingMs / 1000)
+            .arg((remainingMs / 100) % 10);
+        const int badgeY = player.isStunned() ? screenY - 80 : screenY - 54;
+        drawPixmapCentered(p, imgShockwaveRing, QPointF(screenX, badgeY + 24),
+                           QSizeF(122, 38), 0.56);
+        p.save();
+        p.setFont(QFont("Microsoft YaHei", 10, QFont::Bold));
+        p.setPen(QColor(164, 246, 255));
+        p.drawText(QRect(screenX - 68, badgeY, 136, 20), Qt::AlignCenter,
+                   QStringLiteral("\u8ff7\u97f3\u9519\u5411 %1").arg(remainingText));
+        p.restore();
+    }
+
     if (player.isDamageFlashing() && !imgHitSpark.isNull()) {
         const qreal t = player.damageFlashRatio();
         drawPixmapCentered(p, imgHitSpark, QPointF(screenX, screenY - 2),
                            QSizeF(86 + 24 * t, 64 + 16 * t), 0.34 + 0.46 * t);
     }
 
+}
+
+void GameWindow::drawSoulSongHitFeedback(QPainter& p)
+{
+    if (!gm || !gm->boss || !gm->boss->alive) return;
+
+    const Player& player = Player::instance();
+    bool hit = false;
+    qreal angle = 0.0;
+    qreal progress = 0.0;
+
+    for (const BossHazard& hazard : gm->boss->getHazards()) {
+        if (!hazard.active || hazard.type != BossHazardType::SoulSong || hazard.damage <= 0) {
+            continue;
+        }
+
+        const QPointF endWorld = !hazard.target.isNull()
+            ? hazard.target
+            : hazard.rect.center();
+        if (!segmentHitsRectWithHalfWidth(hazard.position, endWorld,
+                                          hazard.radius,
+                                          player.collider())) {
+            continue;
+        }
+
+        const QPointF beamDelta = endWorld - hazard.position;
+        angle = std::atan2(beamDelta.y(), beamDelta.x()) * 180.0 / 3.14159265358979323846;
+        progress = hazard.durationMs > 0
+            ? qBound<qreal>(0.0, hazard.elapsedMs / hazard.durationMs, 0.999)
+            : 0.0;
+        hit = true;
+        break;
+    }
+
+    if (!hit) return;
+
+    const QPointF screen(gm->playerX() - gm->cameraX, gm->playerY());
+    const qreal fade = qBound<qreal>(0.0, 1.0 - progress * 0.70, 1.0);
+    const qreal pulse = 0.82 + 0.18 * std::sin(progress * 3.14159265358979323846 * 3.0);
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+    if (!imgSirenSoulSongBeam.isNull()) {
+        constexpr int SoulSongBeamFrames = 8;
+        const int frameWidth = imgSirenSoulSongBeam.width() / SoulSongBeamFrames;
+        const int frame = qBound(0, qFloor(progress * SoulSongBeamFrames), SoulSongBeamFrames - 1);
+        if (frameWidth > 0) {
+            p.save();
+            p.setOpacity(0.64 * fade);
+            p.setCompositionMode(QPainter::CompositionMode_Screen);
+            p.translate(screen);
+            p.rotate(angle);
+            p.drawPixmap(QRectF(-126.0, -46.0, 252.0, 92.0),
+                         imgSirenSoulSongBeam,
+                         QRectF(frame * frameWidth, 0,
+                                frameWidth, imgSirenSoulSongBeam.height()));
+            p.restore();
+        }
+    }
+
+    p.setCompositionMode(QPainter::CompositionMode_Screen);
+    if (!imgHitSpark.isNull()) {
+        drawPixmapCentered(p, imgHitSpark, screen + QPointF(0, -4),
+                           QSizeF(118.0 * pulse, 86.0 * pulse),
+                           0.62 * fade);
+    }
+
+    p.setBrush(QColor(170, 252, 255, qRound(46 * fade)));
+    p.setPen(QPen(QColor(230, 255, 255, qRound(190 * fade)),
+                  2.8, Qt::SolidLine, Qt::RoundCap));
+    p.drawEllipse(screen, 58.0 + progress * 24.0, 30.0 + progress * 14.0);
+
+    p.translate(screen);
+    p.rotate(angle);
+    p.setPen(QPen(QColor(255, 255, 255, qRound(230 * fade)),
+                  3.2, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(QPointF(-72, -20), QPointF(72, 20));
+    p.setPen(QPen(QColor(115, 238, 255, qRound(170 * fade)),
+                  1.8, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(QPointF(-82, 18), QPointF(82, -18));
+    p.restore();
 }
 
 void GameWindow::drawShockWaveEffect(QPainter& p)
@@ -2832,6 +3088,24 @@ void GameWindow::drawHUD(QPainter& p)
                                    : QStringLiteral("E 震荡波 %1%").arg(qRound(shockRatio * 100.0)),
                  10, QColor(255, 232, 170));
 
+        const int reverseRemainingMs = pl.inputReverseRemainingMs();
+        if (reverseRemainingMs > 0) {
+            const QRect reversePanel(390, 582, 246, 42);
+            if (!imgWoodNoticeButton.isNull()) {
+                p.drawPixmap(reversePanel, imgWoodNoticeButton, imgWoodNoticeButton.rect());
+            }
+            drawPixmapFit(imgHudIconCompass, QRect(402, 589, 25, 25));
+            const QString reverseTime = QStringLiteral("%1.%2s")
+                .arg(reverseRemainingMs / 1000)
+                .arg((reverseRemainingMs / 100) % 10);
+            drawText(QRect(432, 585, 190, 17),
+                     QStringLiteral("\u8ff7\u97f3\u9519\u5411  %1").arg(reverseTime),
+                     10, QColor(170, 248, 255));
+            drawText(QRect(432, 604, 190, 14),
+                     QStringLiteral("\u65b9\u5411\u8f93\u5165\u53cd\u5411"),
+                     8, QColor(225, 244, 244));
+        }
+
         drawPixmapFit(imgHudIconCoin, QRect(796, 20, 28, 28));
         drawText(QRect(824, 17, 46, 18), "金币", 12, QColor(245, 225, 170));
         drawText(QRect(824, 39, 46, 18), coinDisplayText(pl), 12, QColor(255, 244, 210));
@@ -3059,30 +3333,12 @@ void GameWindow::drawHUD(QPainter& p)
 
     p.setPen(QColor(180, 180, 180));
     p.setFont(QFont("Microsoft YaHei", 8));
-    p.drawText(1110, 28, "左键射击/捕 空格闪避 B背包 4-6补给");
+    p.drawText(950, 48, "左键攻击/捕鱼  E震荡  空格闪避  B背包  1-6快捷");
 }
 
 void GameWindow::drawTestModeOverlay(QPainter& p)
 {
-    if (!testModeEnabled) return;
-
-    p.save();
-    p.scale(width() / 1280.0, height() / 720.0);
-    const QRect badge(14, 498, 210, 42);
-    if (!imgWoodNoticeButton.isNull()) {
-        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
-        p.drawPixmap(badge, imgWoodNoticeButton, imgWoodNoticeButton.rect());
-    } else {
-        p.fillRect(badge, QColor(78, 42, 19, 210));
-    }
-
-    QFont font("Microsoft YaHei");
-    font.setPixelSize(13);
-    font.setWeight(QFont::Bold);
-    p.setFont(font);
-    p.setPen(QColor(255, 232, 151));
-    p.drawText(badge, Qt::AlignCenter, QStringLiteral("测试模式  O / P商店"));
-    p.restore();
+    Q_UNUSED(p);
 }
 
 void GameWindow::drawFloatingNotice(QPainter& p)
@@ -3746,7 +4002,7 @@ void GameWindow::openBackpack()
 
 void GameWindow::openEncyclopedia()
 {
-    EncyclopediaDialog dlg(gm ? gm->stage : 1, this);
+    EncyclopediaDialog dlg(gm ? gm->stage : 1, this, gm ? gm->bossSpawned : false);
     dlg.exec();
 }
 

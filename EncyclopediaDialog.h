@@ -15,7 +15,8 @@
 class EncyclopediaDialog : public QDialog
 {
 public:
-    explicit EncyclopediaDialog(int currentStage = 1, QWidget* parent = nullptr);
+    explicit EncyclopediaDialog(int currentStage = 1, QWidget* parent = nullptr,
+                                bool currentStageBossEncountered = false);
     ~EncyclopediaDialog() override = default;
 
 protected:
@@ -28,6 +29,7 @@ protected:
 
 private:
     int m_currentStage = 1;
+    bool m_currentStageBossEncountered = false;
     enum class Category {
         Fish,
         Equipment,

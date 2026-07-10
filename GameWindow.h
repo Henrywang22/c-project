@@ -117,6 +117,7 @@ private:
     void drawBossHazards(QPainter& p);
     void drawShockWaveEffect(QPainter& p);
     void drawPlayer(QPainter& p);
+    void drawSoulSongHitFeedback(QPainter& p);
     void drawAttackProjectiles(QPainter& p);
     void drawHitFeedbacks(QPainter& p);
     void drawWaves(QPainter& p);

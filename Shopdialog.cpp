@@ -87,6 +87,16 @@ QString moneyText(int value)
 {
     return QString::number(value);
 }
+
+QString upgradeText(const QString& label, int value)
+{
+    return QStringLiteral("%1 +%2").arg(label).arg(value);
+}
+
+QString speedUpgradeText(const QString& label, qreal value)
+{
+    return QStringLiteral("%1 +%2").arg(label).arg(qRound(value));
+}
 }
 
 ShopDialog::ShopDialog(QWidget* parent)
@@ -209,32 +219,32 @@ void ShopDialog::buildCatalogs()
 
     m_shipUpgrades = {
         {"Speed", 1, Config::PRICE_UPG_SPEED_T1,
-         QStringLiteral("船速升级 I"), QStringLiteral("船只航行速度 +12"),
-         QStringLiteral("打磨船底并调整帆索，让船更轻快。"), QStringLiteral("速度 +12")},
+         QStringLiteral("船速升级 I"), speedUpgradeText(QStringLiteral("船只航行速度"), Config::VAL_UPG_SPEED_T1),
+         QStringLiteral("打磨船底并调整帆索，让船更轻快。"), speedUpgradeText(QStringLiteral("速度"), Config::VAL_UPG_SPEED_T1)},
         {"Speed", 2, Config::PRICE_UPG_SPEED_T2,
-         QStringLiteral("船速升级 II"), QStringLiteral("船只航行速度 +22"),
-         QStringLiteral("更换螺旋桨与传动结构。"), QStringLiteral("速度 +22")},
+         QStringLiteral("船速升级 II"), speedUpgradeText(QStringLiteral("船只航行速度"), Config::VAL_UPG_SPEED_T2),
+         QStringLiteral("更换螺旋桨与传动结构。"), speedUpgradeText(QStringLiteral("速度"), Config::VAL_UPG_SPEED_T2)},
         {"Speed", 3, Config::PRICE_UPG_SPEED_T3,
-         QStringLiteral("船速升级 III"), QStringLiteral("船只航行速度 +38"),
-         QStringLiteral("装配高效引擎，显著提升巡航能力。"), QStringLiteral("速度 +38")},
+         QStringLiteral("船速升级 III"), speedUpgradeText(QStringLiteral("船只航行速度"), Config::VAL_UPG_SPEED_T3),
+         QStringLiteral("装配高效引擎，显著提升巡航能力。"), speedUpgradeText(QStringLiteral("速度"), Config::VAL_UPG_SPEED_T3)},
         {"Durability", 1, Config::PRICE_UPG_DUR_T1,
-         QStringLiteral("船体耐久上限 I"), QStringLiteral("最大耐久 +20"),
-         QStringLiteral("增加防撞木板，降低意外损伤风险。"), QStringLiteral("耐久上限 +20")},
+         QStringLiteral("船体耐久上限 I"), upgradeText(QStringLiteral("最大耐久"), Config::VAL_UPG_DUR_T1),
+         QStringLiteral("增加防撞木板，降低意外损伤风险。"), upgradeText(QStringLiteral("耐久上限"), Config::VAL_UPG_DUR_T1)},
         {"Durability", 2, Config::PRICE_UPG_DUR_T2,
-         QStringLiteral("船体耐久上限 II"), QStringLiteral("最大耐久 +50"),
-         QStringLiteral("钢板加固船身，适合远海探索。"), QStringLiteral("耐久上限 +50")},
+         QStringLiteral("船体耐久上限 II"), upgradeText(QStringLiteral("最大耐久"), Config::VAL_UPG_DUR_T2),
+         QStringLiteral("钢板加固船身，适合远海探索。"), upgradeText(QStringLiteral("耐久上限"), Config::VAL_UPG_DUR_T2)},
         {"Durability", 3, Config::PRICE_UPG_DUR_T3,
-         QStringLiteral("船体耐久上限 III"), QStringLiteral("最大耐久 +100"),
-         QStringLiteral("钛合金装甲，面对深海冲击更从容。"), QStringLiteral("耐久上限 +100")},
+         QStringLiteral("船体耐久上限 III"), upgradeText(QStringLiteral("最大耐久"), Config::VAL_UPG_DUR_T3),
+         QStringLiteral("钛合金装甲，面对深海冲击更从容。"), upgradeText(QStringLiteral("耐久上限"), Config::VAL_UPG_DUR_T3)},
         {"Stamina", 1, Config::PRICE_UPG_STAMINA_T1,
-         QStringLiteral("体力上限 I"), QStringLiteral("最大体力 +20"),
-         QStringLiteral("基础体能训练，提升连续作业能力。"), QStringLiteral("体力上限 +20")},
+         QStringLiteral("体力上限 I"), upgradeText(QStringLiteral("最大体力"), Config::VAL_UPG_STAMINA_T1),
+         QStringLiteral("基础体能训练，提升连续作业能力。"), upgradeText(QStringLiteral("体力上限"), Config::VAL_UPG_STAMINA_T1)},
         {"Stamina", 2, Config::PRICE_UPG_STAMINA_T2,
-         QStringLiteral("体力上限 II"), QStringLiteral("最大体力 +50"),
-         QStringLiteral("专业船员训练，长航程更稳定。"), QStringLiteral("体力上限 +50")},
+         QStringLiteral("体力上限 II"), upgradeText(QStringLiteral("最大体力"), Config::VAL_UPG_STAMINA_T2),
+         QStringLiteral("专业船员训练，长航程更稳定。"), upgradeText(QStringLiteral("体力上限"), Config::VAL_UPG_STAMINA_T2)},
         {"Stamina", 3, Config::PRICE_UPG_STAMINA_T3,
-         QStringLiteral("体力上限 III"), QStringLiteral("最大体力 +100"),
-         QStringLiteral("高强度特训，支撑长时间冲刺作业。"), QStringLiteral("体力上限 +100")}
+         QStringLiteral("体力上限 III"), upgradeText(QStringLiteral("最大体力"), Config::VAL_UPG_STAMINA_T3),
+         QStringLiteral("高强度特训，支撑长时间冲刺作业。"), upgradeText(QStringLiteral("体力上限"), Config::VAL_UPG_STAMINA_T3)}
     };
 }
 
@@ -566,30 +576,40 @@ void ShopDialog::drawWeaponUpgradePage(QPainter& p)
         : nullptr;
     const int tier1Price = weaponUpgradePrice(selectedWeapon, 1);
     const int tier2Price = weaponUpgradePrice(selectedWeapon, 2);
+    const int tier3Price = weaponUpgradePrice(selectedWeapon, 3);
 
-    drawTextShadow(p, QRect(kContentRect.left() + 228, kContentRect.bottom() - 180, 124, 22),
+    drawTextShadow(p, QRect(kContentRect.left() + 226, kContentRect.bottom() - 184, 78, 28),
                    QStringLiteral("I：伤害 +%1 / 耐久 +%2")
                        .arg(Config::VAL_UPG_WPN_DMG_T1)
                        .arg(Config::VAL_UPG_WPN_DUR_T1),
-                   uiFont(8, QFont::Bold), QColor(78, 44, 15), Qt::AlignCenter);
-    drawTextShadow(p, QRect(kContentRect.left() + 354, kContentRect.bottom() - 180, 124, 22),
+                   uiFont(7, QFont::Bold), QColor(78, 44, 15), Qt::AlignCenter | Qt::TextWordWrap);
+    drawTextShadow(p, QRect(kContentRect.left() + 310, kContentRect.bottom() - 184, 78, 28),
                    QStringLiteral("II：伤害 +%1 / 耐久 +%2")
                        .arg(Config::VAL_UPG_WPN_DMG_T2)
                        .arg(Config::VAL_UPG_WPN_DUR_T2),
-                   uiFont(8, QFont::Bold), QColor(78, 44, 15), Qt::AlignCenter);
+                   uiFont(7, QFont::Bold), QColor(78, 44, 15), Qt::AlignCenter | Qt::TextWordWrap);
+    drawTextShadow(p, QRect(kContentRect.left() + 394, kContentRect.bottom() - 184, 78, 28),
+                   QStringLiteral("III：伤害 +%1 / 耐久 +%2")
+                       .arg(Config::VAL_UPG_WPN_DMG_T3)
+                       .arg(Config::VAL_UPG_WPN_DUR_T3),
+                   uiFont(7, QFont::Bold), QColor(78, 44, 15), Qt::AlignCenter | Qt::TextWordWrap);
 
-    drawActionButton(p, QRect(kContentRect.left() + 238, kContentRect.bottom() - 104, 104, 42),
+    drawActionButton(p, QRect(kContentRect.left() + 228, kContentRect.bottom() - 104, 78, 42),
                      QStringLiteral("强化 I"), m_buttonGreen, ZoneAction::UpgradeWeaponTier, m_selectedWeaponIndex, 1,
                      weapons.empty());
-    drawActionButton(p, QRect(kContentRect.left() + 364, kContentRect.bottom() - 104, 104, 42),
+    drawActionButton(p, QRect(kContentRect.left() + 312, kContentRect.bottom() - 104, 78, 42),
                      QStringLiteral("强化 II"), m_buttonGreen, ZoneAction::UpgradeWeaponTier, m_selectedWeaponIndex, 2,
+                     weapons.empty());
+    drawActionButton(p, QRect(kContentRect.left() + 396, kContentRect.bottom() - 104, 78, 42),
+                     QStringLiteral("强化 III"), m_buttonGreen, ZoneAction::UpgradeWeaponTier, m_selectedWeaponIndex, 3,
                      weapons.empty());
     drawActionButton(p, QRect(kContentRect.left() + 302, kContentRect.bottom() - 52, 104, 42),
                      QStringLiteral("修复"), m_buttonGold, ZoneAction::RepairWeapon, m_selectedWeaponIndex, 0,
                      weapons.empty());
 
-    drawPrice(p, QRect(kContentRect.left() + 238, kContentRect.bottom() - 150, 96, 34), tier1Price);
-    drawPrice(p, QRect(kContentRect.left() + 364, kContentRect.bottom() - 150, 96, 34), tier2Price);
+    drawPrice(p, QRect(kContentRect.left() + 226, kContentRect.bottom() - 150, 80, 34), tier1Price);
+    drawPrice(p, QRect(kContentRect.left() + 310, kContentRect.bottom() - 150, 80, 34), tier2Price);
+    drawPrice(p, QRect(kContentRect.left() + 394, kContentRect.bottom() - 150, 80, 34), tier3Price);
 }
 
 void ShopDialog::drawShipUpgradePage(QPainter& p)
@@ -608,7 +628,7 @@ void ShopDialog::drawShipUpgradePage(QPainter& p)
         const QRect row(listViewport.left(), y, listViewport.width(), kShipUpgradeRowHeight);
         if (row.intersects(listViewport)) {
             drawRow(p, row, u.title, u.subtitle,
-                    QStringLiteral("%1 金币").arg(u.price), QPixmap(), i == m_selectedShipUpgradeIndex,
+                    QStringLiteral("%1 金币").arg(shipUpgradePrice(u)), QPixmap(), i == m_selectedShipUpgradeIndex,
                     false, ZoneAction::SelectWeapon, i, 0, &listViewport);
         }
         y += kShipUpgradeRowHeight + kShipUpgradeRowGap;
@@ -636,7 +656,7 @@ void ShopDialog::drawShipUpgradePage(QPainter& p)
     const auto& selected = m_shipUpgrades[m_selectedShipUpgradeIndex];
     QRect detail(kContentRect.left() + 282, kContentRect.top() + 72, 188, 210);
     drawPanelText(p, detail, selected.title, selected.description + "\n\n" + selected.statLine);
-    drawPrice(p, QRect(detail.left() + 32, detail.bottom() + 20, 124, 36), selected.price);
+    drawPrice(p, QRect(detail.left() + 32, detail.bottom() + 20, 124, 36), shipUpgradePrice(selected));
     drawActionButton(p, QRect(detail.left() + 8, detail.bottom() + 68, 172, 48),
                      QStringLiteral("确认升级"), m_buttonGold, ZoneAction::BuyShipUpgrade,
                      m_selectedShipUpgradeIndex);
@@ -731,11 +751,26 @@ void ShopDialog::drawRightPanel(QPainter& p)
         const auto& weapons = inv.weapons();
         if (!weapons.empty() && m_selectedWeaponIndex >= 0 && m_selectedWeaponIndex < static_cast<int>(weapons.size()) && weapons[m_selectedWeaponIndex]) {
             Weapon* w = weapons[m_selectedWeaponIndex];
-            status = QStringLiteral("%1\n品阶 T%2（购买时固定）  强化 +%3\n耐久 %4/%5  伤害 %6  范围 %7\nI：伤害+5/耐久+10；II：伤害+15/耐久+25\n两种强化每次都只让强化等级 +1，不改变品阶。")
+            status = QStringLiteral("%1\n品阶 T%2（购买时固定）  强化 +%3\n耐久 %4/%5  伤害 %6  范围 %7\nI：伤害+%8/耐久+%9；II：伤害+%10/耐久+%11\n两种强化每次都只让强化等级 +1，不改变品阶。")
                 .arg(QString::fromStdString(w->getName()))
                 .arg(w->getTier()).arg(w->getEnhancementLevel())
                 .arg(w->getCurrentDur()).arg(w->getMaxDur())
-                .arg(w->getDamage()).arg(w->getRange());
+                .arg(w->getDamage()).arg(w->getRange())
+                .arg(Config::VAL_UPG_WPN_DMG_T1)
+                .arg(Config::VAL_UPG_WPN_DUR_T1)
+                .arg(Config::VAL_UPG_WPN_DMG_T2)
+                .arg(Config::VAL_UPG_WPN_DUR_T2);
+            status = QStringLiteral("%1\n品阶 T%2（购买时固定） 强化 +%3\n耐久 %4/%5  伤害 %6  范围 %7\nI：伤害+%8/耐久+%9  II：伤害+%10/耐久+%11\nIII：伤害+%12/耐久+%13\n价格受武器品阶和强化等级影响。")
+                .arg(QString::fromStdString(w->getName()))
+                .arg(w->getTier()).arg(w->getEnhancementLevel())
+                .arg(w->getCurrentDur()).arg(w->getMaxDur())
+                .arg(w->getDamage()).arg(w->getRange())
+                .arg(Config::VAL_UPG_WPN_DMG_T1)
+                .arg(Config::VAL_UPG_WPN_DUR_T1)
+                .arg(Config::VAL_UPG_WPN_DMG_T2)
+                .arg(Config::VAL_UPG_WPN_DUR_T2)
+                .arg(Config::VAL_UPG_WPN_DMG_T3)
+                .arg(Config::VAL_UPG_WPN_DUR_T3);
         } else {
             status = QStringLiteral("当前没有可强化装备。");
         }
@@ -744,7 +779,7 @@ void ShopDialog::drawRightPanel(QPainter& p)
     case Category::ShipUpgrade: {
         const auto& selected = m_shipUpgrades[qBound(0, m_selectedShipUpgradeIndex, m_shipUpgrades.size() - 1)];
         status = QStringLiteral("%1\n%2\n价格：%3 金币\n升级会立即生效。")
-            .arg(selected.title).arg(selected.statLine).arg(selected.price);
+            .arg(selected.title).arg(selected.statLine).arg(shipUpgradePrice(selected));
         break;
     }
     case Category::Backpack:
@@ -1064,7 +1099,7 @@ void ShopDialog::handleZone(const ClickZone& zone)
     case ZoneAction::BuyShipUpgrade: {
         const auto& offer = m_shipUpgrades[zone.index];
         Item* item = ItemFactory::createAttributeUpgrade(offer.attr.toStdString(), offer.tier);
-        buyAndUseAttributeUpgrade(item);
+        buyAndUseAttributeUpgrade(item, shipUpgradePrice(offer));
         delete item;
         break;
     }
@@ -1203,11 +1238,11 @@ void ShopDialog::buyWeapon(Weapon* weapon)
                    .arg(price));
 }
 
-void ShopDialog::buyAndUseAttributeUpgrade(Item* item)
+void ShopDialog::buyAndUseAttributeUpgrade(Item* item, int priceOverride)
 {
     if (!item) return;
     Player& player = Player::instance();
-    int price = item->getValue();
+    int price = priceOverride > 0 ? priceOverride : item->getValue();
     const QString itemName = QString::fromStdString(item->getName());
     if (!hasEnoughCoins(price)) {
         showInsufficientCoinsNotice(price);
@@ -1237,11 +1272,6 @@ void ShopDialog::buyWeaponUpgrade(int tier)
         price = Config::PRICE_UPG_WEAPON_T3;
         damageBoost = Config::VAL_UPG_WPN_DMG_T3;
         durabilityBoost = Config::VAL_UPG_WPN_DUR_T3;
-    }
-
-    if (!hasEnoughCoins(price)) {
-        showInsufficientCoinsNotice(price);
-        return;
     }
 
     int index = m_selectedWeaponIndex;
@@ -1291,8 +1321,35 @@ int ShopDialog::weaponUpgradePrice(const Weapon* weapon, int tier) const
     else if (tier == 3) basePrice = Config::PRICE_UPG_WEAPON_T3;
 
     const int level = weapon ? qMax(0, weapon->getEnhancementLevel()) : 0;
-    const qreal multiplier = 1.0 + level * 0.32 + level * level * 0.035;
-    return qMax(basePrice, qRound(basePrice * multiplier / 10.0) * 10);
+    const int weaponTier = weapon ? qBound(1, weapon->getTier(), 3) : 1;
+    const qreal weaponTierMultiplier =
+        weaponTier == 1 ? 1.0 : (weaponTier == 2 ? 1.25 : 1.55);
+    const qreal levelMultiplier = 1.0 + level * 0.38 + level * level * 0.05;
+    return qMax(basePrice,
+                qRound(basePrice * weaponTierMultiplier * levelMultiplier / 10.0) * 10);
+}
+
+int ShopDialog::shipUpgradeLevel(const QString& attr) const
+{
+    const Player& player = Player::instance();
+    if (attr == QStringLiteral("Speed")) {
+        const qreal gained = qMax<qreal>(0.0, player.baseSpeed() - Config::GameConfig::SHIP_BASE_SPEED);
+        return qMax(0, qRound(gained / Config::VAL_UPG_SPEED_T1));
+    }
+    if (attr == QStringLiteral("Durability")) {
+        return qMax(0, (player.maxDurability - 100) / Config::VAL_UPG_DUR_T1);
+    }
+    if (attr == QStringLiteral("Stamina")) {
+        return qMax(0, (player.maxStamina - Config::GameConfig::MAX_STAMINA) / Config::VAL_UPG_STAMINA_T1);
+    }
+    return 0;
+}
+
+int ShopDialog::shipUpgradePrice(const ShipUpgradeOffer& offer) const
+{
+    const int level = shipUpgradeLevel(offer.attr);
+    const qreal multiplier = 1.0 + level * 0.20 + level * level * 0.014;
+    return qMax(offer.price, qRound(offer.price * multiplier / 10.0) * 10);
 }
 
 void ShopDialog::discardSelectedBackpackWeapon()

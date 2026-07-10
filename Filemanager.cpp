@@ -31,10 +31,17 @@ namespace {
     const int FISH_DISCOVERY_COUNT = 12;
     const int ENEMY_DISCOVERY_COUNT = 10;
     const int BOSS_DISCOVERY_COUNT = 10;
+    const int EQUIPMENT_DISCOVERY_COUNT = 5;
+    const int ITEM_DISCOVERY_COUNT = 5;
     const int ENEMY_DISCOVERY_OFFSET = FISH_DISCOVERY_COUNT;
     const int BOSS_DISCOVERY_OFFSET = FISH_DISCOVERY_COUNT + ENEMY_DISCOVERY_COUNT;
-    const int TOTAL_DISCOVERY_COUNT =
+    const int EQUIPMENT_DISCOVERY_OFFSET =
         FISH_DISCOVERY_COUNT + ENEMY_DISCOVERY_COUNT + BOSS_DISCOVERY_COUNT;
+    const int ITEM_DISCOVERY_OFFSET =
+        EQUIPMENT_DISCOVERY_OFFSET + EQUIPMENT_DISCOVERY_COUNT;
+    const int TOTAL_DISCOVERY_COUNT =
+        FISH_DISCOVERY_COUNT + ENEMY_DISCOVERY_COUNT + BOSS_DISCOVERY_COUNT +
+        EQUIPMENT_DISCOVERY_COUNT + ITEM_DISCOVERY_COUNT;
 
     struct SaveFileHeader {
         char magic[8];
@@ -787,6 +794,42 @@ bool FileManager::isBossDiscovered(int bossID)
     }
 
     return isDiscoverySet(BOSS_DISCOVERY_OFFSET + bossID);
+}
+
+void FileManager::markEquipmentDiscovered(int equipmentID, const char* equipmentName)
+{
+    if (equipmentID < 0 || equipmentID >= EQUIPMENT_DISCOVERY_COUNT) {
+        return;
+    }
+
+    markDiscoveryAt(EQUIPMENT_DISCOVERY_OFFSET + equipmentID, equipmentID, equipmentName);
+}
+
+bool FileManager::isEquipmentDiscovered(int equipmentID)
+{
+    if (equipmentID < 0 || equipmentID >= EQUIPMENT_DISCOVERY_COUNT) {
+        return false;
+    }
+
+    return isDiscoverySet(EQUIPMENT_DISCOVERY_OFFSET + equipmentID);
+}
+
+void FileManager::markItemDiscovered(int itemID, const char* itemName)
+{
+    if (itemID < 0 || itemID >= ITEM_DISCOVERY_COUNT) {
+        return;
+    }
+
+    markDiscoveryAt(ITEM_DISCOVERY_OFFSET + itemID, itemID, itemName);
+}
+
+bool FileManager::isItemDiscovered(int itemID)
+{
+    if (itemID < 0 || itemID >= ITEM_DISCOVERY_COUNT) {
+        return false;
+    }
+
+    return isDiscoverySet(ITEM_DISCOVERY_OFFSET + itemID);
 }
 
 // ============================================================

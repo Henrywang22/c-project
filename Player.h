@@ -83,6 +83,7 @@ public:
     // ==========================================
     void applyInputReverse(int durationMs);
     bool isInputReversed() const;
+    int inputReverseRemainingMs() const;
 
     void applyNoRangedAttack(int durationMs);
     bool canUseRangedAttack() const;

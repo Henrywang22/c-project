@@ -302,7 +302,7 @@ void Boss::startDeathAnimation()
 }
 
 FiveHeadSharkBoss::FiveHeadSharkBoss(int x, int y)
-    : Boss(BossKind::FiveHeadShark, x, y, 2200, 18, 700)
+    : Boss(BossKind::FiveHeadShark, x, y, 2900, 18, 700)
 {
     speed = 2.0f;
 }
@@ -334,8 +334,15 @@ void FiveHeadSharkBoss::updateBoss(Player& player)
         contactCooldownMs = 900;
     }
     const qreal distanceToPlayer = QLineF(position(), playerPos).length();
+    const qreal playerFrameSpeed = std::hypot(estimatedPlayerVelocity.x(), estimatedPlayerVelocity.y());
     if (distanceToPlayer > 520.0) {
-        bombardmentTimerMs = std::max(0, bombardmentTimerMs - FrameMs);
+        bombardmentTimerMs = std::max(0, bombardmentTimerMs - FrameMs * (enraged ? 2 : 1));
+    }
+    if (distanceToPlayer > 620.0 || playerFrameSpeed > 3.2) {
+        summonTimerMs = std::max(0, summonTimerMs - FrameMs);
+    }
+    if (distanceToPlayer < 360.0 && std::abs(playerPos.y() - y) < 150.0) {
+        meleeCooldownMs = std::max(0, meleeCooldownMs - FrameMs);
     }
     updatePatrol(player);
     updateMelee(player);
@@ -353,15 +360,21 @@ void FiveHeadSharkBoss::updatePatrol(Player& player)
     if (std::abs(dx) > 6.0)
         facingX = dx > 0.0 ? 1.0f : -1.0f;
 
-    const qreal closingBoost = distance > 520.0 ? 1.28 : 1.0;
-    const qreal maxHorizontalStep = speed * (enraged ? 2.05 : 1.62) * closingBoost;
+    const qreal closingBoost = distance > 520.0 ? 1.42 : 1.0;
+    const qreal maxHorizontalStep = speed * (enraged ? 2.45 : 2.05) * closingBoost;
     // The solid body keeps the player roughly 200 px from the boss centre.
     // Stay at a usable bite distance instead of trying to overlap the player.
     const qreal desiredGap = 218.0;
     const qreal desiredDx = facingX * desiredGap;
     const qreal gapError = dx - desiredDx;
     if (std::abs(gapError) > 34.0) {
-        const qreal step = std::clamp(gapError * 0.022, -maxHorizontalStep, maxHorizontalStep);
+        const bool needsCatchUp = std::abs(gapError) > 150.0 || distance > 520.0;
+        const qreal playerStep = player.currentSpeed() * (FrameMs / 1000.0);
+        const qreal catchUpStep = needsCatchUp
+            ? std::min<qreal>(7.0, std::max(maxHorizontalStep, playerStep * (enraged ? 1.20 : 1.10)))
+            : maxHorizontalStep;
+        const qreal response = needsCatchUp ? 0.034 : 0.022;
+        const qreal step = std::clamp(gapError * response, -catchUpStep, catchUpStep);
         x += static_cast<int>(std::round(step));
     }
 
@@ -421,7 +434,9 @@ void FiveHeadSharkBoss::updateMelee(Player& player)
     if (meleeCooldownMs > 0 || meleeRecoveryMs > 0) return;
 
     QRectF triggerRect = biteRect();
-    if (rectHitsPlayer(triggerRect, player)) {
+    const QPointF predictedPlayer = player.worldPos() + estimatedPlayerVelocity * 8.0;
+    const QRectF predictiveRect = triggerRect.adjusted(-34.0, -24.0, 34.0, 24.0);
+    if (rectHitsPlayer(triggerRect, player) || predictiveRect.contains(predictedPlayer)) {
         meleeWindupMs = enraged ? 430 : 500;
         setVisualAction(BossVisualAction::Bite, 1120);
         addHazard({ BossHazardType::MeleeHitbox, triggerRect.center(), triggerRect, 0,
@@ -439,10 +454,12 @@ void FiveHeadSharkBoss::updateSummon(Player& player)
     bool& phaseSummonUsed = state == PHASE2 ? phase2SummonUsed : phase1SummonUsed;
     if (phaseSummonUsed) return;
 
-    summonTimerMs -= FrameMs;
+    const QPointF playerPos = player.worldPos();
+    const qreal distanceToPlayer = QLineF(position(), playerPos).length();
+    const qreal playerFrameSpeed = std::hypot(estimatedPlayerVelocity.x(), estimatedPlayerVelocity.y());
+    summonTimerMs -= FrameMs * ((distanceToPlayer > 560.0 || playerFrameSpeed > 3.0) ? 2 : 1);
     if (summonTimerMs > 0) return;
 
-    const QPointF playerPos = player.worldPos();
     const QPointF retreatDir = normalizedOr(estimatedPlayerVelocity, QPointF(facingX, 0.0));
     const qreal flankY = playerPos.y() < y ? 120.0 : -120.0;
     const QPointF side(-retreatDir.y(), retreatDir.x());
@@ -489,16 +506,23 @@ void FiveHeadSharkBoss::updateBombardment(Player& player)
     if (bombardmentTimerMs > 0) return;
 
     pendingBombRects.clear();
-    QPointF predicted = player.worldPos() + estimatedPlayerVelocity * 18.0;
+    const qreal playerFrameSpeed = std::hypot(estimatedPlayerVelocity.x(), estimatedPlayerVelocity.y());
+    const qreal leadFrames = playerFrameSpeed > 2.6 ? 24.0 : 18.0;
+    QPointF predicted = player.worldPos() + estimatedPlayerVelocity * leadFrames;
     predicted.setX(std::clamp(predicted.x(), 120.0, static_cast<qreal>(Config::GameConfig::RIGHT_BORDER - 120)));
     predicted.setY(std::clamp(predicted.y(), static_cast<qreal>(ArenaTop + 70), static_cast<qreal>(ArenaBottom - 70)));
     const QPointF travelDir = normalizedOr(estimatedPlayerVelocity, QPointF(facingX, 0.0));
     const QPointF perpendicular(-travelDir.y(), travelDir.x());
-    const QPointF tacticalPoints[4] = {
+    const QPointF escapeDir = normalizedOr(
+        estimatedPlayerVelocity * 0.85 +
+            normalizedOr(player.worldPos() - position(), QPointF(facingX, 0.0)) * 0.35,
+        travelDir);
+    const QPointF tacticalPoints[5] = {
         predicted,
-        predicted + perpendicular * 135.0,
-        predicted - perpendicular * 135.0,
-        player.worldPos() - travelDir * 190.0
+        predicted + escapeDir * 155.0,
+        predicted - escapeDir * 185.0,
+        predicted + perpendicular * 150.0,
+        predicted - perpendicular * 150.0
     };
     for (const QPointF& point : tacticalPoints) {
         const int bx = clampInt(qRound(point.x()), 92, Config::GameConfig::RIGHT_BORDER - 92);
@@ -729,7 +753,7 @@ void TaliMonsterBoss::finishCloneExplosion(Player& player)
 }
 
 SirenBoss::SirenBoss(int x, int y)
-    : Boss(BossKind::Siren, x, y, 3400, 30, 1500)
+    : Boss(BossKind::Siren, x, y, 4200, 30, 1500)
 {
     speed = 1.15f;
 }
@@ -756,8 +780,8 @@ void SirenBoss::takeDamage(int damage)
     }
 
     state = PHASE2;
-    hp = 3600;
-    maxHp = 3600;
+    hp = 4400;
+    maxHp = 4400;
     invulnerable = true;
     phantomSpawned = false;
     naturalDecayTimerMs = 0;
@@ -828,8 +852,9 @@ void SirenBoss::updateMovement(Player& player)
     const QPointF travel = normalizedOr(estimatedPlayerVelocity, forward);
     const QPointF travelSide(-travel.y(), travel.x());
 
-    const qreal preferredMin = state == PHASE2 ? 390.0 : 300.0;
-    const qreal preferredMax = state == PHASE2 ? 590.0 : 470.0;
+    const bool castingElegy = state == PHASE2 && elegyCastMs > 0;
+    const qreal preferredMin = castingElegy ? 205.0 : (state == PHASE2 ? 390.0 : 300.0);
+    const qreal preferredMax = castingElegy ? 315.0 : (state == PHASE2 ? 590.0 : 470.0);
     QPointF move(0.0, 0.0);
     if (distance < preferredMin)
         move -= QPointF(forward.x() * (preferredMin - distance) * 0.018,
@@ -851,15 +876,15 @@ void SirenBoss::updateMovement(Player& player)
             if (resonancePillarDestroyed[i]) continue;
             QPointF away = position() - resonancePillarPositions[i];
             const qreal pillarDistance = std::hypot(away.x(), away.y());
-            if (pillarDistance > 0.001 && pillarDistance < 210.0) {
-                const qreal repulsion = (210.0 - pillarDistance) * 0.018;
+            if (pillarDistance > 0.001 && pillarDistance < 260.0) {
+                const qreal repulsion = (260.0 - pillarDistance) * 0.020;
                 move += QPointF(away.x() / pillarDistance * repulsion,
                                 away.y() / pillarDistance * repulsion);
             }
         }
     }
 
-    const qreal maxStep = speed * (state == PHASE2 ? 1.62 : 1.22);
+    const qreal maxStep = speed * (castingElegy ? 2.05 : (state == PHASE2 ? 1.62 : 1.22));
     x += qRound(clampReal(move.x(), -maxStep, maxStep));
     y += qRound(clampReal(move.y(), -maxStep, maxStep));
     x = clampInt(x, 150, Config::GameConfig::RIGHT_BORDER - 150);
@@ -884,9 +909,8 @@ void SirenBoss::updatePhase2(Player& player)
     applyNaturalDecay();
     restorePhaseCheckpoint(player);
     if (dying) return;
-    if (elegyCastMs <= 0)
-        updateMovement(player);
-    else if (std::abs(player.worldPos().x() - x) > 8.0)
+    updateMovement(player);
+    if (elegyCastMs > 0 && std::abs(player.worldPos().x() - x) > 8.0)
         facingX = player.worldPos().x() >= x ? 1.0f : -1.0f;
     updateResonancePillars(player);
     restorePhaseCheckpoint(player);
@@ -901,25 +925,31 @@ void SirenBoss::updatePhase2(Player& player)
 
     seaweedFieldTimerMs = std::max(0, seaweedFieldTimerMs - FrameMs);
     if (seaweedFieldTimerMs <= 0) {
-        const QPointF velocityDir = normalizedOr(estimatedPlayerVelocity, QPointF(facingX, 0.0));
+        const QPointF velocityDir = normalizedOr(
+            estimatedPlayerVelocity,
+            normalizedOr(player.worldPos() - position(), QPointF(facingX, 0.0)));
         const QPointF side(-velocityDir.y(), velocityDir.x());
-        const QPointF predicted(player.worldPos().x() + estimatedPlayerVelocity.x() * 16.0,
-                                player.worldPos().y() + estimatedPlayerVelocity.y() * 16.0);
+        const QPointF predicted(player.worldPos().x() + estimatedPlayerVelocity.x() * 22.0,
+                                player.worldPos().y() + estimatedPlayerVelocity.y() * 22.0);
         const QPointF center(
-            clampReal(predicted.x(), 175.0, Config::GameConfig::RIGHT_BORDER - 175.0),
-            clampReal(predicted.y(), ArenaTop + 100.0, ArenaBottom - 90.0));
+            clampReal(predicted.x() + velocityDir.x() * 90.0,
+                      175.0, Config::GameConfig::RIGHT_BORDER - 175.0),
+            clampReal(predicted.y() + velocityDir.y() * 90.0,
+                      ArenaTop + 100.0, ArenaBottom - 90.0));
+        const qreal sideSign = player.worldPos().y() < y ? 1.0 : -1.0;
         const QPointF fields[2] = {
             center,
-            QPointF(clampReal(center.x() + side.x() * 205.0,
+            QPointF(clampReal(center.x() + side.x() * sideSign * 230.0,
                               175.0, Config::GameConfig::RIGHT_BORDER - 175.0),
-                    clampReal(center.y() + side.y() * 205.0,
+                    clampReal(center.y() + side.y() * sideSign * 230.0,
                               ArenaTop + 100.0, ArenaBottom - 90.0))
         };
         for (const QPointF& field : fields) {
             addHazard({ BossHazardType::SeaweedZone, field, QRectF(),
                         158, 6500, 0, 8, true });
         }
-        seaweedFieldTimerMs = 6800;
+        const qreal playerFrameSpeed = std::hypot(estimatedPlayerVelocity.x(), estimatedPlayerVelocity.y());
+        seaweedFieldTimerMs = playerFrameSpeed > 2.8 ? 6000 : 6800;
     }
     seaweedTickMs = std::max(0, seaweedTickMs - FrameMs);
     for (const BossHazard& hazard : hazards) {
@@ -967,7 +997,7 @@ void SirenBoss::updateSoulSong(Player& player)
                 const QPointF to = soulSongTargets[i];
                 addHazard({ BossHazardType::SoulSong, from,
                             beamBounds(from, to, maxHalfWidth),
-                            maxHalfWidth, 460, 0,
+                            maxHalfWidth, 760, 0,
                             state == PHASE2 ? 34 : 30,
                             true, i, to });
 
@@ -993,7 +1023,7 @@ void SirenBoss::updateSoulSong(Player& player)
             }
             if (phantomHit)
                 phantomStunMs += 5000;
-            setVisualAction(BossVisualAction::SoulSong, 620);
+            setVisualAction(BossVisualAction::SoulSong, 860);
             soulSongBeamCount = 0;
         }
         return;
@@ -1004,37 +1034,44 @@ void SirenBoss::updateSoulSong(Player& player)
         soulSongCastDurationMs = state == PHASE2 ? 1900 : 2200;
         soulSongCastMs = soulSongCastDurationMs;
         soulSongTimerMs = state == PHASE2 ? 13500 : 16500;
-        soulSongBeamCount = state == PHASE2 ? 5 : 4;
+        soulSongBeamCount = state == PHASE2 ? 6 : 5;
 
         const QPointF playerPos = player.worldPos();
+        const qreal playerFrameSpeed = std::hypot(estimatedPlayerVelocity.x(), estimatedPlayerVelocity.y());
         const QPointF pursuit = normalizedOr(
-            estimatedPlayerVelocity,
+            estimatedPlayerVelocity * 0.82 +
+                normalizedOr(playerPos - position(), QPointF(facingX, 0.0)) * 0.32,
             normalizedOr(playerPos - position(), QPointF(facingX, 0.0)));
         const QPointF side(-pursuit.y(), pursuit.x());
         QPointF predicted = playerPos + estimatedPlayerVelocity *
-            (state == PHASE2 ? 28.0 : 22.0);
+            (playerFrameSpeed > 2.5 ? (state == PHASE2 ? 36.0 : 28.0)
+                                    : (state == PHASE2 ? 28.0 : 22.0));
         predicted.setX(clampReal(predicted.x(), 110.0,
                                  Config::GameConfig::RIGHT_BORDER - 110.0));
         predicted.setY(clampReal(predicted.y(), ArenaTop + 70.0,
                                  ArenaBottom - 70.0));
 
-        const QPointF centers[5] = {
-            predicted,
-            predicted + side * 150.0,
-            predicted - side * 150.0,
-            predicted - pursuit * 185.0,
-            predicted + pursuit * 175.0
-        };
-        const QPointF directions[5] = {
-            side,
-            normalizedOr(pursuit * 0.72 + side * 0.69, side),
-            normalizedOr(pursuit * 0.72 - side * 0.69, side),
-            pursuit,
-            normalizedOr(pursuit * 0.28 + side * 0.96, side)
-        };
-
         const qreal maxHalfWidth = state == PHASE2 ? 38.0 : 34.0;
+        const qreal sideSpacing = state == PHASE2 ? 340.0 : 365.0;
+        const qreal pursuitSpacing = state == PHASE2 ? 405.0 : 430.0;
         for (int i = 0; i < soulSongBeamCount; ++i) {
+            const QPointF centers[6] = {
+                predicted,
+                predicted + side * sideSpacing,
+                predicted - side * sideSpacing,
+                predicted + pursuit * (pursuitSpacing * 0.82),
+                predicted - pursuit * (pursuitSpacing * 0.95),
+                predicted + side * (sideSpacing * 0.68) -
+                    pursuit * (pursuitSpacing * 0.52)
+            };
+            const QPointF directions[6] = {
+                side,
+                normalizedOr(pursuit * 0.74 + side * 0.67, side),
+                normalizedOr(pursuit * 0.74 - side * 0.67, side),
+                pursuit,
+                normalizedOr(side * 0.84 - pursuit * 0.54, side),
+                normalizedOr(side * 0.84 + pursuit * 0.54, side)
+            };
             QPointF center(
                 clampReal(centers[i].x(), 85.0,
                           Config::GameConfig::RIGHT_BORDER - 85.0),
@@ -1095,6 +1132,7 @@ void SirenBoss::updateElegy(Player& player)
     if (elegyCastMs > 0) {
         const int previousMs = elegyCastMs;
         elegyCastMs -= FrameMs;
+        elegyCenter = position();
         const bool wasWindup = previousMs > ElegyActiveMs;
         const bool isActive = elegyCastMs <= ElegyActiveMs;
 
@@ -1229,7 +1267,7 @@ bool SirenBoss::chargeResonancePillarFromLine(const QPointF& from, const QPointF
         const qreal t = projectionOnSegment(pillarPos, from, to);
         if (t <= 0.03 || t >= 0.995) continue;
         const qreal hitDistance = distancePointToSegment(pillarPos, from, to);
-        if (hitDistance > halfWidth + 66.0) continue;
+        if (hitDistance > halfWidth + 48.0) continue;
         if (t < bestT) {
             bestT = t;
             bestIndex = i;
@@ -1298,14 +1336,16 @@ void SirenBoss::updateResonancePillars(Player& player)
     constexpr int FinalShatterFrame = 10;
 
     if (!resonancePillarsPlaced) {
-        const int leftX = clampInt(x - 220, 95, Config::GameConfig::RIGHT_BORDER - 95);
-        const int rightX = clampInt(x + 220, 95, Config::GameConfig::RIGHT_BORDER - 95);
-        const int upperY = clampInt(y - 160, ArenaTop + 75, ArenaBottom - 75);
-        const int lowerY = clampInt(y + 160, ArenaTop + 75, ArenaBottom - 75);
-        const int midY = clampInt(y, ArenaTop + 75, ArenaBottom - 75);
+        const int leftX = clampInt(x - 430, 95, Config::GameConfig::RIGHT_BORDER - 95);
+        const int rightX = clampInt(x + 430, 95, Config::GameConfig::RIGHT_BORDER - 95);
+        const int upperY = clampInt(y - 245, ArenaTop + 75, ArenaBottom - 75);
+        const int lowerY = clampInt(y + 245, ArenaTop + 75, ArenaBottom - 75);
+        const int farY = y < (ArenaTop + ArenaBottom) / 2
+            ? clampInt(y + 305, ArenaTop + 75, ArenaBottom - 75)
+            : clampInt(y - 305, ArenaTop + 75, ArenaBottom - 75);
         resonancePillarPositions[0] = QPointF(leftX, upperY);
-        resonancePillarPositions[1] = QPointF(leftX, lowerY);
-        resonancePillarPositions[2] = QPointF(rightX, midY);
+        resonancePillarPositions[1] = QPointF(rightX, lowerY);
+        resonancePillarPositions[2] = QPointF(x, farY);
         for (int i = 0; i < 3; ++i) {
             resonancePillarCharges[i] = 0;
             resonancePillarBurstMs[i] = 0;

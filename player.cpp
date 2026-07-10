@@ -473,6 +473,14 @@ void Player::applyInputReverse(int durationMs) {
 
 bool Player::isInputReversed() const { return m_isInputReversed; }
 
+int Player::inputReverseRemainingMs() const
+{
+    if (!m_isInputReversed || !m_inputReverseTimer.isValid()) {
+        return 0;
+    }
+    return qMax(0, m_inputReverseDurationMs - static_cast<int>(m_inputReverseTimer.elapsed()));
+}
+
 void Player::applyNoRangedAttack(int durationMs) {
     m_noRangedAttack = true;
     m_noRangedDurationMs = durationMs;

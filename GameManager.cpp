@@ -431,9 +431,11 @@ void GameManager::update()
     // waves or dash carry the player beyond later stage finish lines while the
     // encounter is still active.
     if (bossSpawned && boss && boss->alive) {
+        const qreal bossReachRight = boss->collider().right() + 260.0;
         const qreal encounterRight = std::min<qreal>(
             Config::GameConfig::RIGHT_BORDER,
-            Config::GameConfig::stageConfig(stage).targetDistance + 140.0);
+            std::max<qreal>(Config::GameConfig::stageConfig(stage).targetDistance + 140.0,
+                            bossReachRight));
         if (p.worldPos().x() > encounterRight) {
             QPointF pos = p.worldPos();
             pos.setX(encounterRight);
@@ -1024,13 +1026,13 @@ void GameManager::spawnBoss(int stageNum)
     bossRewardSettled = false;
 
     if (stageNum == 4) {
-        boss->hp = 2400;
-        boss->maxHp = 2400;
+        boss->hp = 2900;
+        boss->maxHp = 2900;
         boss->dropValue = 800;
     }
     else if (stageNum >= 9) {
-        boss->hp = 3400;
-        boss->maxHp = 3400;
+        boss->hp = 4200;
+        boss->maxHp = 4200;
         boss->dropValue = 1500;
     }
     recordBossDiscovery(fileManager, boss->kind);

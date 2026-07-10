@@ -213,6 +213,57 @@ def erase_long_border_lines(image: Image.Image,
     return rgba
 
 
+def soften_five_head_death_fringe(image: Image.Image) -> Image.Image:
+    """Soften the dark matte left around the generated death water ring."""
+    rgba = image.convert("RGBA")
+    w, h = rgba.size
+    source = rgba.load()
+    output = rgba.copy()
+    pixels = output.load()
+    alpha = rgba.getchannel("A").load()
+
+    def near_transparent(x: int, y: int, radius: int = 3) -> bool:
+        for yy in range(max(0, y - radius), min(h, y + radius + 1)):
+            for xx in range(max(0, x - radius), min(w, x + radius + 1)):
+                if alpha[xx, yy] <= 8:
+                    return True
+        return False
+
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = source[x, y]
+            if a <= 8:
+                pixels[x, y] = (0, 0, 0, 0)
+                continue
+
+            luminance = max(r, g, b)
+            teal_edge = g >= r + 8 and b >= r + 8 and luminance < 112
+            black_edge = luminance < 58
+            semidark_edge = a < 238 and luminance < 84
+            if not near_transparent(x, y) or not (teal_edge or black_edge or semidark_edge):
+                continue
+
+            if black_edge:
+                new_alpha = round(a * 0.28)
+            elif teal_edge:
+                new_alpha = round(a * 0.46)
+            else:
+                new_alpha = round(a * 0.55)
+            if a < 60 or luminance < 26:
+                new_alpha = 0
+
+            tint = (12, 112, 130)
+            blend = 0.78 if (teal_edge or black_edge) else 0.62
+            pixels[x, y] = (
+                round(r * (1.0 - blend) + tint[0] * blend),
+                round(g * (1.0 - blend) + tint[1] * blend),
+                round(b * (1.0 - blend) + tint[2] * blend),
+                max(0, min(255, new_alpha)),
+            )
+
+    return output
+
+
 def connected_dark_background(image: Image.Image) -> Image.Image:
     rgba = image.convert("RGBA")
     rgb = rgba.convert("RGB")
@@ -349,6 +400,28 @@ def glow_dark_background(image: Image.Image) -> Image.Image:
     return rgba
 
 
+def soul_song_beam_glow(image: Image.Image) -> Image.Image:
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            r, g, b, _ = pixels[x, y]
+            luminance = max(r, g, b)
+            if luminance <= 18:
+                pixels[x, y] = (0, 0, 0, 0)
+                continue
+
+            alpha = round(((luminance - 18) / 237) ** 1.04 * 255)
+            alpha = max(0, min(255, alpha))
+            if luminance < 132:
+                blend = (132 - luminance) / 132 * 0.82
+                r = round(r * (1.0 - blend) + 34 * blend)
+                g = round(g * (1.0 - blend) + 218 * blend)
+                b = round(b * (1.0 - blend) + 255 * blend)
+            pixels[x, y] = (r, g, b, alpha)
+    return rgba
+
+
 def trim_cell_lines(image: Image.Image) -> Image.Image:
     # Generators occasionally draw separators exactly on cell borders.
     inset = max(2, min(image.size) // 160)
@@ -425,6 +498,49 @@ def normalize_frames(frames: list[Image.Image], size: tuple[int, int]) -> list[I
     return normalized
 
 
+def normalize_directional_beam_frames(
+    frames: list[Image.Image],
+    size: tuple[int, int] = (1536, 360),
+) -> list[Image.Image]:
+    prepared = []
+    max_content_width = 1
+    max_content_height = 1
+    for frame in frames:
+        rgba = frame.convert("RGBA")
+        bbox = rgba.getchannel("A").getbbox()
+        if not bbox:
+            prepared.append(None)
+            continue
+        content = rgba.crop(bbox).rotate(90, expand=True)
+        rotated_bbox = content.getchannel("A").getbbox()
+        if rotated_bbox:
+            content = content.crop(rotated_bbox)
+        prepared.append(content)
+        max_content_width = max(max_content_width, content.width)
+        max_content_height = max(max_content_height, content.height)
+
+    common_scale = min(
+        size[0] * 0.98 / max_content_width,
+        size[1] * 0.94 / max_content_height,
+    )
+    normalized = []
+    for content in prepared:
+        canvas = Image.new("RGBA", size, (0, 0, 0, 0))
+        if content is None:
+            normalized.append(canvas)
+            continue
+        scaled_size = (
+            max(1, round(content.width * common_scale)),
+            max(1, round(content.height * common_scale)),
+        )
+        content = content.resize(scaled_size, Image.Resampling.LANCZOS)
+        x = (size[0] - content.width) // 2
+        y = (size[1] - content.height) // 2
+        canvas.alpha_composite(content, (x, y))
+        normalized.append(canvas)
+    return normalized
+
+
 def save_sequence(relative: str, frames: list[Image.Image], loop: bool = False,
                   prepared: bool = False) -> None:
     target = GENERATED / relative
@@ -435,9 +551,14 @@ def save_sequence(relative: str, frames: list[Image.Image], loop: bool = False,
         stale = target / stale_name
         if stale.exists():
             stale.unlink()
-    size = (384, 96) if relative.endswith("focus_meter") else (512, 512)
+    if prepared and frames:
+        size = frames[0].size
+    else:
+        size = (384, 96) if relative.endswith("focus_meter") else (512, 512)
     if not prepared:
         frames = normalize_frames(frames, size)
+    if relative == "five_head_shark/death":
+        frames = [soften_five_head_death_fringe(frame) for frame in frames]
     for index, frame in enumerate(frames, 1):
         frame.save(target / f"frame_{index:02d}.png", optimize=True)
 
@@ -510,29 +631,20 @@ def find_generated_source(pattern: str) -> Path | None:
 def draw_pillar_light(image: Image.Image, center: tuple[int, int], enabled: bool) -> None:
     cx, cy = center
     if not enabled:
-        overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
-        draw.ellipse((cx - 29, cy - 29, cx + 29, cy + 29),
-                     fill=(2, 14, 18, 238))
-        overlay = overlay.filter(ImageFilter.GaussianBlur(1.6))
-        image.alpha_composite(overlay)
         return
 
     glow = Image.new("RGBA", image.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(glow)
-    draw.ellipse((cx - 43, cy - 43, cx + 43, cy + 43),
-                 fill=(34, 230, 244, 82))
-    glow = glow.filter(ImageFilter.GaussianBlur(11))
+    draw.ellipse((cx - 48, cy - 48, cx + 48, cy + 48),
+                 fill=(34, 230, 244, 58))
+    glow = glow.filter(ImageFilter.GaussianBlur(14))
     image.alpha_composite(glow)
 
     core = Image.new("RGBA", image.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(core)
-    draw.ellipse((cx - 27, cy - 27, cx + 27, cy + 27),
-                 fill=(10, 130, 150, 210))
-    draw.ellipse((cx - 21, cy - 21, cx + 21, cy + 21),
-                 fill=(28, 222, 235, 235))
-    draw.ellipse((cx - 12, cy - 12, cx + 12, cy + 12),
-                 fill=(150, 255, 255, 245))
+    draw.ellipse((cx - 24, cy - 24, cx + 24, cy + 24),
+                 outline=(130, 255, 255, 110), width=4)
+    core = core.filter(ImageFilter.GaussianBlur(1.2))
     image.alpha_composite(core)
 
 
@@ -716,12 +828,19 @@ def process_generated() -> None:
                 cell = trim_cell_lines(cell)
                 frame = chroma_to_alpha(cell, key)
                 if relative in {"five_head_shark/death", "siren/death",
-                                "siren/seaweed_zone"}:
+                                "siren/seaweed_zone", "siren/elegy_pull"}:
                     frame = remove_large_white_frame(frame)
+                if relative == "siren/elegy_pull":
+                    frame = erase_long_border_lines(
+                        erase_canvas_edge_lines(frame, inset=14),
+                        max_thickness=14,
+                        min_span_ratio=0.25,
+                    )
                 if relative == "five_head_shark/death":
                     frame = erase_canvas_edge_lines(frame)
                     frame = erase_long_border_lines(frame)
                     frame = clear_top_death_bleed_strip(frame)
+                    frame = soften_five_head_death_fringe(frame)
                 frames.append(frame)
         save_sequence(relative, frames, relative in looping)
 
@@ -740,6 +859,8 @@ def process_existing() -> None:
         "siren/elegy_pull",
     }
     for relative, folder, prefix in EXISTING_GROUPS:
+        if relative in {"siren/seaweed_zone", "siren/elegy_pull"}:
+            continue
         files = sorted(folder.glob(f"{prefix}*.png"), key=numeric_key)
         if not files:
             continue
@@ -747,7 +868,21 @@ def process_existing() -> None:
         frames = [converter(Image.open(path)) for path in files]
         if relative == "siren/seaweed_zone":
             frames = [remove_large_white_frame(frame) for frame in frames]
+        if relative in {"siren/elegy_wave", "siren/elegy_pull"}:
+            frames = [
+                erase_long_border_lines(
+                    erase_canvas_edge_lines(remove_large_white_frame(frame), inset=14),
+                    max_thickness=14,
+                    min_span_ratio=0.25,
+                )
+                for frame in frames
+            ]
         save_sequence(relative, frames, relative in looping)
+        if relative == "siren/soul_song":
+            beam_source_frames = [soul_song_beam_glow(Image.open(path)) for path in files]
+            beam_frames = normalize_directional_beam_frames(beam_source_frames)
+            save_sequence("siren/soul_song_beam", beam_frames, prepared=True)
+            save_sequence("siren/soul_song_warning_beam", beam_frames, prepared=True)
 
     bombardment = EXISTING / "夺命五头鲨" / "轰炸.png"
     if bombardment.exists():

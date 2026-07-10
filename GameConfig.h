@@ -199,41 +199,41 @@ namespace Config {
     const int PRICE_UPG_SPEED_T1 = 120;
     const float VAL_UPG_SPEED_T1 = 12.0f;
 
-    const int PRICE_UPG_SPEED_T2 = 250;
-    const float VAL_UPG_SPEED_T2 = 22.0f;
+    const int PRICE_UPG_SPEED_T2 = 260;
+    const float VAL_UPG_SPEED_T2 = 28.0f;
 
-    const int PRICE_UPG_SPEED_T3 = 500;
-    const float VAL_UPG_SPEED_T3 = 38.0f;
+    const int PRICE_UPG_SPEED_T3 = 560;
+    const float VAL_UPG_SPEED_T3 = 62.0f;
 
     const int PRICE_UPG_DUR_T1 = 100;
     const int VAL_UPG_DUR_T1 = 20;
 
-    const int PRICE_UPG_DUR_T2 = 220;
+    const int PRICE_UPG_DUR_T2 = 240;
     const int VAL_UPG_DUR_T2 = 50;
 
-    const int PRICE_UPG_DUR_T3 = 450;
-    const int VAL_UPG_DUR_T3 = 100;
+    const int PRICE_UPG_DUR_T3 = 520;
+    const int VAL_UPG_DUR_T3 = 120;
 
     const int PRICE_UPG_STAMINA_T1 = 100;
     const int VAL_UPG_STAMINA_T1 = 20;
 
-    const int PRICE_UPG_STAMINA_T2 = 220;
+    const int PRICE_UPG_STAMINA_T2 = 240;
     const int VAL_UPG_STAMINA_T2 = 50;
 
-    const int PRICE_UPG_STAMINA_T3 = 450;
-    const int VAL_UPG_STAMINA_T3 = 100;
+    const int PRICE_UPG_STAMINA_T3 = 520;
+    const int VAL_UPG_STAMINA_T3 = 120;
 
-    const int PRICE_UPG_WEAPON_T1 = 100;
+    const int PRICE_UPG_WEAPON_T1 = 160;
     const int VAL_UPG_WPN_DMG_T1 = 5;
-    const int VAL_UPG_WPN_DUR_T1 = 8;
+    const int VAL_UPG_WPN_DUR_T1 = 10;
 
-    const int PRICE_UPG_WEAPON_T2 = 240;
-    const int VAL_UPG_WPN_DMG_T2 = 12;
-    const int VAL_UPG_WPN_DUR_T2 = 18;
+    const int PRICE_UPG_WEAPON_T2 = 440;
+    const int VAL_UPG_WPN_DMG_T2 = 14;
+    const int VAL_UPG_WPN_DUR_T2 = 28;
 
-    const int PRICE_UPG_WEAPON_T3 = 520;
-    const int VAL_UPG_WPN_DMG_T3 = 24;
-    const int VAL_UPG_WPN_DUR_T3 = 35;
+    const int PRICE_UPG_WEAPON_T3 = 980;
+    const int VAL_UPG_WPN_DMG_T3 = 34;
+    const int VAL_UPG_WPN_DUR_T3 = 68;
     const int MAX_WEAPON_ENHANCEMENT_LEVEL = 6;
 
     // ==========================================

@@ -72,10 +72,10 @@ void Enemy::applyStageScaling(int stage)
     stage = qMax(1, stage);
     if (m_scaledStage == stage) return;
 
-    const qreal hpScale = 1.0 + 0.13 * (stage - 1);
-    const qreal attackScale = 1.0 + 0.10 * (stage - 1);
+    const qreal hpScale = 1.0 + 0.15 * (stage - 1);
+    const qreal attackScale = 1.0 + 0.12 * (stage - 1);
     const qreal speedScale = 1.0 + 0.025 * (stage - 1);
-    const qreal rewardScale = 1.0 + 0.14 * (stage - 1);
+    const qreal rewardScale = 1.0 + 0.15 * (stage - 1);
     maxHp = qMax(1, qRound(maxHp * hpScale));
     hp = maxHp;
     attack = qMax(0, qRound(attack * attackScale));
@@ -574,6 +574,10 @@ void ElectricRay::update(Player& player)
 
     const QPointF delta = player.worldPos() - position();
     const qreal dist = std::hypot(delta.x(), delta.y());
+    if (std::fabs(delta.x()) > 56.0) {
+        facingX = delta.x() < 0.0 ? -1.0f : 1.0f;
+    }
+
     if (pulseWarningFrames > 0) {
         --pulseWarningFrames;
         if (pulseWarningFrames == 0) {
@@ -589,19 +593,23 @@ void ElectricRay::update(Player& player)
 
     if (pulseCooldownFrames <= 0 && dist <= 210.0) {
         pulseWarningFrames = 48;
-        if (std::fabs(delta.x()) > 42.0) {
-            facingX = delta.x() < 0.0 ? -1.0f : 1.0f;
-        }
         return;
     }
 
     if (dist > 0.001 && dist < 520.0) {
-        const qreal approach = dist < 155.0 ? -0.45 : 1.0;
-        const qreal vx = delta.x() / dist * speed * approach;
-        const qreal vy = delta.y() / dist * speed * approach;
-        posX += static_cast<float>(vx);
-        posY += static_cast<float>(vy);
-        if (std::fabs(vx) > 0.30) facingX = vx < 0.0 ? -1.0f : 1.0f;
+        qreal approach = 0.0;
+        if (dist > 205.0) {
+            approach = 1.0;
+        } else if (dist < 165.0) {
+            approach = -0.45;
+        }
+
+        if (std::fabs(approach) > 0.001) {
+            const qreal vx = delta.x() / dist * speed * approach;
+            const qreal vy = delta.y() / dist * speed * approach;
+            posX += static_cast<float>(vx);
+            posY += static_cast<float>(vy);
+        }
     }
     posX = qBound(0.0f, posX, static_cast<float>(Config::GameConfig::RIGHT_BORDER));
     posY = qBound(static_cast<float>(Config::GameConfig::TOP_BORDER), posY,

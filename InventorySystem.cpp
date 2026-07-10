@@ -1,7 +1,57 @@
 #include "InventorySystem.h"
 #include "Player.h"
 #include "ItemFactory.h"
+#include "FileManager.h"
 #include <algorithm>
+
+namespace {
+
+void markEquipmentDiscoveryForWeapon(const Weapon* weapon)
+{
+    if (!weapon) return;
+
+    const std::string type = weapon->getTypeCode();
+    FileManager fileManager;
+    if (type == "Rod") {
+        fileManager.markEquipmentDiscovered(0, "Rod");
+    }
+    else if (type == "Net") {
+        fileManager.markEquipmentDiscovered(1, "Net");
+    }
+    else if (type == "Harpoon") {
+        fileManager.markEquipmentDiscovered(2, "Harpoon");
+    }
+    else if (type == "Pistol") {
+        fileManager.markEquipmentDiscovered(3, "Pistol");
+    }
+    else if (type == "Shotgun") {
+        fileManager.markEquipmentDiscovered(4, "Shotgun");
+    }
+}
+
+void markItemDiscovery(InventoryItemType type)
+{
+    FileManager fileManager;
+    switch (type) {
+    case InventoryItemType::Food:
+        fileManager.markItemDiscovered(0, "Food");
+        break;
+    case InventoryItemType::ShipRepairT1:
+        fileManager.markItemDiscovered(1, "Ship Repair T1");
+        break;
+    case InventoryItemType::ShipRepairT2:
+        fileManager.markItemDiscovered(2, "Ship Repair T2");
+        break;
+    case InventoryItemType::ShipRepairT3:
+        fileManager.markItemDiscovered(3, "Ship Repair T3");
+        break;
+    case InventoryItemType::EmergencyWeaponRepair:
+        fileManager.markItemDiscovered(4, "Emergency Weapon Repair");
+        break;
+    }
+}
+
+}
 
 InventorySystem& InventorySystem::instance()
 {
@@ -29,12 +79,14 @@ void InventorySystem::initDefaultWeaponIfNeeded()
     if (defaultRod) {
         defaultRod->makeDurabilityInfinite();
         m_weapons.push_back(defaultRod);
+        markEquipmentDiscoveryForWeapon(defaultRod);
     }
 
     Weapon* starterHarpoon = ItemFactory::createWeapon("Harpoon", 1);
     if (starterHarpoon) {
         starterHarpoon->makeDurabilityInfinite();
         m_weapons.push_back(starterHarpoon);
+        markEquipmentDiscoveryForWeapon(starterHarpoon);
     }
 
     if (!m_weapons.empty()) {
@@ -65,22 +117,27 @@ bool InventorySystem::addItem(InventoryItemType type, int count)
     switch (type) {
     case InventoryItemType::Food:
         m_foodCount += count;
+        markItemDiscovery(type);
         return true;
 
     case InventoryItemType::ShipRepairT1:
         m_shipRepairT1Count += count;
+        markItemDiscovery(type);
         return true;
 
     case InventoryItemType::ShipRepairT2:
         m_shipRepairT2Count += count;
+        markItemDiscovery(type);
         return true;
 
     case InventoryItemType::ShipRepairT3:
         m_shipRepairT3Count += count;
+        markItemDiscovery(type);
         return true;
 
     case InventoryItemType::EmergencyWeaponRepair:
         m_emergencyWeaponRepairCount += count;
+        markItemDiscovery(type);
         return true;
     }
 
@@ -199,6 +256,7 @@ bool InventorySystem::addWeapon(Weapon* weapon)
     }
 
     m_weapons.push_back(weapon);
+    markEquipmentDiscoveryForWeapon(weapon);
     const int newIndex = static_cast<int>(m_weapons.size()) - 1;
     for (int slot = 0; slot < 6; ++slot) {
         if (m_quickWeaponSlots[slot] < 0) {
@@ -227,6 +285,7 @@ bool InventorySystem::replaceWeapon(int index, Weapon* weapon)
 
     delete m_weapons[index];
     m_weapons[index] = weapon;
+    markEquipmentDiscoveryForWeapon(weapon);
 
     if (m_currentWeaponIndex == index) {
         Player::instance().equipWeapon(weapon);
@@ -519,6 +578,13 @@ void InventorySystem::loadFromData(const InventoryLoadData& data)
     if (m_shipRepairT2Count < 0) m_shipRepairT2Count = 0;
     if (m_shipRepairT3Count < 0) m_shipRepairT3Count = 0;
     if (m_emergencyWeaponRepairCount < 0) m_emergencyWeaponRepairCount = 0;
+    if (m_foodCount > 0) markItemDiscovery(InventoryItemType::Food);
+    if (m_shipRepairT1Count > 0) markItemDiscovery(InventoryItemType::ShipRepairT1);
+    if (m_shipRepairT2Count > 0) markItemDiscovery(InventoryItemType::ShipRepairT2);
+    if (m_shipRepairT3Count > 0) markItemDiscovery(InventoryItemType::ShipRepairT3);
+    if (m_emergencyWeaponRepairCount > 0) {
+        markItemDiscovery(InventoryItemType::EmergencyWeaponRepair);
+    }
 
     int maxCount = Config::MAX_WEAPON_BACKPACK;
 
@@ -541,6 +607,7 @@ void InventorySystem::loadFromData(const InventoryLoadData& data)
         );
 
         m_weapons.push_back(weapon);
+        markEquipmentDiscoveryForWeapon(weapon);
     }
 
     if (m_weapons.empty()) {

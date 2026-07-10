@@ -1,5 +1,6 @@
 #include "EncyclopediaDialog.h"
 #include "FileManager.h"
+#include "GameConfig.h"
 
 #include <QFontDatabase>
 #include <QKeyEvent>
@@ -718,8 +719,11 @@ void drawOpeningBookFrame(QPainter& p, const QPixmap& book, qreal progress)
 }
 }
 
-EncyclopediaDialog::EncyclopediaDialog(int currentStage, QWidget* parent)
-    : QDialog(parent), m_currentStage(qBound(1, currentStage, 6))
+EncyclopediaDialog::EncyclopediaDialog(int currentStage, QWidget* parent,
+                                       bool currentStageBossEncountered)
+    : QDialog(parent),
+      m_currentStage(qBound(1, currentStage, Config::GameConfig::STAGE_COUNT)),
+      m_currentStageBossEncountered(currentStageBossEncountered)
 {
     setWindowTitle(QStringLiteral("航海图鉴"));
     setFixedSize(1280, 720);
@@ -768,9 +772,24 @@ void EncyclopediaDialog::buildCatalog()
     auto stat = [](const QString& label, const QString& value) {
         return StatLine{ label, value };
     };
-    const int enemyStage = qBound(1, m_currentStage, 6);
+    const int enemyStage = qBound(1, m_currentStage, Config::GameConfig::STAGE_COUNT);
+    constexpr qreal kEnemyHpGrowth = 0.15;
+    constexpr qreal kEnemyAttackGrowth = 0.12;
+    constexpr qreal kEnemySpeedGrowth = 0.025;
+    constexpr qreal kEnemyRewardGrowth = 0.15;
+    constexpr int kFishCatalogTotal = 12;
+    constexpr int kEquipmentCatalogTotal = 5;
+    constexpr int kItemCatalogTotal = 5;
+    constexpr int kEnemyCatalogTotal = 5;
+    constexpr int kBossCatalogTotal = 2;
     auto scaledEnemyValue = [enemyStage](int base, qreal growth) {
         return QString::number(qRound(base * (1.0 + growth * (enemyStage - 1))));
+    };
+    auto scaledEnemySpeed = [enemyStage](qreal base) {
+        return QString::number(base * (1.0 + kEnemySpeedGrowth * (enemyStage - 1)), 'f', 2);
+    };
+    auto configValue = [](int value) {
+        return QString::number(value);
     };
     auto unknown = [](const QString& id, const QString& tagText = QStringLiteral("未发现")) {
         Entry entry;
@@ -805,6 +824,33 @@ void EncyclopediaDialog::buildCatalog()
             }
         }
     };
+    auto finalizeCatalogPage = [&](CategoryPage& page, int totalCount,
+                                   const QVector<QString>& excludedIds = {}) {
+        auto isExcluded = [&](const QString& id) {
+            for (const QString& excludedId : excludedIds) {
+                if (id == excludedId) return true;
+            }
+            return false;
+        };
+
+        QVector<Entry> catalogEntries;
+        catalogEntries.reserve(page.entries.size());
+        int discoveredCount = 0;
+        for (const Entry& entry : page.entries) {
+            const bool placeholderOnly =
+                entry.stats.isEmpty() && entry.iconPath.isEmpty() && entry.detailImagePath.isEmpty();
+            if (placeholderOnly || isExcluded(entry.id)) {
+                continue;
+            }
+            catalogEntries.push_back(entry);
+            if (entry.discovered) {
+                ++discoveredCount;
+            }
+        }
+        page.entries = catalogEntries;
+        page.totalCount = totalCount;
+        page.discoveredCount = qBound(0, discoveredCount, totalCount);
+    };
 
     CategoryPage fish;
     fish.category = Category::Fish;
@@ -817,24 +863,24 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/fish_sardine.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/fish_sardine.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("沙丁鱼")),
-          stat(QStringLiteral("类型"), QStringLiteral("小型鱼类")),
-          stat(QStringLiteral("价值"), QStringLiteral("5 - 15")),
-          stat(QStringLiteral("稀有度"), QStringLiteral("★☆☆☆☆")),
-          stat(QStringLiteral("出现关卡"), QStringLiteral("1-1 近海浅滩")),
-          stat(QStringLiteral("捕获方式"), QStringLiteral("鱼竿 / 渔网")),
-          stat(QStringLiteral("捕获难度"), QStringLiteral("3 次 / 3 秒"))},
+           stat(QStringLiteral("类型"), QStringLiteral("小型鱼类")),
+           stat(QStringLiteral("价值"), QStringLiteral("5 - 15")),
+           stat(QStringLiteral("稀有度"), QStringLiteral("★☆☆☆☆")),
+           stat(QStringLiteral("出现关卡"), QStringLiteral("第 1 关起")),
+           stat(QStringLiteral("捕获方式"), QStringLiteral("鱼竿 / 渔网")),
+           stat(QStringLiteral("捕获难度"), QStringLiteral("3 次 / 3 秒"))},
          QStringLiteral("常见的小型洄游鱼类，成群活动于近海水域。肉质鲜美，容易上钩，是水手们最熟悉的伙伴。"),
          true, QColor("#2f7a45")},
         {QStringLiteral("002"), QStringLiteral("金枪鱼"), QStringLiteral("已发现"),
          QStringLiteral(":/FishingVoyage/encyclopedia/fish_tuna.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/fish_tuna.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("金枪鱼")),
-          stat(QStringLiteral("类型"), QStringLiteral("中型鱼类")),
-          stat(QStringLiteral("价值"), QStringLiteral("25 - 55")),
-          stat(QStringLiteral("稀有度"), QStringLiteral("★★☆☆☆")),
-          stat(QStringLiteral("出现关卡"), QStringLiteral("1-2 外海航道")),
-          stat(QStringLiteral("捕获方式"), QStringLiteral("鱼竿 / 渔网")),
-          stat(QStringLiteral("捕获难度"), QStringLiteral("3 次 / 3 秒"))},
+           stat(QStringLiteral("类型"), QStringLiteral("中型鱼类")),
+           stat(QStringLiteral("价值"), QStringLiteral("25 - 55")),
+           stat(QStringLiteral("稀有度"), QStringLiteral("★★☆☆☆")),
+           stat(QStringLiteral("出现关卡"), QStringLiteral("第 1 关起")),
+           stat(QStringLiteral("捕获方式"), QStringLiteral("鱼竿 / 渔网")),
+           stat(QStringLiteral("捕获难度"), QStringLiteral("3 次 / 3 秒"))},
          QStringLiteral("速度稳定、价值不错的远海鱼类。掌握基础捕鱼节奏后，它会成为重要收入来源。"),
          true, QColor("#2f7a45")},
         unknown(QStringLiteral("003")),
@@ -843,11 +889,11 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/fish_golden.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("黄金鱼")),
           stat(QStringLiteral("类型"), QStringLiteral("稀有鱼类")),
-          stat(QStringLiteral("价值"), QStringLiteral("150 - 250")),
-          stat(QStringLiteral("稀有度"), QStringLiteral("★★★★★")),
-          stat(QStringLiteral("出现关卡"), QStringLiteral("远海随机")),
-          stat(QStringLiteral("捕获方式"), QStringLiteral("高耐久钓具")),
-          stat(QStringLiteral("捕获难度"), QStringLiteral("10 次 / 1.25 秒"))},
+           stat(QStringLiteral("价值"), QStringLiteral("150 - 250")),
+           stat(QStringLiteral("稀有度"), QStringLiteral("★★★★★")),
+           stat(QStringLiteral("出现关卡"), QStringLiteral("第 3 关起")),
+           stat(QStringLiteral("捕获方式"), QStringLiteral("高耐久钓具")),
+           stat(QStringLiteral("捕获难度"), QStringLiteral("10 次 / 1.25 秒"))},
          QStringLiteral("传说会在阳光穿透浪面时出现。价值极高，但警觉性强，稍慢一步就会逃离。"),
          true, QColor("#2f7a45")},
         {QStringLiteral("005"), QStringLiteral("深海鳗"), QStringLiteral("已发现"),
@@ -855,11 +901,11 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/fish_eel.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("深海鳗")),
           stat(QStringLiteral("类型"), QStringLiteral("稀有鱼类")),
-          stat(QStringLiteral("价值"), QStringLiteral("80 - 140")),
-          stat(QStringLiteral("稀有度"), QStringLiteral("★★★★☆")),
-          stat(QStringLiteral("出现关卡"), QStringLiteral("深水暗流")),
-          stat(QStringLiteral("捕获方式"), QStringLiteral("鱼叉 / 渔网")),
-          stat(QStringLiteral("捕获难度"), QStringLiteral("8 次 / 1.5 秒"))},
+           stat(QStringLiteral("价值"), QStringLiteral("80 - 140")),
+           stat(QStringLiteral("稀有度"), QStringLiteral("★★★★☆")),
+           stat(QStringLiteral("出现关卡"), QStringLiteral("第 2 关起")),
+           stat(QStringLiteral("捕获方式"), QStringLiteral("鱼叉 / 渔网")),
+           stat(QStringLiteral("捕获难度"), QStringLiteral("8 次 / 2 秒"))},
          QStringLiteral("栖息于暗流之下，动作突然且难以预判。捕获它需要更短的反应时间。"),
          true, QColor("#2f7a45")},
         unknown(QStringLiteral("006")),
@@ -868,7 +914,7 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/fish_anchovy.png"),
          {stat(QStringLiteral("\u540d\u79f0"), QStringLiteral("\u94f6\u9cca\u9c7c")),
           stat(QStringLiteral("\u4ef7\u503c"), QStringLiteral("8 - 18")),
-          stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("1-2")),
+           stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("\u7b2c 1 \u5173\u8d77")),
           stat(QStringLiteral("\u6355\u83b7\u96be\u5ea6"), QStringLiteral("3 \u6b21 / 3.2 \u79d2"))},
          QStringLiteral("\u8fd1\u6d77\u5c0f\u578b\u9c7c\uff0c\u6e38\u52a8\u8f7b\u5feb\uff0c\u9002\u5408\u65b0\u624b\u5728\u7b2c\u4e00\u5173\u7a33\u5b9a\u83b7\u53d6\u6536\u5165\u3002"),
          true, QColor("#2f7a45")},
@@ -877,7 +923,7 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/fish_clownfish.png"),
          {stat(QStringLiteral("\u540d\u79f0"), QStringLiteral("\u5c0f\u4e11\u9c7c")),
           stat(QStringLiteral("\u4ef7\u503c"), QStringLiteral("12 - 24")),
-          stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("1-3")),
+           stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("\u7b2c 2 \u5173\u8d77")),
           stat(QStringLiteral("\u6355\u83b7\u96be\u5ea6"), QStringLiteral("4 \u6b21 / 3 \u79d2"))},
          QStringLiteral("\u8272\u5f69\u9192\u76ee\u7684\u73ca\u745a\u533a\u9c7c\u7c7b\uff0c\u4ef7\u503c\u7565\u9ad8\uff0c\u4f46\u8b66\u89c9\u6027\u4ecd\u53ef\u63a7\u3002"),
          true, QColor("#2f7a45")},
@@ -886,7 +932,7 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/fish_mackerel.png"),
          {stat(QStringLiteral("\u540d\u79f0"), QStringLiteral("\u84dd\u9cb5")),
           stat(QStringLiteral("\u4ef7\u503c"), QStringLiteral("35 - 65")),
-          stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("2-4")),
+           stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("\u7b2c 1 \u5173\u8d77")),
           stat(QStringLiteral("\u6355\u83b7\u96be\u5ea6"), QStringLiteral("4 \u6b21 / 2.75 \u79d2"))},
          QStringLiteral("\u5916\u6d77\u5e38\u89c1\u7684\u4e2d\u4ef7\u9c7c\uff0c\u901f\u5ea6\u548c\u6536\u76ca\u90fd\u6bd4\u91d1\u67aa\u9c7c\u66f4\u7a33\u3002"),
          true, QColor("#2f7a45")},
@@ -895,7 +941,7 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/fish_sea_bream.png"),
          {stat(QStringLiteral("\u540d\u79f0"), QStringLiteral("\u771f\u9cb7")),
           stat(QStringLiteral("\u4ef7\u503c"), QStringLiteral("45 - 80")),
-          stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("2-5")),
+           stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("\u7b2c 1 \u5173\u8d77")),
           stat(QStringLiteral("\u6355\u83b7\u96be\u5ea6"), QStringLiteral("5 \u6b21 / 2.6 \u79d2"))},
          QStringLiteral("\u8089\u8d28\u548c\u4ef7\u503c\u90fd\u4e0d\u9519\u7684\u4e2d\u578b\u9c7c\uff0c\u66f4\u9002\u5408\u6709\u4e00\u5b9a\u6355\u9c7c\u8282\u594f\u540e\u8ffd\u6355\u3002"),
          true, QColor("#2f7a45")},
@@ -904,7 +950,7 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/fish_lanternfish.png"),
          {stat(QStringLiteral("\u540d\u79f0"), QStringLiteral("\u706f\u7b3c\u9c7c")),
           stat(QStringLiteral("\u4ef7\u503c"), QStringLiteral("95 - 160")),
-          stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("3-6")),
+           stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("\u7b2c 2 \u5173\u8d77")),
           stat(QStringLiteral("\u6355\u83b7\u96be\u5ea6"), QStringLiteral("7 \u6b21 / 1.75 \u79d2"))},
          QStringLiteral("\u6697\u6d41\u6d77\u57df\u4e2d\u4f1a\u95ea\u5149\u7684\u7a00\u6709\u9c7c\uff0c\u6536\u76ca\u9ad8\uff0c\u4f46\u6355\u83b7\u7a97\u53e3\u660e\u663e\u66f4\u7d27\u3002"),
          true, QColor("#2f7a45")},
@@ -913,7 +959,7 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/fish_grouper.png"),
          {stat(QStringLiteral("\u540d\u79f0"), QStringLiteral("\u77f3\u6591\u9c7c")),
           stat(QStringLiteral("\u4ef7\u503c"), QStringLiteral("110 - 190")),
-          stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("4-6")),
+           stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("\u7b2c 2 \u5173\u8d77")),
           stat(QStringLiteral("\u6355\u83b7\u96be\u5ea6"), QStringLiteral("7 \u6b21 / 2 \u79d2"))},
          QStringLiteral("\u559c\u6b22\u9760\u8fd1\u7901\u77f3\u7684\u539a\u91cd\u9c7c\u7c7b\uff0c\u5355\u6761\u6536\u76ca\u5f88\u53ef\u89c2\u3002"),
          true, QColor("#2f7a45")},
@@ -922,7 +968,7 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/fish_koi.png"),
          {stat(QStringLiteral("\u540d\u79f0"), QStringLiteral("\u9526\u9ca4")),
           stat(QStringLiteral("\u4ef7\u503c"), QStringLiteral("180 - 280")),
-          stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("5-6")),
+           stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("\u7b2c 3 \u5173\u8d77")),
           stat(QStringLiteral("\u6355\u83b7\u96be\u5ea6"), QStringLiteral("9 \u6b21 / 1.5 \u79d2"))},
          QStringLiteral("\u7f55\u89c1\u7684\u9ad8\u4ef7\u9c7c\uff0c\u4f1a\u5728\u5929\u6c14\u548c\u6d6a\u52bf\u4e0d\u7a33\u7684\u6d77\u57df\u51fa\u73b0\u3002"),
          true, QColor("#2f7a45")},
@@ -931,9 +977,9 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/fish_crystal_fish.png"),
          {stat(QStringLiteral("\u540d\u79f0"), QStringLiteral("\u6676\u9cde\u9c7c")),
           stat(QStringLiteral("\u4ef7\u503c"), QStringLiteral("240 - 380")),
-          stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("6")),
-          stat(QStringLiteral("\u6355\u83b7\u96be\u5ea6"), QStringLiteral("11 \u6b21 / 1.35 \u79d2"))},
-         QStringLiteral("\u7ec8\u6d77\u95e8\u9644\u8fd1\u7684\u73cd\u7a00\u9c7c\uff0c\u4ef7\u503c\u6781\u9ad8\uff0c\u9700\u8981\u66f4\u597d\u7684\u88c5\u5907\u548c\u4f53\u529b\u7ba1\u7406\u3002"),
+           stat(QStringLiteral("\u51fa\u73b0\u5173\u5361"), QStringLiteral("\u7b2c 3 \u5173\u8d77")),
+           stat(QStringLiteral("\u6355\u83b7\u96be\u5ea6"), QStringLiteral("11 \u6b21 / 1.37 \u79d2"))},
+          QStringLiteral("\u7ec8\u6bb5\u6d77\u57df\u4e2d\u7684\u73cd\u7a00\u9c7c\uff0c\u4ef7\u503c\u6781\u9ad8\uff0c\u9700\u8981\u66f4\u597d\u7684\u88c5\u5907\u548c\u4f53\u529b\u7ba1\u7406\u3002"),
          true, QColor("#2f7a45")}
     };
     setEntryDiscoveryAt(fish, 0, discoveryLog.isFishDiscovered(0));
@@ -948,7 +994,7 @@ void EncyclopediaDialog::buildCatalog()
     setEntryDiscoveryAt(fish, 11, discoveryLog.isFishDiscovered(9));
     setEntryDiscoveryAt(fish, 12, discoveryLog.isFishDiscovered(10));
     setEntryDiscoveryAt(fish, 13, discoveryLog.isFishDiscovered(11));
-    syncPageCount(fish);
+    finalizeCatalogPage(fish, kFishCatalogTotal);
 
     CategoryPage equipment;
     equipment.category = Category::Equipment;
@@ -962,11 +1008,11 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/weapon_rod.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("鱼竿")),
           stat(QStringLiteral("类型"), QStringLiteral("工具")),
-          stat(QStringLiteral("用途"), QStringLiteral("钓鱼")),
-          stat(QStringLiteral("钓鱼方式"), QStringLiteral("QTE")),
-          stat(QStringLiteral("攻击伤害"), QStringLiteral("—")),
-          stat(QStringLiteral("攻击范围"), QStringLiteral("60")),
-          stat(QStringLiteral("最大耐久"), QStringLiteral("50"))},
+           stat(QStringLiteral("用途"), QStringLiteral("钓鱼")),
+           stat(QStringLiteral("钓鱼方式"), QStringLiteral("QTE")),
+           stat(QStringLiteral("攻击伤害"), QStringLiteral("—")),
+            stat(QStringLiteral("捕捞范围"), configValue(Config::RANGE_ROD)),
+            stat(QStringLiteral("最大耐久"), configValue(Config::DUR_ROD_T1))},
          QStringLiteral("最基础的钓鱼工具，操作简单，适合初学者使用。虽然朴素，但能陪伴你度过漫长的航海时光。"),
          true, QColor("#2f6f9f")},
         {QStringLiteral("002"), QStringLiteral("渔网"), QStringLiteral("工具"),
@@ -974,11 +1020,11 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/weapon_net.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("渔网")),
           stat(QStringLiteral("类型"), QStringLiteral("工具")),
-          stat(QStringLiteral("用途"), QStringLiteral("范围捕鱼")),
-          stat(QStringLiteral("钓鱼方式"), QStringLiteral("校准")),
-          stat(QStringLiteral("攻击伤害"), QStringLiteral("—")),
-          stat(QStringLiteral("攻击范围"), QStringLiteral("80")),
-          stat(QStringLiteral("最大耐久"), QStringLiteral("40"))},
+           stat(QStringLiteral("用途"), QStringLiteral("范围捕鱼")),
+           stat(QStringLiteral("钓鱼方式"), QStringLiteral("校准")),
+           stat(QStringLiteral("攻击伤害"), QStringLiteral("—")),
+            stat(QStringLiteral("捕捞范围"), configValue(Config::RANGE_NET)),
+            stat(QStringLiteral("最大耐久"), configValue(Config::DUR_NET_T1))},
          QStringLiteral("适合稳定收获小型鱼群，范围更宽，但耐久消耗更明显。"),
          true, QColor("#2f6f9f")},
         {QStringLiteral("003"), QStringLiteral("鱼叉"), QStringLiteral("武器"),
@@ -986,11 +1032,11 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/weapon_harpoon.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("鱼叉")),
           stat(QStringLiteral("类型"), QStringLiteral("双用装备")),
-          stat(QStringLiteral("用途"), QStringLiteral("捕鱼 / 攻击")),
-          stat(QStringLiteral("钓鱼方式"), QStringLiteral("校准")),
-          stat(QStringLiteral("攻击伤害"), QStringLiteral("30")),
-          stat(QStringLiteral("攻击范围"), QStringLiteral("120")),
-          stat(QStringLiteral("最大耐久"), QStringLiteral("25"))},
+           stat(QStringLiteral("用途"), QStringLiteral("捕鱼 / 攻击")),
+           stat(QStringLiteral("钓鱼方式"), QStringLiteral("校准")),
+            stat(QStringLiteral("攻击伤害"), configValue(Config::DMG_HARPOON_T1)),
+            stat(QStringLiteral("作用范围"), configValue(Config::RANGE_HARPOON)),
+            stat(QStringLiteral("最大耐久"), configValue(Config::DUR_HARPOON_T1))},
          QStringLiteral("近距离捕鱼与自卫兼备。遇到海中威胁时，它比普通钓具更可靠。"),
          true, QColor("#8a3e2e")},
         {QStringLiteral("004"), QStringLiteral("手枪"), QStringLiteral("武器"),
@@ -998,11 +1044,11 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/weapon_pistol.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("手枪")),
           stat(QStringLiteral("类型"), QStringLiteral("远程武器")),
-          stat(QStringLiteral("用途"), QStringLiteral("攻击")),
-          stat(QStringLiteral("钓鱼方式"), QStringLiteral("—")),
-          stat(QStringLiteral("攻击伤害"), QStringLiteral("50")),
-          stat(QStringLiteral("攻击范围"), QStringLiteral("200")),
-          stat(QStringLiteral("最大耐久"), QStringLiteral("15"))},
+           stat(QStringLiteral("用途"), QStringLiteral("攻击")),
+           stat(QStringLiteral("钓鱼方式"), QStringLiteral("—")),
+            stat(QStringLiteral("攻击伤害"), configValue(Config::DMG_PISTOL_T1)),
+            stat(QStringLiteral("射程"), configValue(Config::RANGE_PISTOL)),
+            stat(QStringLiteral("最大耐久"), configValue(Config::DUR_PISTOL_T1))},
          QStringLiteral("远距离自卫武器，射程优秀，适合在敌人接近前削弱威胁。"),
          true, QColor("#8a3e2e")},
         {QStringLiteral("005"), QStringLiteral("猎枪"), QStringLiteral("武器"),
@@ -1010,15 +1056,20 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/weapon_shotgun.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("猎枪")),
           stat(QStringLiteral("类型"), QStringLiteral("近距武器")),
-          stat(QStringLiteral("用途"), QStringLiteral("高伤害攻击")),
-          stat(QStringLiteral("钓鱼方式"), QStringLiteral("—")),
-          stat(QStringLiteral("攻击伤害"), QStringLiteral("80")),
-          stat(QStringLiteral("攻击范围"), QStringLiteral("150")),
-          stat(QStringLiteral("最大耐久"), QStringLiteral("10"))},
+           stat(QStringLiteral("用途"), QStringLiteral("高伤害攻击")),
+           stat(QStringLiteral("钓鱼方式"), QStringLiteral("—")),
+            stat(QStringLiteral("攻击伤害"), configValue(Config::DMG_SHOTGUN_T1)),
+            stat(QStringLiteral("射程"), configValue(Config::RANGE_SHOTGUN)),
+            stat(QStringLiteral("最大耐久"), configValue(Config::DUR_SHOTGUN_T1))},
          QStringLiteral("爆发力强但耐久有限。适合在危险距离内快速解决敌人。"),
          true, QColor("#8a3e2e")}
     };
-    syncPageCount(equipment);
+    setEntryDiscoveryAt(equipment, 0, discoveryLog.isEquipmentDiscovered(0));
+    setEntryDiscoveryAt(equipment, 1, discoveryLog.isEquipmentDiscovered(1));
+    setEntryDiscoveryAt(equipment, 2, discoveryLog.isEquipmentDiscovered(2));
+    setEntryDiscoveryAt(equipment, 3, discoveryLog.isEquipmentDiscovered(3));
+    setEntryDiscoveryAt(equipment, 4, discoveryLog.isEquipmentDiscovered(4));
+    finalizeCatalogPage(equipment, kEquipmentCatalogTotal);
 
     CategoryPage item;
     item.category = Category::Item;
@@ -1033,7 +1084,7 @@ void EncyclopediaDialog::buildCatalog()
          {stat(QStringLiteral("名称"), QStringLiteral("航海干粮")),
           stat(QStringLiteral("类型"), QStringLiteral("消耗品")),
           stat(QStringLiteral("目标"), QStringLiteral("使用者")),
-          stat(QStringLiteral("效果"), QStringLiteral("恢复 30 点体力")),
+           stat(QStringLiteral("效果"), QStringLiteral("恢复 %1 点体力").arg(Config::HEAL_FOOD_RATION)),
           stat(QStringLiteral("是否可叠加"), QStringLiteral("是（最多 99）")),
           stat(QStringLiteral("使用场景"), QStringLiteral("航行 / 探索 / 战斗"))},
          QStringLiteral("经过烘烤的硬质饼干，便于长期保存。虽然味道平淡，但能有效补充航海所需的体力。"),
@@ -1044,7 +1095,7 @@ void EncyclopediaDialog::buildCatalog()
          {stat(QStringLiteral("名称"), QStringLiteral("初级船体修理包")),
           stat(QStringLiteral("类型"), QStringLiteral("消耗品")),
           stat(QStringLiteral("目标"), QStringLiteral("船体")),
-          stat(QStringLiteral("效果"), QStringLiteral("恢复 20 点耐久")),
+           stat(QStringLiteral("效果"), QStringLiteral("恢复 %1 点耐久").arg(Config::HEAL_REPAIR_T1)),
           stat(QStringLiteral("是否可叠加"), QStringLiteral("是")),
           stat(QStringLiteral("使用场景"), QStringLiteral("航行 / 战斗"))},
          QStringLiteral("基础船板与补漏材料，适合处理轻微撞击和浅层破损。"),
@@ -1055,7 +1106,7 @@ void EncyclopediaDialog::buildCatalog()
          {stat(QStringLiteral("名称"), QStringLiteral("中级船体修理包")),
           stat(QStringLiteral("类型"), QStringLiteral("消耗品")),
           stat(QStringLiteral("目标"), QStringLiteral("船体")),
-          stat(QStringLiteral("效果"), QStringLiteral("恢复 40 点耐久")),
+           stat(QStringLiteral("效果"), QStringLiteral("恢复 %1 点耐久").arg(Config::HEAL_REPAIR_T2)),
           stat(QStringLiteral("是否可叠加"), QStringLiteral("是")),
           stat(QStringLiteral("使用场景"), QStringLiteral("航行 / 战斗"))},
          QStringLiteral("更结实的船体材料，能修复较严重损伤，是中后段航程的常备补给。"),
@@ -1066,7 +1117,7 @@ void EncyclopediaDialog::buildCatalog()
          {stat(QStringLiteral("名称"), QStringLiteral("高级船体修理包")),
           stat(QStringLiteral("类型"), QStringLiteral("消耗品")),
           stat(QStringLiteral("目标"), QStringLiteral("船体")),
-          stat(QStringLiteral("效果"), QStringLiteral("恢复 100 点耐久")),
+           stat(QStringLiteral("效果"), QStringLiteral("恢复 %1 点耐久").arg(Config::HEAL_REPAIR_T3)),
           stat(QStringLiteral("是否可叠加"), QStringLiteral("是")),
           stat(QStringLiteral("使用场景"), QStringLiteral("深海决战"))},
          QStringLiteral("专业级修理材料，关键时刻能把几乎散架的船重新拉回航线。"),
@@ -1077,14 +1128,19 @@ void EncyclopediaDialog::buildCatalog()
          {stat(QStringLiteral("名称"), QStringLiteral("紧急装备修理工具")),
           stat(QStringLiteral("类型"), QStringLiteral("消耗品")),
           stat(QStringLiteral("目标"), QStringLiteral("当前装备")),
-          stat(QStringLiteral("效果"), QStringLiteral("恢复 25% 最大耐久")),
+           stat(QStringLiteral("效果"), QStringLiteral("恢复 %1% 最大耐久").arg(Config::EMERGENCY_WEAPON_REPAIR_PERCENT)),
           stat(QStringLiteral("是否可叠加"), QStringLiteral("是")),
           stat(QStringLiteral("使用场景"), QStringLiteral("战斗中救急"))},
          QStringLiteral("小型工具组，可在航行中快速修复当前装备，适合应对连续战斗。"),
          true, QColor("#2f7a45")},
         unknown(QStringLiteral("006"))
     };
-    syncPageCount(item);
+    setEntryDiscoveryAt(item, 0, discoveryLog.isItemDiscovered(0));
+    setEntryDiscoveryAt(item, 1, discoveryLog.isItemDiscovered(1));
+    setEntryDiscoveryAt(item, 2, discoveryLog.isItemDiscovered(2));
+    setEntryDiscoveryAt(item, 3, discoveryLog.isItemDiscovered(3));
+    setEntryDiscoveryAt(item, 4, discoveryLog.isItemDiscovered(4));
+    finalizeCatalogPage(item, kItemCatalogTotal);
 
     CategoryPage enemy;
     enemy.category = Category::Enemy;
@@ -1097,68 +1153,68 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_shark.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_shark.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("鲨鱼")),
-          stat(QStringLiteral("HP"), scaledEnemyValue(100, 0.18)),
-          stat(QStringLiteral("攻击"), scaledEnemyValue(10, 0.13)),
-          stat(QStringLiteral("速度"), QString::number(2.0 * (1.0 + 0.035 * (enemyStage - 1)), 'f', 2)),
-          stat(QStringLiteral("当前关卡"), QStringLiteral("第 %1 关").arg(enemyStage)),
-          stat(QStringLiteral("出现关卡"), QStringLiteral("1-1 近海浅滩")),
-          stat(QStringLiteral("攻击方式"), QStringLiteral("追踪撕咬")),
-          stat(QStringLiteral("击败收益"), QStringLiteral("30"))},
-         QStringLiteral("近海中最常见的掠食者，成群活动，速度快，会从侧面快速冲撞猎物。"),
-         true, QColor("#2f7a45")},
+           stat(QStringLiteral("HP"), scaledEnemyValue(100, kEnemyHpGrowth)),
+           stat(QStringLiteral("攻击"), scaledEnemyValue(10, kEnemyAttackGrowth)),
+           stat(QStringLiteral("速度"), scaledEnemySpeed(2.0)),
+           stat(QStringLiteral("当前关卡"), QStringLiteral("第 %1 关").arg(enemyStage)),
+           stat(QStringLiteral("出现关卡"), QStringLiteral("第 1 关起")),
+           stat(QStringLiteral("攻击方式"), QStringLiteral("追踪撕咬")),
+           stat(QStringLiteral("击败收益"), scaledEnemyValue(30, kEnemyRewardGrowth))},
+          QStringLiteral("近海中最常见的掠食者，会持续追踪船只，咬合后短暂后撤再寻找下一次机会。"),
+          true, QColor("#2f7a45")},
         {QStringLiteral("002"), QStringLiteral("剑鱼"), QStringLiteral("已发现"),
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_swordfish.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_swordfish.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("剑鱼")),
-          stat(QStringLiteral("HP"), scaledEnemyValue(80, 0.18)),
-          stat(QStringLiteral("攻击"), scaledEnemyValue(25, 0.13)),
-          stat(QStringLiteral("速度"), QStringLiteral("%1 / 冲刺 8.0")
-              .arg(QString::number(1.5 * (1.0 + 0.035 * (enemyStage - 1)), 'f', 2))),
+           stat(QStringLiteral("HP"), scaledEnemyValue(80, kEnemyHpGrowth)),
+           stat(QStringLiteral("攻击"), scaledEnemyValue(25, kEnemyAttackGrowth)),
+           stat(QStringLiteral("速度"), QStringLiteral("%1 / 冲刺 8.0")
+               .arg(scaledEnemySpeed(1.5))),
           stat(QStringLiteral("当前关卡"), QStringLiteral("第 %1 关").arg(enemyStage)),
           stat(QStringLiteral("出现关卡"), QStringLiteral("外海航道")),
           stat(QStringLiteral("攻击方式"), QStringLiteral("蓄力冲刺")),
-          stat(QStringLiteral("击败收益"), QStringLiteral("50"))},
+           stat(QStringLiteral("击败收益"), scaledEnemyValue(50, kEnemyRewardGrowth))},
          QStringLiteral("平时巡游，发现船只后会短暂蓄力并高速冲刺。提前观察它的朝向是关键。"),
          true, QColor("#2f7a45")},
         {QStringLiteral("003"), QStringLiteral("墨鱼"), QStringLiteral("已发现"),
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_octopus.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_octopus.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("墨鱼")),
-          stat(QStringLiteral("HP"), scaledEnemyValue(60, 0.18)),
-          stat(QStringLiteral("攻击"), QStringLiteral("0")),
-          stat(QStringLiteral("速度"), QString::number(1.2 * (1.0 + 0.035 * (enemyStage - 1)), 'f', 2)),
-          stat(QStringLiteral("当前关卡"), QStringLiteral("第 %1 关").arg(enemyStage)),
-          stat(QStringLiteral("出现关卡"), QStringLiteral("暗礁海域")),
-          stat(QStringLiteral("攻击方式"), QStringLiteral("隐身 / 视野遮挡")),
-          stat(QStringLiteral("击败收益"), QStringLiteral("40"))},
-         QStringLiteral("会周期性隐身并靠近船只。它未必直接造成伤害，但会干扰航线判断。"),
-         true, QColor("#2f7a45")},
+           stat(QStringLiteral("HP"), scaledEnemyValue(60, kEnemyHpGrowth)),
+           stat(QStringLiteral("攻击"), QStringLiteral("0 / 喷墨干扰")),
+           stat(QStringLiteral("速度"), scaledEnemySpeed(1.2)),
+           stat(QStringLiteral("当前关卡"), QStringLiteral("第 %1 关").arg(enemyStage)),
+           stat(QStringLiteral("出现关卡"), QStringLiteral("第 2 关起")),
+           stat(QStringLiteral("攻击方式"), QStringLiteral("隐身 / 喷墨遮挡")),
+           stat(QStringLiteral("击败收益"), scaledEnemyValue(40, kEnemyRewardGrowth))},
+          QStringLiteral("会周期性隐身并靠近船只。喷墨弹命中后会在屏幕四周和中央留下墨迹，并短暂拖慢航速。"),
+          true, QColor("#2f7a45")},
         {QStringLiteral("004"), QStringLiteral("电鳐"), QStringLiteral("已发现"),
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_electric_ray.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_electric_ray.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("电鳐")),
-          stat(QStringLiteral("HP"), scaledEnemyValue(120, 0.18)),
-          stat(QStringLiteral("攻击"), scaledEnemyValue(12, 0.13)),
-          stat(QStringLiteral("速度"), QString::number(1.35 * (1.0 + 0.035 * (enemyStage - 1)), 'f', 2)),
+           stat(QStringLiteral("HP"), scaledEnemyValue(120, kEnemyHpGrowth)),
+           stat(QStringLiteral("攻击"), scaledEnemyValue(12, kEnemyAttackGrowth)),
+           stat(QStringLiteral("速度"), scaledEnemySpeed(1.35)),
           stat(QStringLiteral("当前关卡"), QStringLiteral("第 %1 关").arg(enemyStage)),
           stat(QStringLiteral("出现关卡"), QStringLiteral("第 2 关起")),
           stat(QStringLiteral("攻击方式"), QStringLiteral("蓄电范围脉冲")),
           stat(QStringLiteral("附加效果"), QStringLiteral("短暂眩晕")),
-          stat(QStringLiteral("击败收益"), scaledEnemyValue(65, 0.15))},
+           stat(QStringLiteral("击败收益"), scaledEnemyValue(65, kEnemyRewardGrowth))},
          QStringLiteral("靠近船只后会停下蓄电，电光环与实际脉冲范围一致。离开光环或利用蓄力时间穿过去。"),
          true, QColor("#2f7a45")},
         {QStringLiteral("005"), QStringLiteral("毒刺水母"), QStringLiteral("已发现"),
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_poison_jellyfish.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/enemy_poison_jellyfish.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("毒刺水母")),
-          stat(QStringLiteral("HP"), scaledEnemyValue(75, 0.18)),
-          stat(QStringLiteral("攻击"), scaledEnemyValue(5, 0.13)),
-          stat(QStringLiteral("速度"), QString::number(1.0 * (1.0 + 0.035 * (enemyStage - 1)), 'f', 2)),
+           stat(QStringLiteral("HP"), scaledEnemyValue(75, kEnemyHpGrowth)),
+           stat(QStringLiteral("攻击"), scaledEnemyValue(5, kEnemyAttackGrowth)),
+           stat(QStringLiteral("速度"), scaledEnemySpeed(1.0)),
           stat(QStringLiteral("当前关卡"), QStringLiteral("第 %1 关").arg(enemyStage)),
           stat(QStringLiteral("出现关卡"), QStringLiteral("第 3 关起")),
           stat(QStringLiteral("攻击方式"), QStringLiteral("蓄力触须突刺")),
           stat(QStringLiteral("附加效果"), QStringLiteral("持续中毒")),
-          stat(QStringLiteral("击败收益"), scaledEnemyValue(55, 0.15))},
+           stat(QStringLiteral("击败收益"), scaledEnemyValue(55, kEnemyRewardGrowth))},
          QStringLiteral("靠近船只后会停下蓄力，随后沿当前朝向伸出有毒触须。攻击有明显前摇，命中后会中毒，水母也会立即后撤。"),
          true, QColor("#2f7a45")},
         unknown(QStringLiteral("006"))
@@ -1168,7 +1224,7 @@ void EncyclopediaDialog::buildCatalog()
     setEntryDiscoveryAt(enemy, 2, discoveryLog.isEnemyDiscovered(2));
     setEntryDiscoveryAt(enemy, 3, discoveryLog.isEnemyDiscovered(3));
     setEntryDiscoveryAt(enemy, 4, discoveryLog.isEnemyDiscovered(4));
-    syncPageCount(enemy);
+    finalizeCatalogPage(enemy, kEnemyCatalogTotal);
 
     CategoryPage boss;
     boss.category = Category::Boss;
@@ -1181,43 +1237,49 @@ void EncyclopediaDialog::buildCatalog()
          QStringLiteral(":/FishingVoyage/encyclopedia/boss_five_head_shark.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/boss_five_head_shark.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("夺命五头鲨")),
-          stat(QStringLiteral("HP（初始）"), QStringLiteral("2,000")),
-          stat(QStringLiteral("阶段数"), QStringLiteral("2 阶段")),
-          stat(QStringLiteral("出现关卡"), QStringLiteral("第 1-2 关 Boss")),
-          stat(QStringLiteral("技能"), QStringLiteral("撕裂冲锋 / 召唤鲨群 / 深海轰击")),
-          stat(QStringLiteral("击败收益"), QStringLiteral("500"))},
-         QStringLiteral("深海中孕育的变异巨鲨，五个头颅各自拥有独立意识。任何靠近它领地的生物，都会被撕裂成碎片。"),
-         true, QColor("#9d3737")},
+           stat(QStringLiteral("HP（初始）"), QStringLiteral("2,900")),
+           stat(QStringLiteral("阶段数"), QStringLiteral("2 阶段")),
+           stat(QStringLiteral("出现关卡"), QStringLiteral("第 4 关 Boss")),
+           stat(QStringLiteral("危险等级"), QStringLiteral("极高")),
+           stat(QStringLiteral("击败收益"), QStringLiteral("800"))},
+          QStringLiteral("深海中孕育的变异巨鲨，五个头颅各自拥有独立意识。海员传说中，它的出现常伴随碎浪与鲨影。"),
+          true, QColor("#9d3737")},
         {QStringLiteral("B02"), QStringLiteral("塔利海怪"), QStringLiteral("已发现"),
          QStringLiteral(":/FishingVoyage/encyclopedia/boss_tali_monster.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/boss_tali_monster.png"),
          {stat(QStringLiteral("名称"), QStringLiteral("塔利海怪")),
-          stat(QStringLiteral("HP（初始）"), QStringLiteral("2,250")),
-          stat(QStringLiteral("阶段数"), QStringLiteral("2 阶段")),
-          stat(QStringLiteral("出现关卡"), QStringLiteral("第 3-4 关 Boss")),
-          stat(QStringLiteral("技能"), QStringLiteral("深渊撕咬 / 眼棱扫射 / 分身爆裂")),
-          stat(QStringLiteral("击败收益"), QStringLiteral("800"))},
-         QStringLiteral("古老礁群中苏醒的深海怪物，外壳覆盖珊瑚与沉船残片。它的弱点会在阶段转换后短暂暴露。"),
-         true, QColor("#9d3737")},
+           stat(QStringLiteral("HP（初始）"), QStringLiteral("2,250")),
+           stat(QStringLiteral("阶段数"), QStringLiteral("2 阶段")),
+           stat(QStringLiteral("出现关卡"), QStringLiteral("档案预留")),
+           stat(QStringLiteral("危险等级"), QStringLiteral("未知")),
+           stat(QStringLiteral("击败收益"), QStringLiteral("800"))},
+          QStringLiteral("旧航海记录中反复出现的深海怪物，外壳覆盖珊瑚与沉船残片。当前航线暂未开放遭遇。"),
+          true, QColor("#9d3737")},
         {QStringLiteral("B03"), QStringLiteral("塞壬女妖"), QStringLiteral("已发现"),
          QStringLiteral(":/FishingVoyage/encyclopedia/boss_siren.png"),
          QStringLiteral(":/FishingVoyage/encyclopedia/boss_siren.png"),
-          {stat(QStringLiteral("名称"), QStringLiteral("塞壬女妖")),
-           stat(QStringLiteral("HP（初始）"), QStringLiteral("3,200 / 二阶段 3,300")),
-           stat(QStringLiteral("阶段数"), QStringLiteral("2 阶段")),
-           stat(QStringLiteral("出现关卡"), QStringLiteral("第 6 关 Boss")),
-           stat(QStringLiteral("技能"), QStringLiteral("噬魂迷音 / 飘渺哀歌 / 共鸣柱 / 潮汐回归")),
-           stat(QStringLiteral("击败收益"), QStringLiteral("1,200"))},
-          QStringLiteral("月色下吟唱的深海女王。二阶段本体免疫武器伤害并缓慢衰弱，诱导迷音或哀歌击中共鸣柱能让柱体爆裂，对塞壬造成真伤。"),
-          true, QColor("#9d3737")},
+           {stat(QStringLiteral("名称"), QStringLiteral("塞壬女妖")),
+            stat(QStringLiteral("HP（初始）"), QStringLiteral("4,200")),
+            stat(QStringLiteral("阶段数"), QStringLiteral("2 阶段")),
+            stat(QStringLiteral("出现关卡"), QStringLiteral("第 9 关最终 Boss")),
+            stat(QStringLiteral("危险等级"), QStringLiteral("终局")),
+            stat(QStringLiteral("击败收益"), QStringLiteral("1,500"))},
+           QStringLiteral("月色下吟唱的深海女王。她的歌声会让航线和时间都变得模糊，许多船只只留下被潮水磨平的桅杆。"),
+           true, QColor("#9d3737")},
         unknown(QStringLiteral("B04"), QStringLiteral("未解锁")),
         unknown(QStringLiteral("B05"), QStringLiteral("未解锁")),
         unknown(QStringLiteral("B06"), QStringLiteral("未解锁"))
     };
-    setEntryDiscoveryAt(boss, 0, discoveryLog.isBossDiscovered(0));
-    setEntryDiscoveryAt(boss, 1, discoveryLog.isBossDiscovered(1));
-    setEntryDiscoveryAt(boss, 2, discoveryLog.isBossDiscovered(2));
-    syncPageCount(boss);
+    const bool fiveHeadEncountered =
+        discoveryLog.isBossDiscovered(0) &&
+        (m_currentStage > 4 || (m_currentStage == 4 && m_currentStageBossEncountered));
+    const bool sirenEncountered =
+        discoveryLog.isBossDiscovered(2) &&
+        (m_currentStage > 9 || (m_currentStage == 9 && m_currentStageBossEncountered));
+    setEntryDiscoveryAt(boss, 0, fiveHeadEncountered);
+    setEntryDiscoveryAt(boss, 1, false);
+    setEntryDiscoveryAt(boss, 2, sirenEncountered);
+    finalizeCatalogPage(boss, kBossCatalogTotal, { QStringLiteral("B02") });
 
     m_pages = { fish, equipment, item, enemy, boss };
 }
